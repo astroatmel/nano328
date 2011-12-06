@@ -28,7 +28,7 @@
 #define RA_DEG_P_REV  3
 #define DEC_DEG_P_REV 6
 #define POLOLU        1
-#define ACCEL_SEQ     100
+#define ACCEL_PERIOD     100
 // 450 = nb cycles per day / nb steps per full turn  = 24*60*60*10000Hz / [ (360/RA_DEG_P_REV) * 200 steps per motor turn * (GEAR_BIG/GEAR_SMALL) * 16 microstep
 #define EARTH_COMP    450    
 // Number of step per full circle on RA axis
@@ -277,6 +277,120 @@ else
    }
 }
 
+typedef struct   // those values are required per axis to be able to execute goto commands
+   {             // I use a structure so that both DEC and RA axis can use the exact same routines
+   long  pos;              // units: nanostep
+   long  pos_initial;      // units: nanostep
+   long  pos_target;       // units: nanostep
+   long  pos_delta;        // units: nanostep (it's the required displacement: pos_target-pos_initial)
+   long  pos_part1;        // units: nanostep (it's ths total amount of displacement during acceleration)
+   long  speed;            // units: nanostep per iteration
+   long  last_high_speed;  // units: nanostep per iteration       // I define:       [of course the "nanostep" below is not really nano (10^-9)   ]
+   short max_speed;        // units: nanostep per iteration       // A step is a pure step from the motor (only one coil is 100% ON at a time)
+   short one_step;         // units: nanostep                     // A microstep is 1/16th of a step and is managed by the stepper motor controller
+   char  state;            // no units                            // A nanostep is the full telescope 360/2^32 ... on the RA axis, 1 microstep ~= 2236.962 nanosteps
+   char  deg_per_rev;      // units: deg/knob rev ; when the axis's know is turned one full turn, how much does the telescope move 
+   char  goto_cmd;         // no units (it's to tell the function to start a goto command)
+   char  accel;            // units: nanostep per iteration per iteration
+   char  accel_seq;        // no units (it's the sequence counter)
+   char  accel_period;     // no units (it how many iteration between speed re-calculation)
+   } AXIS;
+AXIS ra={0,0,0,0,0,0,0,RA_MAX_SPEED,RA_ONE_STEP,0,RA_DEG_P_REV,0,0,0,ACCEL_PERIOD};
+//AXIS dec={0,0,0,0,0,DEC_MAX_SPEED,DEC_ONE_STEP,0,DEC_DEG_P_REV};
+
+short process_goto(AXIS *axis, long goto_pos, char goto_cmd)
+{
+long temp_abs;
+axis->max_speed    = RA_MAX_SPEED;
+axis->one_step     = RA_ONE_STEP;
+axis->accel_period = ACCEL_PERIOD;
+
+if      ( axis->state == 0 ) // idle
+   {
+   if ( goto_cmd ) axis->state++; // new goto command
+   }
+else if ( axis->state == 1 ) // setup the goto
+   {
+   axis->pos_initial  = axis->pos; 
+   axis->pos_target   = goto_pos;
+   axis->pos_delta    = axis->pos_target - axis->pos_initial;
+   axis->accel_period = 0;  // reset the sequence 
+   if ( axis->pos_delta > 0 ) axis->accel =  10; // going forward
+   else                       axis->accel = -10; // going backward
+   if ( axis->pos_delta > 0 ) axis->pos_delta =  axis->pos_delta;
+   else                       axis->pos_delta = -axis->pos_delta;
+   axis->state++;
+   }
+else if ( axis->state == 2 )  // detect max speed, or halway point
+   {
+   axis->pos_part1 = axis->pos - axis->pos_initial;
+   if ( axis->pos_part1 > 0 ) temp_abs =  2*axis->pos_part1;
+   else                       temp_abs = -2*axis->pos_part1;
+debug1 = axis->pos_part1;
+
+   if ( temp_abs >= axis->pos_delta ) // we reached the mid point
+      {
+      axis->state = 4; // decelerate
+      axis->accel_period = axis->accel_period - axis->accel_seq;  // reverse the last plateau
+      }
+   if ( axis->speed == axis->max_speed || -axis->speed == axis->max_speed ) // reached steady state
+      {
+      axis->state = 3; // cruise
+      }
+   else axis->last_high_speed = axis->speed;
+   }
+else if ( axis->state == 3 )  // cruise speed
+   {
+   temp_abs = (axis->pos_part1 + axis->pos - axis->pos_initial);
+   if ( temp_abs < 0 ) temp_abs = -temp_abs;
+   if ( temp_abs >= axis->pos_delta ) // we reached the end of the cruise period
+      {
+      axis->state = 4; // decelerate
+      axis->accel_period = 0;  // reset the sequence 
+      }
+debug2 = axis->pos - debug1;
+debug4 = axis->pos_delta;
+debug8 = temp_abs;
+   }
+else if ( axis->state == 4 )  // set deceleration
+   {
+   if ( axis->pos_delta > 0 ) axis->accel = -10; // going forward but decelerate
+   else                       axis->accel = +10; // going backward but decelerate
+   axis->state++;
+   axis->speed = axis->last_high_speed;  // restore last high speed
+debug7 = axis->speed;
+   }
+else if ( axis->state == 5 )  // deceleration
+   {
+   if ( axis->accel > 0 && axis->speed > 0 ) axis->state = 6;
+   if ( axis->accel < 0 && axis->speed < 0 ) axis->state = 6;
+debug3=axis->pos - debug2 - debug1;
+debug9=axis->speed;
+   }
+else if ( axis->state == 6 )  // done, since the math is far from perfect, we often are not at the exact spod
+   {
+   axis->state = axis->speed = axis->accel = 0;  
+   }
+g_goto_state = axis->state; // set the global goto state
+g_ra_pos_part1 = axis->pos_part1;
+
+/////// do the math...
+axis->accel_seq++;
+if ( axis->accel_seq > axis->accel_period )
+   {
+   axis->accel_seq = 0;
+   axis->speed += axis->accel;
+   if (  axis->speed > axis->max_speed ) axis->accel = 0;
+   if (  axis->speed > axis->max_speed ) axis->speed = axis->max_speed;
+   if ( -axis->speed > axis->max_speed ) axis->accel = 0;
+   if ( -axis->speed > axis->max_speed ) axis->speed = -axis->max_speed;
+   }
+axis->pos += axis->speed;
+
+return axis->state;
+}
+
+
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 10 KHz
 {
 static char  goto_state=0;    // 1 = goto goto_ra_pos
@@ -297,6 +411,14 @@ if ( earth_comp > EARTH_COMP )
    }
 
 ///////////// Process goto
+
+process_goto(&ra,goto_ra_pos,goto_cmd);
+ra_pos = ra.pos;
+ra_accel = ra.accel;
+ra_speed = ra.speed;
+if ( ra.state !=0 ) goto_cmd=0;
+
+#ifdef ASDF
 
 if      ( goto_state == 0 ) // idle
    {
@@ -325,9 +447,9 @@ debug1 = ra_pos_part1;
    if ( temp_abs >= ra_pos_delta_abs ) // we reached the mid point
       {
       goto_state = 4; // decelerate
-      accel_period = ACCEL_SEQ - accel_period;  // reverse the last plateau
+      accel_period = ACCEL_PERIOD - accel_period;  // reverse the last plateau
       }
-   if ( ra_speed == RA_MAX_SPEED || -ra_speed == RA_MAX_SPEED ) // reached steady state
+   if ( ra_speed == RA_MAX_SPEED    || -ra_speed == RA_MAX_SPEED    ) // reached steady state
       {
       goto_state = 3; // cruise
       }
@@ -371,7 +493,7 @@ g_ra_pos_part1 = ra_pos_part1;
 ///////////// Process the rest
 
 accel_period++;
-if ( accel_period > ACCEL_SEQ )
+if ( accel_period > ACCEL_PERIOD )
    {
    accel_period = 0; 
    ra_speed += ra_accel;
@@ -380,9 +502,12 @@ if ( accel_period > ACCEL_SEQ )
    if ( -ra_speed > RA_MAX_SPEED ) ra_accel = 0;
    if ( -ra_speed > RA_MAX_SPEED ) ra_speed = -RA_MAX_SPEED;
    }
-
 ra_pos    += ra_speed;
 ra_pos_dem = ra_pos_earth + ra_pos;
+
+#endif
+
+ra_pos_dem = ra_pos_earth + ra.pos;
 ra_pos_cor = ra_pos_dem;  // for now, no correction
 
 // This below does work and proves that the Step outputs do work
