@@ -28,6 +28,7 @@
 #define RA_DEG_P_REV  3
 #define DEC_DEG_P_REV 6
 #define POLOLU        1
+#define ACCEL_SEQ     100
 // 450 = nb cycles per day / nb steps per full turn  = 24*60*60*10000Hz / [ (360/RA_DEG_P_REV) * 200 steps per motor turn * (GEAR_BIG/GEAR_SMALL) * 16 microstep
 #define EARTH_COMP    450    
 // Number of step per full circle on RA axis
@@ -233,8 +234,17 @@ long  ra_pos=0, ra_pos_hw=0, ra_pos_cor=0, ra_pos_dem=0, ra_pos_earth=0, ra_pos_
 long dec_pos=0,dec_pos_hw=0,dec_pos_cor=0,dec_pos_dem=0,dec_pos_earth=0,dec_pos_star=0,dec_accel=0,dec_speed=0;   // Declinasion parameters        
 long  ra_unit_step;  // One step on the step motor is equal to what in 32 bit angle
 long dec_unit_step;  // One step on the step motor is equal to what in 32 bit angle
-long debug_1;
+long debug1;
+long debug2;
+long debug3;
+long debug4;
+long debug5;
+long debug6;
+long debug7;
+long debug8;
+long debug9;
 long g_goto_state;
+long g_ra_pos_part1;
 char  ra_next=0, dec_next=0;  // Next state for the step command, we do this to allow DIR to settle
 
 ISR(TIMER0_OVF_vect)    
@@ -254,14 +264,12 @@ if ( temp >= RA_ONE_STEP )
    set_digital_output(DO_RA_DIR,0); // go backward
    ra_pos_hw -= RA_ONE_STEP;
    ra_next=1;
-   debug_1++;
    }
 else if ( -temp >= RA_ONE_STEP )
    {
    set_digital_output(DO_RA_DIR,1); // go forward
    ra_pos_hw += RA_ONE_STEP;
    ra_next=1;
-   debug_1++;
    }
 else
    {
@@ -271,10 +279,10 @@ else
 
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 10 KHz
 {
-char goto_state=0;    // 1 = goto goto_ra_pos
+static char  goto_state=0;    // 1 = goto goto_ra_pos
 static short earth_comp=0;
 static short accel_period=0;
-static long  ra_pos_initial,ra_pos_target,ra_pos_delta,ra_pos_delta_abs,ra_pos_part1,temp_abs;
+static long  ra_pos_initial,ra_pos_target,ra_pos_delta,ra_pos_delta_abs,ra_pos_part1,ra_last_high_speed,temp_abs;
 
 d_TIMER1++;             // counts time in 0.1 ms
 if ( motor_disable )  return;  //////////////////// motor disabled ///////////
@@ -293,12 +301,14 @@ if ( earth_comp > EARTH_COMP )
 if      ( goto_state == 0 ) // idle
    {
    if ( goto_cmd ) goto_state++; // new goto command
+   goto_cmd = 0; 
    }
 else if ( goto_state == 1 ) // setup the goto
    {
    ra_pos_initial = ra_pos; 
    ra_pos_target  = goto_ra_pos;
    ra_pos_delta   = ra_pos_target - ra_pos_initial;
+   accel_period   = 0;  // reset the sequence 
    if ( ra_pos_delta > 0 ) ra_accel =  10; // going forward
    else                    ra_accel = -10; // going backward
    if ( ra_pos_delta > 0 ) ra_pos_delta_abs =  ra_pos_delta;
@@ -310,16 +320,18 @@ else if ( goto_state == 2 )  // detect max speed, or halway point
    ra_pos_part1 = ra_pos - ra_pos_initial;
    if ( ra_pos_part1 > 0 ) temp_abs =  2*ra_pos_part1;
    else                    temp_abs = -2*ra_pos_part1;
+debug1 = ra_pos_part1;
 
    if ( temp_abs >= ra_pos_delta_abs ) // we reached the mid point
       {
       goto_state = 4; // decelerate
-      accel_period = 100 - accel_period;  // rever the last plateau
+      accel_period = ACCEL_SEQ - accel_period;  // reverse the last plateau
       }
    if ( ra_speed == RA_MAX_SPEED || -ra_speed == RA_MAX_SPEED ) // reached steady state
       {
       goto_state = 3; // cruise
       }
+   else ra_last_high_speed = ra_speed;
    }
 else if ( goto_state == 3 )  // cruise speed
    {
@@ -328,32 +340,38 @@ else if ( goto_state == 3 )  // cruise speed
    if ( temp_abs >= ra_pos_delta_abs ) // we reached the end of the cruise period
       {
       goto_state = 4; // decelerate
+      accel_period = 0;  // reset the sequence 
       }
+debug2 = ra_pos - debug1;
+debug4 = ra_pos_delta_abs;
+debug8 = temp_abs;
    }
 else if ( goto_state == 4 )  // set deceleration
    {
    if ( ra_pos_delta > 0 ) ra_accel = -10; // going forward but decelerate
    else                    ra_accel = +10; // going backward but decelerate
    goto_state++;
+   ra_speed = ra_last_high_speed;  // restore last high speed
+debug7 = ra_speed;
    }
 else if ( goto_state == 5 )  // deceleration
    {
    if ( ra_accel > 0 && ra_speed > 0 ) goto_state = 6;
    if ( ra_accel < 0 && ra_speed < 0 ) goto_state = 6;
+debug3=ra_pos - debug2 - debug1;
+debug9=ra_speed;
    }
-else if ( goto_state == 6 )  // done
+else if ( goto_state == 6 )  // done, since the math is far from perfect, we often are not at the exact spod
    {
    goto_state = ra_speed = ra_accel = 0;  
    }
 g_goto_state = goto_state; // set the global goto state
+g_ra_pos_part1 = ra_pos_part1;
 
 ///////////// Process the rest
-ra_pos    += ra_speed;
-ra_pos_dem = ra_pos_earth + ra_pos;
-ra_pos_cor = ra_pos_dem;  // for now, no correction
 
 accel_period++;
-if ( accel_period > 100 )
+if ( accel_period > ACCEL_SEQ )
    {
    accel_period = 0; 
    ra_speed += ra_accel;
@@ -362,6 +380,10 @@ if ( accel_period > 100 )
    if ( -ra_speed > RA_MAX_SPEED ) ra_accel = 0;
    if ( -ra_speed > RA_MAX_SPEED ) ra_speed = -RA_MAX_SPEED;
    }
+
+ra_pos    += ra_speed;
+ra_pos_dem = ra_pos_earth + ra_pos;
+ra_pos_cor = ra_pos_dem;  // for now, no correction
 
 // This below does work and proves that the Step outputs do work
 // if ( ! (d_TIMER1&3) ) set_digital_output(DO_RA_STEP,1);    // use my routines...flush polopu...
@@ -535,53 +557,92 @@ while(1)   // Async section
    // RS232 commands received
    // RS232 output
    set_digital_output(DO_DISABLE  ,motor_disable);   
-   ps("state:"); 
-   p08x(s_send,d_state);
+   ps("goto state:"); 
+   p08x(s_send,g_goto_state);
    ps(s_send);  
    ps(" ra_pos_cor:"); 
    p08x(s_send,ra_pos_cor);
    ps(s_send);  
-   ps(" tick so far:"); 
-   p08x(s_send,debug_1);
+   ps(" ra_pos:"); 
+   p08x(s_send,ra_pos);
    ps(s_send);  
    ps(" accel:"); 
    p08x(s_send,ra_accel);
    ps(s_send);  
    ps(" speed:"); 
    p08x(s_send,ra_speed);
+   ps(s_send);  
+   ps(" part1:"); 
+   p08x(s_send,g_ra_pos_part1);
    psnl(s_send);  
 
-   if ( d_state == 0 && (d_TIMER1-d_now>50000))  // Wait 5 sec before start
+   if ( d_state == 0 )  // Wait 5 sec before start
       {
-      motor_disable = 0;   // Stepper motor enabled...
+      if (d_TIMER1-d_now>10000) // Wait 1 sec before start
+         {
+         motor_disable = 0;   // Stepper motor enabled...
+         d_state ++;
+         }
+      }
+   else if ( d_state == 1 )  // goto command 
+      {
+      goto_ra_pos = RA_ONE_STEP * 200UL * 5UL * 16UL * 10UL; // thats 30 degrees , thats 10 turns, thats 357920000 , thats 0x15556D00     got:1555605F
+      goto_ra_pos = RA_ONE_STEP * 200UL * 5UL * 16UL * 5UL; // thats 15 degrees, thats 0AAAB680    got: 0AAAAB2E
+      goto_cmd = 1;  // 1553FC53
       d_state ++;
       }
-   if ( d_state == 1 )  // Accelerate 
-      {
-      ra_accel = 10;
-      d_state ++;
-      }
-   if ( d_state == 2  && ra_accel == 0)  // Steady state for 5 seconds
+   else if ( d_state == 2 )  // wait for command to complete
       {
       d_now   = d_TIMER1;
-      d_state ++;
+      if ( g_goto_state == 0 ) d_state ++;
       }
-   if ( d_state == 3  && (d_TIMER1-d_now>50000))  // Decellerate
+   else if ( d_state == 3 )  // wait for command to complete
       {
-      ra_accel = -10;
-      d_state ++;
+      if (d_TIMER1-d_now>10000) // Wait 5 sec before end
+         {
+         motor_disable = 1;   // Stepper motor disable...
+         d_state ++;
+         }
       }
-   if ( d_state == 4 && ra_speed < 0 )   // stop 
+   else if ( d_state == 4 )
       {
-      ra_accel = 0;
-      ra_speed = 0;
-      d_now   = d_TIMER1;
-      d_state ++;
-      }
-   if ( d_state == 5  && (d_TIMER1-d_now>100000))  // Wait for 10 seconds
-      {
-      d_state = 6; //start over
-      motor_disable = 1;   // Stepper motor enabled...
+      ps(" debug1:");
+      p08x(s_send,debug1);
+      psnl(s_send);
+
+      ps(" debug2:");
+      p08x(s_send,debug2);
+      psnl(s_send);
+
+      ps(" debug3:");
+      p08x(s_send,debug3);
+      psnl(s_send);
+
+      ps(" debug4:");
+      p08x(s_send,debug4);
+      psnl(s_send);
+
+      ps(" debug5:");
+      p08x(s_send,debug5);
+      psnl(s_send);
+
+      ps(" debug6:");
+      p08x(s_send,debug6);
+      psnl(s_send);
+
+      ps(" debug7:");
+      p08x(s_send,debug7);
+      psnl(s_send);
+
+      ps(" debug8:");
+      p08x(s_send,debug8);
+      psnl(s_send);
+
+      ps(" debug9:");
+      p08x(s_send,debug9);
+      psnl(s_send);
+
+      return 0; //end of program
       }
    };
 
