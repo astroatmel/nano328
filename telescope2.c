@@ -211,6 +211,16 @@ bof[4]=0;
 ps(bof);
 }
 
+char s_send[64];
+void p_str_hex(char* str,long hex, char nl)
+{
+ps(str);
+p08x(s_send,hex);
+ps(s_send);
+if ( nl ) ps("\012\015");
+}
+
+
 
 ////////////////////////////////////////// INTERRUPT SECTION ////////////////////////////////////////////
 ////////////////////////////////////////// INTERRUPT SECTION ////////////////////////////////////////////
@@ -221,9 +231,9 @@ unsigned long d_TIMER1;
 unsigned long d_USART_RX;
 unsigned long d_USART_TX;
 char motor_disable=1;       // Stepper motor Disable
-char s_send[64];
 char goto_cmd=0;    // 1 = goto goto_ra_pos
 long goto_ra_pos=0;
+unsigned long histogram[11]; // place to store histogram of 10Khz interrupt routine
 
 //   pos       = a long word : 0x00000000 = 0 deg  0x80000000 = 180 deg
 //   pos_hw    = current hardware pos and a pulse is generated each time a change is required
@@ -295,7 +305,7 @@ typedef struct   // those values are required per axis to be able to execute got
    char  accel_seq;        // no units (it's the sequence counter)
    char  accel_period;     // no units (it how many iteration between speed re-calculation)
    } AXIS;
-AXIS ra={0,0,0,0,0,0,0,RA_MAX_SPEED,RA_ONE_STEP,0,RA_DEG_P_REV,0,0,0,ACCEL_PERIOD};
+AXIS ra; // ={0,0,0,0,0,0,0,RA_MAX_SPEED,RA_ONE_STEP,0,RA_DEG_P_REV,0,0,0,ACCEL_PERIOD};
 //AXIS dec={0,0,0,0,0,DEC_MAX_SPEED,DEC_ONE_STEP,0,DEC_DEG_P_REV};
 
 short process_goto(AXIS *axis, long goto_pos, char goto_cmd)
@@ -393,10 +403,11 @@ return axis->state;
 
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 10 KHz
 {
-static char  goto_state=0;    // 1 = goto goto_ra_pos
+unsigned long histo;
+//static char  goto_state=0;    // 1 = goto goto_ra_pos
 static short earth_comp=0;
-static short accel_period=0;
-static long  ra_pos_initial,ra_pos_target,ra_pos_delta,ra_pos_delta_abs,ra_pos_part1,ra_last_high_speed,temp_abs;
+//static short accel_period=0;
+//static long  ra_pos_initial,ra_pos_target,ra_pos_delta,ra_pos_delta_abs,ra_pos_part1,ra_last_high_speed,temp_abs;
 
 d_TIMER1++;             // counts time in 0.1 ms
 if ( motor_disable )  return;  //////////////////// motor disabled ///////////
@@ -413,99 +424,11 @@ if ( earth_comp > EARTH_COMP )
 ///////////// Process goto
 
 process_goto(&ra,goto_ra_pos,goto_cmd);
+
 ra_pos = ra.pos;
 ra_accel = ra.accel;
 ra_speed = ra.speed;
 if ( ra.state !=0 ) goto_cmd=0;
-
-#ifdef ASDF
-
-if      ( goto_state == 0 ) // idle
-   {
-   if ( goto_cmd ) goto_state++; // new goto command
-   goto_cmd = 0; 
-   }
-else if ( goto_state == 1 ) // setup the goto
-   {
-   ra_pos_initial = ra_pos; 
-   ra_pos_target  = goto_ra_pos;
-   ra_pos_delta   = ra_pos_target - ra_pos_initial;
-   accel_period   = 0;  // reset the sequence 
-   if ( ra_pos_delta > 0 ) ra_accel =  10; // going forward
-   else                    ra_accel = -10; // going backward
-   if ( ra_pos_delta > 0 ) ra_pos_delta_abs =  ra_pos_delta;
-   else                    ra_pos_delta_abs = -ra_pos_delta;
-   goto_state++;
-   }
-else if ( goto_state == 2 )  // detect max speed, or halway point
-   {
-   ra_pos_part1 = ra_pos - ra_pos_initial;
-   if ( ra_pos_part1 > 0 ) temp_abs =  2*ra_pos_part1;
-   else                    temp_abs = -2*ra_pos_part1;
-debug1 = ra_pos_part1;
-
-   if ( temp_abs >= ra_pos_delta_abs ) // we reached the mid point
-      {
-      goto_state = 4; // decelerate
-      accel_period = ACCEL_PERIOD - accel_period;  // reverse the last plateau
-      }
-   if ( ra_speed == RA_MAX_SPEED    || -ra_speed == RA_MAX_SPEED    ) // reached steady state
-      {
-      goto_state = 3; // cruise
-      }
-   else ra_last_high_speed = ra_speed;
-   }
-else if ( goto_state == 3 )  // cruise speed
-   {
-   temp_abs = (ra_pos_part1 + ra_pos - ra_pos_initial);
-   if ( temp_abs < 0 ) temp_abs = -temp_abs;
-   if ( temp_abs >= ra_pos_delta_abs ) // we reached the end of the cruise period
-      {
-      goto_state = 4; // decelerate
-      accel_period = 0;  // reset the sequence 
-      }
-debug2 = ra_pos - debug1;
-debug4 = ra_pos_delta_abs;
-debug8 = temp_abs;
-   }
-else if ( goto_state == 4 )  // set deceleration
-   {
-   if ( ra_pos_delta > 0 ) ra_accel = -10; // going forward but decelerate
-   else                    ra_accel = +10; // going backward but decelerate
-   goto_state++;
-   ra_speed = ra_last_high_speed;  // restore last high speed
-debug7 = ra_speed;
-   }
-else if ( goto_state == 5 )  // deceleration
-   {
-   if ( ra_accel > 0 && ra_speed > 0 ) goto_state = 6;
-   if ( ra_accel < 0 && ra_speed < 0 ) goto_state = 6;
-debug3=ra_pos - debug2 - debug1;
-debug9=ra_speed;
-   }
-else if ( goto_state == 6 )  // done, since the math is far from perfect, we often are not at the exact spod
-   {
-   goto_state = ra_speed = ra_accel = 0;  
-   }
-g_goto_state = goto_state; // set the global goto state
-g_ra_pos_part1 = ra_pos_part1;
-
-///////////// Process the rest
-
-accel_period++;
-if ( accel_period > ACCEL_PERIOD )
-   {
-   accel_period = 0; 
-   ra_speed += ra_accel;
-   if (  ra_speed > RA_MAX_SPEED ) ra_accel = 0;
-   if (  ra_speed > RA_MAX_SPEED ) ra_speed = RA_MAX_SPEED;
-   if ( -ra_speed > RA_MAX_SPEED ) ra_accel = 0;
-   if ( -ra_speed > RA_MAX_SPEED ) ra_speed = -RA_MAX_SPEED;
-   }
-ra_pos    += ra_speed;
-ra_pos_dem = ra_pos_earth + ra_pos;
-
-#endif
 
 ra_pos_dem = ra_pos_earth + ra.pos;
 ra_pos_cor = ra_pos_dem;  // for now, no correction
@@ -514,6 +437,10 @@ ra_pos_cor = ra_pos_dem;  // for now, no correction
 // if ( ! (d_TIMER1&3) ) set_digital_output(DO_RA_STEP,1);    // use my routines...flush polopu...
 // if ( ! (d_TIMER1&1) ) set_digital_output(DO_DEC_STEP,1);   // use my routines...flush polopu...
 
+// This section terminates the interrupt routine and will help identify how much CPU time we use in the real-time interrupt
+histo = TCNT1 * 100 / F_CPU_K;  // *10 for 10 slots between 0 and 100%   // *100 for 10 slots between 0 and 10%
+if ( histo > 10 ) histo=10;
+histogram[histo]++;
 }
 
 ISR(USART_RX_vect)
@@ -682,24 +609,21 @@ while(1)   // Async section
    // RS232 commands received
    // RS232 output
    set_digital_output(DO_DISABLE  ,motor_disable);   
-   ps("goto state:"); 
-   p08x(s_send,g_goto_state);
-   ps(s_send);  
-   ps(" ra_pos_cor:"); 
-   p08x(s_send,ra_pos_cor);
-   ps(s_send);  
-   ps(" ra_pos:"); 
-   p08x(s_send,ra_pos);
-   ps(s_send);  
-   ps(" accel:"); 
-   p08x(s_send,ra_accel);
-   ps(s_send);  
-   ps(" speed:"); 
-   p08x(s_send,ra_speed);
-   ps(s_send);  
-   ps(" part1:"); 
-   p08x(s_send,g_ra_pos_part1);
-   psnl(s_send);  
+
+void p_str_hex(char* str,long hex, char nl)
+{
+ps(str);
+p08x(s_send,hex);
+ps(s_send);
+if ( nl ) ps("\012\015");
+}
+
+   p_str_hex(" goto state:",g_goto_state,0);
+   p_str_hex(" ra_pos_cor:",ra_pos_cor,0);
+   p_str_hex(" ra_pos:",ra_pos,0);
+   p_str_hex(" accel:",ra_accel,0);
+   p_str_hex(" speed:",ra_speed,0);
+   p_str_hex(" part1:",g_ra_pos_part1,1);
 
    if ( d_state == 0 )  // Wait 5 sec before start
       {
@@ -731,41 +655,27 @@ while(1)   // Async section
       }
    else if ( d_state == 4 )
       {
-      ps(" debug1:");
-      p08x(s_send,debug1);
-      psnl(s_send);
+      p_str_hex(" debug1:",debug1,1);
+      p_str_hex(" debug2:",debug2,1);
+      p_str_hex(" debug3:",debug3,1);
+      p_str_hex(" debug4:",debug4,1);
+      p_str_hex(" debug5:",debug5,1);
+      p_str_hex(" debug6:",debug6,1);
+      p_str_hex(" debug7:",debug7,1);
+      p_str_hex(" debug8:",debug8,1);
+      p_str_hex(" debug9:",debug9,1);
 
-      ps(" debug2:");
-      p08x(s_send,debug2);
-      psnl(s_send);
-
-      ps(" debug3:");
-      p08x(s_send,debug3);
-      psnl(s_send);
-
-      ps(" debug4:");
-      p08x(s_send,debug4);
-      psnl(s_send);
-
-      ps(" debug5:");
-      p08x(s_send,debug5);
-      psnl(s_send);
-
-      ps(" debug6:");
-      p08x(s_send,debug6);
-      psnl(s_send);
-
-      ps(" debug7:");
-      p08x(s_send,debug7);
-      psnl(s_send);
-
-      ps(" debug8:");
-      p08x(s_send,debug8);
-      psnl(s_send);
-
-      ps(" debug9:");
-      p08x(s_send,debug9);
-      psnl(s_send);
+      p_str_hex(" histogram[0]:",histogram[0],1);
+      p_str_hex(" histogram[1]:",histogram[1],1);
+      p_str_hex(" histogram[2]:",histogram[2],1);
+      p_str_hex(" histogram[3]:",histogram[3],1);
+      p_str_hex(" histogram[4]:",histogram[4],1);
+      p_str_hex(" histogram[5]:",histogram[5],1);
+      p_str_hex(" histogram[6]:",histogram[6],1);
+      p_str_hex(" histogram[7]:",histogram[7],1);
+      p_str_hex(" histogram[8]:",histogram[8],1);
+      p_str_hex(" histogram[9]:",histogram[9],1);
+      p_str_hex(" histogram10]:",histogram[10],1);
 
       return 0; //end of program
       }
