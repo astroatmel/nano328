@@ -696,4 +696,9 @@ main_vt_test();    // To test VT100 codes
 return 0;
 }
 
+/*
+$author:$
+$version:$
+$log:$
 
+*/
