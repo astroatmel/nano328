@@ -325,8 +325,8 @@ else if ( axis->state == 1 ) // setup the goto
    axis->pos_target   = goto_pos;
    axis->pos_delta    = axis->pos_target - axis->pos_initial;
    axis->accel_period = 0;  // reset the sequence 
-   if ( axis->pos_delta > 0 ) axis->accel =  10; // going forward
-   else                       axis->accel = -10; // going backward
+   if ( axis->pos_target - axis->pos_initial > 0 ) axis->accel =  10; // going forward
+   else                                            axis->accel = -10; // going backward
    if ( axis->pos_delta > 0 ) axis->pos_delta =  axis->pos_delta;
    else                       axis->pos_delta = -axis->pos_delta;
    axis->state++;
@@ -364,22 +364,35 @@ debug8 = temp_abs;
    }
 else if ( axis->state == 4 )  // set deceleration
    {
-   if ( axis->pos_delta > 0 ) axis->accel = -10; // going forward but decelerate
-   else                       axis->accel = +10; // going backward but decelerate
+   if ( axis->pos_target - axis->pos_initial > 0 ) axis->accel = -10; // going forward but decelerate
+   else                                            axis->accel =  10; // going backward but decelerate
    axis->state++;
    axis->speed = axis->last_high_speed;  // restore last high speed
 debug7 = axis->speed;
    }
 else if ( axis->state == 5 )  // deceleration
    {
-   if ( axis->accel > 0 && axis->speed > 0 ) axis->state = 6;
-   if ( axis->accel < 0 && axis->speed < 0 ) axis->state = 6;
+   if ( axis->last_high_speed * axis->speed < 0 ) axis->state = 6;
+//   if ( axis->accel > 0 && axis->speed > 0 ) axis->state = 6;
+//   if ( axis->accel < 0 && axis->speed < 0 ) axis->state = 6;
 debug3=axis->pos - debug2 - debug1;
 debug9=axis->speed;
    }
-else if ( axis->state == 6 )  // done, since the math is far from perfect, we often are not at the exact spod
+else if ( axis->state == 6 )  // done, since the math is far from perfect, we often are not at the exact spot
    {
-   axis->state = axis->speed = axis->accel = 0;  
+   long tmp = axis->pos - axis->pos_target;
+   long abs = tmp;
+
+   axis->accel = axis->speed = 0;
+   if ( abs < 0 )              abs = -abs;
+   if ( tmp > 0 )              axis->speed = -100; // we went a bit too far, slowly go back
+   else                        axis->speed =  100; // we stopped short, sloly go forward
+   if ( abs < axis->one_step ) axis->state = 7;    // we are very close, we are done
+   }
+else if ( axis->state == 7 )  // done, since the math is far from perfect, we often are not at the exact spod
+   {
+   axis->pos   = axis->pos_target;                      // we are very close, set the position exactly at the target position
+   axis->state = axis->speed = axis->accel = 0;         // we are done
    }
 g_goto_state = axis->state; // set the global goto state
 g_ra_pos_part1 = axis->pos_part1;
@@ -390,10 +403,10 @@ if ( axis->accel_seq > axis->accel_period )
    {
    axis->accel_seq = 0;
    axis->speed += axis->accel;
-   if (  axis->speed > axis->max_speed ) axis->accel = 0;
-   if (  axis->speed > axis->max_speed ) axis->speed = axis->max_speed;
-   if ( -axis->speed > axis->max_speed ) axis->accel = 0;
-   if ( -axis->speed > axis->max_speed ) axis->speed = -axis->max_speed;
+   if (  axis->speed > axis->max_speed && axis->accel > 0 ) axis->accel = 0;
+   if (  axis->speed > axis->max_speed )                    axis->speed = axis->max_speed;
+   if ( -axis->speed > axis->max_speed && axis->accel < 0 ) axis->accel = 0;
+   if ( -axis->speed > axis->max_speed )                    axis->speed = -axis->max_speed;
    }
 axis->pos += axis->speed;
 
@@ -636,7 +649,6 @@ if ( nl ) ps("\012\015");
    else if ( d_state == 1 )  // goto command 
       {
       goto_ra_pos = RA_ONE_STEP * 200UL * 5UL * 16UL * 10UL; // thats 30 degrees , thats 10 turns, thats 357920000 , thats 0x15556D00     got:1555605F
-      goto_ra_pos = RA_ONE_STEP * 200UL * 5UL * 16UL * 5UL; // thats 15 degrees, thats 0AAAB680    got: 0AAAAB2E
       goto_cmd = 1;  // 1553FC53
       d_state ++;
       }
@@ -647,13 +659,28 @@ if ( nl ) ps("\012\015");
       }
    else if ( d_state == 3 )  // wait for command to complete
       {
+      if (d_TIMER1-d_now>10000) d_state ++; // Wait 5 sec before end
+      }
+   else if ( d_state == 4 )  // goto command 
+      {
+      goto_ra_pos = RA_ONE_STEP * 200UL * 5UL * 16UL * 5UL; // thats 15 degrees, thats 0AAAB680    got: 0AAAAB2E   (and means that we need to go backward)
+      goto_cmd = 1;  // 1553FC53
+      d_state ++;
+      }
+   else if ( d_state == 5 )  // wait for command to complete
+      {
+      d_now   = d_TIMER1;
+      if ( g_goto_state == 0 ) d_state ++;
+      }
+   else if ( d_state == 6 )  // wait for command to complete
+      {
       if (d_TIMER1-d_now>10000) // Wait 5 sec before end
          {
          motor_disable = 1;   // Stepper motor disable...
          d_state ++;
          }
       }
-   else if ( d_state == 4 )
+   else if ( d_state == 7 )
       {
       p_str_hex(" debug1:",debug1,1);
       p_str_hex(" debug2:",debug2,1);
