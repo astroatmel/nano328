@@ -43,11 +43,55 @@
 #define RA_ONE_STEP   2237
 #define DEC_ONE_STEP  (RA_ONE_STEP*2)
 #define RA_MAX_SPEED  (RA_ONE_STEP-RA_ONE_STEP/EARTH_COMP-2)
+#define DEC_MAX_SPEED (DEC_ONE_STEP-2)
+
+
+PROGMEM const char NLNL[]="\012\015";
+PROGMEM const char pololu[]={"\
+                ------------------------------\012\015\
+           M1B  < 01                      24 >  VCC\012\015\
+           M1A  < 02                      23 >  GND\012\015\
+           PB0  < 03   IO/CLK/TIMER       22 >  M2BN\012\015\
+           PB1  < 04   IO/PWM             21 >  M2A\012\015\
+10Khz Out  PB2  < 05   IO/PWM     AI/IO   20 >  PC5 (ADC5/SCL)\012\015\
+DEC_STEP   PB4  < 06   IO         AI/IO   19 >  PC4 (ADC4/SDA)\012\015\
+           PB5  < 07   IO         AI/IO   18 >  PC3 (ADC3)\012\015\
+DI RX232   PD0  < 08   IO         AI/IO   17 >  PC2 (ADC2)\012\015\
+DO TX232   PD1  < 09   IO         AI/IO   16 >  PC1 (ADC1)\012\015\
+DISABLE    PD2  < 10   IO         AI/IO   15 >  PC0 (ADC0)\012\015\
+RA_DIR     PD4  < 11   IO         AI      14 >      (ADC6)\012\015\
+RA_STEP    PD7  < 12   IO                 13 >  PC6 (RESET)\012\015\
+                ------------------------------\012\015\
+"};
+
+PROGMEM const char dip328p[]={"\
+                            -----------\012\015\
+ (PCINT14/RESET)      PC6  < 01     15 > PC5 (ADC5/SCL/PCINT13)\012\015\
+ (PCINT16/RXD)        PD0  < 02     16 > PC4 (ADC4/SDA/PCINT12)\012\015\
+ (PCINT17/TXD)        PD1  < 03     17 > PC3 (ADC3/PCINT11)\012\015\
+ (PCINT18/INT0)       PD2  < 04     18 > PC2 (ADC2/PCINT10)\012\015\
+ (PCINT19/OC2B/INT1)  PD3  < 05     19 > PC1AREF (ADC1/PCINT9)\012\015\
+ (PCINT20/XCK/T0)     PD4  < 06     20 > PC0 (ADAVCCC0/PCINT8)\012\015\
+                      VCC  < 07     21 > GND\012\015\
+                      GND  < 08     22 > AREF\012\015\
+ (PCINT6/XTAL1/TOSC1) PB6  < 09     23 > AVCC\012\015\
+ (PCINT7/XTAL2/TOSC2) PB7  < 10     24 > PB5 (SCK/PCINT5)\012\015\
+ (PCINT21/OC0B/T1)    PD5  < 11     25 > PB4 (MISO/PCINT4)\012\015\
+ (PCINT22/OC0A/AIN0)  PD6  < 12     26 > PB3 (MOSI/OC2A/PCINT3)\012\015\
+ (PCINT23/AIN1)       PD7  < 13     27 > PB2 (SS/OC1B/PCINT2)\012\015\
+ (PCINT0/CLKO/ICP1)   PB0  < 14     28 > PB1 (OC1A/PCINT1)\012\015\
+                            -----------\012\015\
+"};
+
+short kkkk;
+PROGMEM const char str_debug[][10]={ " debug0:", " debug1:"," debug2:"," debug3:"," debug4:"," debug5:"," debug6:"," debug7:"," debug8:"," debug9:"};
+PROGMEM const char str_hist[][11]={" Hist0:", " Hist1:"," Hist2:"," Hist3:"," Hist4:"," Hist5:"," Hist6:"," Hist7:"," Hist8:"," Hist9:"," Hist10:"};
+
 ////////////////////////////////////////// DISPLAY SECTION //////////////////////////////////////////
 
 void pc(char ccc);
 void ps(char *ssz);
-void pgm_ps(char *ssz);
+void pgm_ps(const char *ssz);
 void ps08x(char *string,long value);
 void display_next(void);
 
@@ -65,11 +109,18 @@ while ( *ssz ) pc(*ssz++);
 void psnl(char *ssz)   // super simple blocking print string
 {
 while ( *ssz ) pc(*ssz++);
-pc('\012');
-pc('\015');
+pgm_ps(NLNL);
 }
 
-void pgm_ps(char *ssz)   // super simple blocking print string
+void psnl_progmem(const char *ssz)   // super simple blocking print string
+{
+while ( pgm_read_byte(ssz) ) pc(pgm_read_byte(ssz++));
+pgm_ps(NLNL);
+}
+
+
+
+void pgm_ps(const char *ssz)   // super simple blocking print string
 {
 char tc = pgm_read_byte(ssz++);;
 while ( tc ) 
@@ -217,7 +268,15 @@ void p_str_hex(char* str,long hex, char nl)
 ps(str);
 p08x(s_send,hex);
 ps(s_send);
-if ( nl ) ps("\012\015");
+if ( nl ) pgm_ps(NLNL);
+}
+
+void pe_str_hex(const char* str,long hex, char nl)   // print from eprom string
+{
+pgm_ps(str);
+p08x(s_send,hex);
+ps(s_send);
+if ( nl ) pgm_ps(NLNL);
 }
 
 
@@ -225,6 +284,36 @@ if ( nl ) ps("\012\015");
 ////////////////////////////////////////// INTERRUPT SECTION ////////////////////////////////////////////
 ////////////////////////////////////////// INTERRUPT SECTION ////////////////////////////////////////////
 ////////////////////////////////////////// INTERRUPT SECTION ////////////////////////////////////////////
+//-   
+//-            Interrupt priority goes from high to low, from 1 to 20
+//-  
+//-  1  0x0000 RESET External Pin, Power-on Reset, Brown-out Reset and Watchdog System Reset
+//-  2  0x0002 INT0 External Interrupt Request 0
+//-  3  0x0004 INT1 External Interrupt Request 1
+//-  4  0x0006 PCINT0 Pin Change Interrupt Request 0
+//-  5  0x0008 PCINT1 Pin Change Interrupt Request 1
+//-  6  0x000A PCINT2 Pin Change Interrupt Request 2
+//-  7  0x000C WDT Watchdog Time-out Interrupt
+//-  8  0x000E TIMER2 COMPA Timer/Counter2 Compare Match A
+//-  9  0x0010 TIMER2 COMPB Timer/Counter2 Compare Match B
+//-  10 0x0012 TIMER2 OVF Timer/Counter2 Overflow
+//-  11 0x0014 TIMER1 CAPT Timer/Counter1 Capture Event                          | sp0c0 : handle proper telescope movement and IR decoding
+//-  12 0x0016 TIMER1 COMPA Timer/Counter1 Compare Match A                       |     
+//-  13 0x0018 TIMER1 COMPB Timer/Coutner1 Compare Match B    TIMER1_COMPB_vect  |      
+//-  14 0x001A TIMER1 OVF Timer/Counter1 Overflow             TIMER1_OVF_vect    |
+//-  15 0x001C TIMER0 COMPA Timer/Counter0 Compare Match A                               | ap0c0 : handle async operation like rs232
+//-  16 0x001E TIMER0 COMPB Timer/Counter0 Compare Match B                               |
+//-  17 0x0020 TIMER0 OVF Timer/Counter0 Overflow             TIMER0_OVF_vect            |
+//-  18 0x0022 SPI, STC SPI Serial Transfer Complete
+//-  19 0x0024 USART, RX USART Rx Complete                    USART_RX_vect
+//-  20 0x0026 USART, UDRE USART, Data Register Empty
+//-  21 0x0028 USART, TX USART, Tx Complete                   USART_TX_vect
+//-  22 0x002A ADC ADC Conversion Complete
+//-  23 0x002C EE READY EEPROM Ready
+//-  24 0x002E ANALOG COMP Analog Comparator
+//-  25 0x0030 TWI 2-wire Serial Interface
+//-  26 0x0032 SPM READY Store Program Memory Ready
+//-  
 
 unsigned long d_TIMER0;
 unsigned long d_TIMER1;
@@ -244,25 +333,17 @@ long  ra_pos=0, ra_pos_hw=0, ra_pos_cor=0, ra_pos_dem=0, ra_pos_earth=0, ra_pos_
 long dec_pos=0,dec_pos_hw=0,dec_pos_cor=0,dec_pos_dem=0,dec_pos_earth=0,dec_pos_star=0,dec_accel=0,dec_speed=0;   // Declinasion parameters        
 long  ra_unit_step;  // One step on the step motor is equal to what in 32 bit angle
 long dec_unit_step;  // One step on the step motor is equal to what in 32 bit angle
-long debug1;
-long debug2;
-long debug3;
-long debug4;
-long debug5;
-long debug6;
-long debug7;
-long debug8;
-long debug9;
+long debug[10];
 long g_goto_state;
 long g_ra_pos_part1;
 char  ra_next=0, dec_next=0;  // Next state for the step command, we do this to allow DIR to settle
 
-ISR(TIMER0_OVF_vect)    
+ISR(TIMER0_OVF_vect)     // AP0C0 ... process RS232 events
 {                       
 d_TIMER0++;
 }
 
-ISR(TIMER1_COMPB_vect)  // Clear the Step outputs
+ISR(TIMER1_COMPB_vect)   // Clear the Step outputs
 {
 long temp;
 set_digital_output(DO_RA_STEP,0);    // eventually, I should use my routines...flush polopu...
@@ -289,6 +370,12 @@ else
 
 typedef struct   // those values are required per axis to be able to execute goto commands
    {             // I use a structure so that both DEC and RA axis can use the exact same routines
+   short max_speed;        // units: nanostep per iteration       // A step is a pure step from the motor (only one coil is 100% ON at a time)
+   short one_step;         // units: nanostep                     // A microstep is 1/16th of a step and is managed by the stepper motor controller
+   char  deg_per_rev;      // units: deg/knob rev ; when the axis's know is turned one full turn, how much does the telescope move 
+   char  accel_period;     // no units (it how many iteration between speed re-calculation)
+   char  accel;            // units: nanostep per iteration per iteration
+   char  accel_seq;        // no units (it's the sequence counter)
    long  pos;              // units: nanostep
    long  pos_initial;      // units: nanostep
    long  pos_target;       // units: nanostep
@@ -296,24 +383,18 @@ typedef struct   // those values are required per axis to be able to execute got
    long  pos_part1;        // units: nanostep (it's ths total amount of displacement during acceleration)
    long  speed;            // units: nanostep per iteration
    long  last_high_speed;  // units: nanostep per iteration       // I define:       [of course the "nanostep" below is not really nano (10^-9)   ]
-   short max_speed;        // units: nanostep per iteration       // A step is a pure step from the motor (only one coil is 100% ON at a time)
-   short one_step;         // units: nanostep                     // A microstep is 1/16th of a step and is managed by the stepper motor controller
-   char  state;            // no units                            // A nanostep is the full telescope 360/2^32 ... on the RA axis, 1 microstep ~= 2236.962 nanosteps
-   char  deg_per_rev;      // units: deg/knob rev ; when the axis's know is turned one full turn, how much does the telescope move 
    char  goto_cmd;         // no units (it's to tell the function to start a goto command)
-   char  accel;            // units: nanostep per iteration per iteration
-   char  accel_seq;        // no units (it's the sequence counter)
-   char  accel_period;     // no units (it how many iteration between speed re-calculation)
+   char  state;            // no units                            // A nanostep is the full telescope 360/2^32 ... on the RA axis, 1 microstep ~= 2236.962 nanosteps
    } AXIS;
-AXIS ra; // ={0,0,0,0,0,0,0,RA_MAX_SPEED,RA_ONE_STEP,0,RA_DEG_P_REV,0,0,0,ACCEL_PERIOD};
-//AXIS dec={0,0,0,0,0,DEC_MAX_SPEED,DEC_ONE_STEP,0,DEC_DEG_P_REV};
+AXIS ra ={RA_MAX_SPEED ,RA_ONE_STEP ,RA_DEG_P_REV ,ACCEL_PERIOD};
+AXIS dec={DEC_MAX_SPEED,DEC_ONE_STEP,DEC_DEG_P_REV,ACCEL_PERIOD};
 
 short process_goto(AXIS *axis, long goto_pos, char goto_cmd)
 {
 long temp_abs;
-axis->max_speed    = RA_MAX_SPEED;
-axis->one_step     = RA_ONE_STEP;
-axis->accel_period = ACCEL_PERIOD;
+//axis->max_speed    = RA_MAX_SPEED;
+//axis->one_step     = RA_ONE_STEP;
+//axis->accel_period = ACCEL_PERIOD;
 
 if      ( axis->state == 0 ) // idle
    {
@@ -336,7 +417,7 @@ else if ( axis->state == 2 )  // detect max speed, or halway point
    axis->pos_part1 = axis->pos - axis->pos_initial;
    if ( axis->pos_part1 > 0 ) temp_abs =  2*axis->pos_part1;
    else                       temp_abs = -2*axis->pos_part1;
-debug1 = axis->pos_part1;
+debug[1] = axis->pos_part1;
 
    if ( temp_abs >= axis->pos_delta ) // we reached the mid point
       {
@@ -358,9 +439,9 @@ else if ( axis->state == 3 )  // cruise speed
       axis->state = 4; // decelerate
       axis->accel_period = 0;  // reset the sequence 
       }
-debug2 = axis->pos - debug1;
-debug4 = axis->pos_delta;
-debug8 = temp_abs;
+debug[2] = axis->pos - debug[1];
+debug[4] = axis->pos_delta;
+debug[8] = temp_abs;
    }
 else if ( axis->state == 4 )  // set deceleration
    {
@@ -368,15 +449,15 @@ else if ( axis->state == 4 )  // set deceleration
    else                                            axis->accel =  10; // going backward but decelerate
    axis->state++;
    axis->speed = axis->last_high_speed;  // restore last high speed
-debug7 = axis->speed;
+debug[7] = axis->speed;
    }
 else if ( axis->state == 5 )  // deceleration
    {
    if ( axis->last_high_speed * axis->speed < 0 ) axis->state = 6;
 //   if ( axis->accel > 0 && axis->speed > 0 ) axis->state = 6;
 //   if ( axis->accel < 0 && axis->speed < 0 ) axis->state = 6;
-debug3=axis->pos - debug2 - debug1;
-debug9=axis->speed;
+debug[3]=axis->pos - debug[2] - debug[1];
+debug[9]=axis->speed;
    }
 else if ( axis->state == 6 )  // done, since the math is far from perfect, we often are not at the exact spot
    {
@@ -468,7 +549,7 @@ d_USART_TX++;
 
 // - used by timer routines - ISR(TIMER2_OVF_vect)
 // - used by timer routines - {
-// - used by timer routines - d_debug3++;
+// - used by timer routines - d_debug[3]++;
 // - used by timer routines - }
 
 void init_rs232(void)
@@ -485,22 +566,22 @@ UCSR0C = (3 <<UCSZ00);              // 8 bits, no parity, 1 stop
 
 void init_disp(void)
 {
+// TIMSK2 |= 1 << OCIE2A;    // Interrupt on A comparator
+   TCCR2B  = 0x02;           // Clock divider set to 8 , this will cause a Motor driver PWM at 10KHz
+   TCCR2A  = 0xF3;           // Forced to 0xF3 by the get_ms() routines
 
-// TIMSK0 |= 1 << TOIE0;   // timer0 interrupt when overvlow
-   TCCR0A = 0xF1;  // 0xF1 is for PWM phase corrected   
-   TCCR0B = 0x01;  // Clock divider set to 1 , this creates a PMW wave at 40Khz
+   TIMSK1 |= 1 << OCIE1B;    // timer1 interrupt when Output Compare B Match
+   TIMSK1 |= 1 <<  TOIE1;    // timer1 interrupt when Overflow                    ///////////////// SP0C0
+   TCCR1A  = 0xA3;           // FAST PWM, Clear OC1A/OC1B on counter match, SET on BOTTOM
+   TCCR1B  = 0x19;           // Clock divider set to 1 , FAST PWM, TOP = OCR1A
+   OCR1A   = F_CPU_K/10;     // Clock divider set to 1, so F_CPU_K/10 is CLK / 1000 / 10 thus, every 10000 there will be an interrupt : 10Khz
+   OCR1B   = F_CPU_K/40;     // By default, set the PWM to 25%
 
-   TIMSK1 |= 1 << OCIE1B; // timer1 interrupt when Output Compare B Match
-   TIMSK1 |= 1 <<  TOIE1; // timer1 interrupt when Overflow
-   TCCR1A = 0xA3;         // FAST PWM, Clear OC1A/OC1B on counter match, SET on BOTTOM
-   TCCR1B = 0x19;         // Clock divider set to 1 , FAST PWM, TOP = OCR1A
-
-// TIMSK2 |= 1 << OCIE2A;  // Interrupt on A comparator
-   TCCR2B = 0x02;  // Clock divider set to 8 , this will cause a Motor driver PWM at 10KHz
-   TCCR2A = 0xF3;  // Forced to 0xF3 by the get_ms() routines
-
-   OCR1A  = F_CPU_K/10;  // Clock divider set to 1, so F_CPU_K/10 is CLK / 1000 / 10 thus, every 10000 there will be an interrupt : 10Khz
-   OCR1B  = F_CPU_K/40;  // By default, set the PWM to 25%
+   TIMSK0 |= 1 << TOIE0;     // timer0 interrupt when overvlow                    ///////////////// APOCO
+   TCCR0A  = 0x03;           // FAST PWM, OC0A/OC0B pins, not driven
+   TCCR0B  = 0x0A;           // WGM=111 Clock divider set to 8 , this creates a PMW wave at 40Khz
+   OCR0A   = F_CPU_K/(10*8); // Clock divider set to 1, so F_CPU_K/10/8 is CLK / 1000 / 10 thus, every 10000 there will be an interrupt : 10Khz
+   OCR0B   = F_CPU_K/(40*8); // By default, set the PWM to 25%
 }
 
 extern void __bss_end;
@@ -558,6 +639,7 @@ unsigned long d_now;
 unsigned long d_state;
 
 
+
 int main_telescope(void)
 {
 ///////////////////////////////// Init /////////////////////////////////////////
@@ -576,42 +658,16 @@ set_digital_output(DO_DEC_STEP ,PULL_UP_ENABLED);
 set_digital_output(DO_10KHZ    ,PULL_UP_ENABLED);    // Set 10 Khz pwm output of OC1B (from TIMER 1) used to control the steps
 set_analog_mode(MODE_8_BIT);                         // 8-bit analog-to-digital conversions
 
-d_ram     = get_free_memory();
+d_ram = get_free_memory();
+
 psnl("Free Memory:");         // 0x800 is 2K ram which is the total available
 p08x(s_send,d_ram);           // 0x800 is 2K ram which is the total available
 psnl(s_send);                 // 0x800 is 2K ram which is the total available
+
 #ifdef POLOLU
-psnl("                ------------------------------");
-psnl("           M1B  < 01                      24 >  VCC");
-psnl("           M1A  < 02                      23 >  GND");
-psnl("           PB0  < 03   IO/CLK/TIMER       22 >  M2BN");
-psnl("           PB1  < 04   IO/PWM             21 >  M2A");
-psnl("10Khz Out  PB2  < 05   IO/PWM     AI/IO   20 >  PC5 (ADC5/SCL)");
-psnl("DEC_STEP   PB4  < 06   IO         AI/IO   19 >  PC4 (ADC4/SDA)");
-psnl("           PB5  < 07   IO         AI/IO   18 >  PC3 (ADC3)");
-psnl("DI RX232   PD0  < 08   IO         AI/IO   17 >  PC2 (ADC2)");
-psnl("DO TX232   PD1  < 09   IO         AI/IO   16 >  PC1 (ADC1)");
-psnl("DISABLE    PD2  < 10   IO         AI/IO   15 >  PC0 (ADC0)");
-psnl("RA_DIR     PD4  < 11   IO         AI      14 >      (ADC6)");
-psnl("RA_STEP    PD7  < 12   IO                 13 >  PC6 (RESET)");
-psnl("                ------------------------------");
+psnl_progmem(pololu);
 #else
-psnl("                            -----------");
-psnl(" (PCINT14/RESET)      PC6  < 01     15 > PC5 (ADC5/SCL/PCINT13)");
-psnl(" (PCINT16/RXD)        PD0  < 02     16 > PC4 (ADC4/SDA/PCINT12)");
-psnl(" (PCINT17/TXD)        PD1  < 03     17 > PC3 (ADC3/PCINT11)");
-psnl(" (PCINT18/INT0)       PD2  < 04     18 > PC2 (ADC2/PCINT10)");
-psnl(" (PCINT19/OC2B/INT1)  PD3  < 05     19 > PC1AREF (ADC1/PCINT9)");
-psnl(" (PCINT20/XCK/T0)     PD4  < 06     20 > PC0 (ADAVCCC0/PCINT8)");
-psnl("                      VCC  < 07     21 > GND");
-psnl("                      GND  < 08     22 > AREF");
-psnl(" (PCINT6/XTAL1/TOSC1) PB6  < 09     23 > AVCC");
-psnl(" (PCINT7/XTAL2/TOSC2) PB7  < 10     24 > PB5 (SCK/PCINT5)");
-psnl(" (PCINT21/OC0B/T1)    PD5  < 11     25 > PB4 (MISO/PCINT4)");
-psnl(" (PCINT22/OC0A/AIN0)  PD6  < 12     26 > PB3 (MOSI/OC2A/PCINT3)");
-psnl(" (PCINT23/AIN1)       PD7  < 13     27 > PB2 (SS/OC1B/PCINT2)");
-psnl(" (PCINT0/CLKO/ICP1)   PB0  < 14     28 > PB1 (OC1A/PCINT1)");
-psnl("                            -----------");
+psnl_progmem(dip328p);
 #endif
 
 d_now   = d_TIMER1;
@@ -682,27 +738,8 @@ if ( nl ) ps("\012\015");
       }
    else if ( d_state == 7 )
       {
-      p_str_hex(" debug1:",debug1,1);
-      p_str_hex(" debug2:",debug2,1);
-      p_str_hex(" debug3:",debug3,1);
-      p_str_hex(" debug4:",debug4,1);
-      p_str_hex(" debug5:",debug5,1);
-      p_str_hex(" debug6:",debug6,1);
-      p_str_hex(" debug7:",debug7,1);
-      p_str_hex(" debug8:",debug8,1);
-      p_str_hex(" debug9:",debug9,1);
-
-      p_str_hex(" histogram[0]:",histogram[0],1);
-      p_str_hex(" histogram[1]:",histogram[1],1);
-      p_str_hex(" histogram[2]:",histogram[2],1);
-      p_str_hex(" histogram[3]:",histogram[3],1);
-      p_str_hex(" histogram[4]:",histogram[4],1);
-      p_str_hex(" histogram[5]:",histogram[5],1);
-      p_str_hex(" histogram[6]:",histogram[6],1);
-      p_str_hex(" histogram[7]:",histogram[7],1);
-      p_str_hex(" histogram[8]:",histogram[8],1);
-      p_str_hex(" histogram[9]:",histogram[9],1);
-      p_str_hex(" histogram10]:",histogram[10],1);
+      for(kkkk=0;kkkk<10;kkkk++) pe_str_hex(str_debug[kkkk],debug[kkkk],1);
+      for(kkkk=0;kkkk<11;kkkk++) pe_str_hex(str_hist[kkkk],histogram[kkkk],1);
 
       return 0; //end of program
       }
