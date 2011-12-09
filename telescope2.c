@@ -2,6 +2,8 @@
 //#define MAIN_VT_TEST
 
 // This is a Little Endian CPU
+// Notes
+// in minicom, to see the degree character, call minicom: minicom -t VT100 
 #include <pololu/orangutan.h>
 #include <avr/pgmspace.h>
 #include <avr/io.h>
@@ -18,7 +20,7 @@
 #define ADC6C            6
 #define AI_COMMAND       ADC6C
  
-////////////////////////////////// DEFINES /////////////////////////////////////
+////////////////////////////////// DEFINES /////////////////////////////////////   RA_ONE_STEP * 16 * GEAR_BIG/GEAR_SMALL * STEP_P_REV / RA_DEG_P_REV
 #define F_CPU_K       20000
 #define FRAME         10000
 #define baud          9600
@@ -51,9 +53,12 @@ enum
    FMT_HEX,
    FMT_DEC,   
    FMT_HMS,   
-   FMT_DEG,   
+   FMT_NS,   
+   FMT_EW,   
+   FMT_RA,   
    PGM_POLOLU,
-   PGM_DIPA328P 
+   PGM_DIPA328P, 
+   FMT_ASC
    };
 
 PROGMEM const char NLNL[]="\012\015";
@@ -98,14 +103,29 @@ PROGMEM const char str_debug[][10]={ " debug0:", " debug1:"," debug2:"," debug3:
 PROGMEM const char str_hist[][11]={" Hist0:", " Hist1:"," Hist2:"," Hist3:"," Hist4:"," Hist5:"," Hist6:"," Hist7:"," Hist8:"," Hist9:"," Hist10:"};
 PROGMEM const char pgm_free_mem[]="Free Memory:";
 PROGMEM const char pgm_starting[]="Telescope Starting...";
+PROGMEM const char pgm_ascii[]="ascii:";
 volatile unsigned long d_TIMER0;
 volatile unsigned long d_TIMER1;
 volatile unsigned long d_USART_RX;
 volatile unsigned long d_USART_TX;
 unsigned long d_now;
+long seconds=0,l_seconds;
 long d_debug[16], l_debug[16];
-unsigned short histogram[11]; // place to store histogram of 10Khz interrupt routine
+unsigned short histogram[16],l_histogram[16],histo_sp0=1; // place to store histogram of 10Khz interrupt routine
 
+//   pos       = a long word : 0x00000000 = 0 deg  0x80000000 = 180 deg
+//   pos_hw    = current hardware pos and a pulse is generated each time a change is required
+//   pos_cor   = corrected pos = correction(pos_dem)  -> this compensate for the mis-polar-alignment of the telesctope
+//   pos_dem   = demmanded pos = pos + earth correction
+//   pos_earth = correction due to earth movement
+long  ra_pos=0, ra_pos_hw=0, ra_pos_cor=0, ra_pos_dem=0, ra_pos_earth=0, ra_pos_star=0, ra_accel=0, ra_speed=0;   // Right Assension parameters
+long dec_pos=0,dec_pos_hw=0,dec_pos_cor=0,dec_pos_dem=0,dec_pos_earth=0,dec_pos_star=0,dec_accel=0,dec_speed=0;   // Declinasion parameters        
+long l_ra_pos,l_ra_pos_hw;
+long  ra_unit_step;  // One step on the step motor is equal to what in 32 bit angle
+long dec_unit_step;  // One step on the step motor is equal to what in 32 bit angle
+long g_goto_state;
+long g_ra_pos_part1;
+char  ra_next=0, dec_next=0;  // Next state for the step command, we do this to allow DIR to settle
 ////////////////////////////////////////// DISPLAY SECTION //////////////////////////////////////////
 //
 //  000000000011111111112222222222333333333344444444445555555555666666666677777777778888888888999999999900000000001111111111
@@ -119,20 +139,21 @@ unsigned short histogram[11]; // place to store histogram of 10Khz interrupt rou
 //24|        POLAR ERROR: (N)-90 59'59.00" / (W)-179 59'59.00"                                                                
 //25|      STAR POSITION: (N)-90 59'59.00" /     23h59m59.000s    0x12345678 / 0x12345678                                         
 //26| CORRECTED STAR POS: (N)-90 59'59.00" /     23h59m59.000s    0x12345678 / 0x12345678                                       
-//27|       NEAREST STAR: BETLEGEUSE       / ORION
-//28|   IR CODE RECEIVED: DECODED STRING                                                                                       
-//29|   IR CODE RECEIVED: 12345678 12345678 / 1234 
-//30| PREV CODE RECEIVED: 12345678 12345678               
-//31| PREV PREV RECEIVED: 12345678 12345678                  
-//32|    BATTERY VOLTAGE: 12.0V
-//33|          HISTOGRAM: 1234 1234 1234 1234 1234 1234 1234 1234  1234 1234 1234 1234 1234 1234 1234 1234            <-- once one reaches 65535, values are latched and printed 
-//34|              DEBUG: 12345678  12345678  12345678  12345678   12345678  12345678  12345678  12345678                                               
-//35|                     12345678  12345678  12345678  12345678   12345678  12345678  12345678  12345678                                               
-//36|                LCD: |1234567812345678|    MODE:                                                                                          
-//37|                     |1234567812345678|                                                                                                               
-//38|_______________________________________________________________________________________________________
-//39|    IR-PLUS> GO  23h59m59.000s  90 59'59.00"  (assembled command from IR)
-//40| RS232-PLUS> GO  23h59m59.000s  90 59'59.00"  (assembled command from RS232)
+//27|      TELESCOPE POS: (N)-90 59'59.00" /     23h59m59.000s    0x12345678 / 0x12345678                                       
+//28|       NEAREST STAR: BETLEGEUSE       / ORION
+//29|   IR CODE RECEIVED: DECODED STRING                                                                                       
+//30|   IR CODE RECEIVED: 12345678 12345678 / 1234 
+//31| PREV CODE RECEIVED: 12345678 12345678               
+//32| PREV PREV RECEIVED: 12345678 12345678                  
+//33|    BATTERY VOLTAGE: 12.0V
+//34|          HISTOGRAM: 1234 1234 1234 1234 1234 1234 1234 1234  1234 1234 1234 1234 1234 1234 1234 1234            <-- once one reaches 65535, values are latched and printed 
+//35|              DEBUG: 12345678  12345678  12345678  12345678   12345678  12345678  12345678  12345678                                               
+//36|                     12345678  12345678  12345678  12345678   12345678  12345678  12345678  12345678                                               
+//37|                LCD: |1234567812345678|    MODE:                                                                                          
+//38|                     |1234567812345678|                                                                                                               
+//39|_______________________________________________________________________________________________________
+//40|    IR-PLUS> GO  23h59m59.000s  90 59'59.00"  (assembled command from IR)
+//41| RS232-PLUS> GO  23h59m59.000s  90 59'59.00"  (assembled command from RS232)
 
 PROGMEM const char display_clear_screen[]     = "\033c\033c\033[2J\033[7h"; // reset reset cls line wrap 
 PROGMEM const char display_define_scrolling[] = "\033[r\033[0;20r";         // enable scrolling + define scrolling
@@ -145,13 +166,14 @@ PROGMEM const char display_main[]={"\012\015\
         POLAR ERROR: \012\015\
       STAR POSITION: \012\015\
  CORRECTED STAR POS: \012\015\
+      TELESCOPE POS: \012\015\
        NEAREST STAR: \012\015\
    IR CODE RECEIVED: \012\015\
    IR CODE RECEIVED: \012\015\
  PREV CODE RECEIVED: \012\015\
  PREV PREV RECEIVED: \012\015\
     BATTERY VOLTAGE: \012\015\
-          HISTOGRAM: \012\015\
+      SP0 HISTOGRAM: \012\015\
               DEBUG: \012\015\
                      \012\015\
                 LCD: |                |    MODE:\012\015\
@@ -318,7 +340,7 @@ unsigned char *p_it = (unsigned char*) &value;
 p_it = (unsigned char*) &value;
 p02x(&bof[2],*p_it++);
 p02x(&bof[0],*p_it++);
-bof[8]=0;
+bof[4]=0;
 }
 
 void p16x(char *bof,long msb, long lsb)
@@ -368,7 +390,7 @@ if ( nl ) pgm_ps(NLNL);
 void display_data(char *str,short xxx,short yyy,const char *pgm_str,long value,char fmt,char size)
 {
 short iii=0;
-short jjj=0;
+long  jjj=0;
 char  ccc;
 // "\033[20;0H" pgm_str value
 str[iii++] = 27;
@@ -388,6 +410,101 @@ if ( fmt == FMT_HEX )
    else if ( size == 4 ) p04x(&str[iii],value);
    else if ( size == 2 ) p02x(&str[iii],value);
    }
+else if ( fmt == FMT_HMS )  // Hour Minute Seconds                          > 11h23m32s
+   {
+   jjj = (value/(60*60UL))%24;
+   str[iii++] = (jjj/10) + '0';
+   str[iii++] = (jjj)%10 + '0';
+   str[iii++] = 'h';
+   jjj = (value/(60))%60;
+   str[iii++] = (jjj/10) + '0';
+   str[iii++] = (jjj)%10 + '0';
+   str[iii++] = 'm';
+   jjj = (value)%60;
+   str[iii++] = (jjj/10) + '0';
+   str[iii++] = (jjj)%10 + '0';
+   str[iii++] = 's';
+   str[iii] = 0;  // in case nothing matches below . . .
+   }
+else if ( fmt == FMT_NS || fmt == FMT_EW )  // North South / East Weast     > (N)-90°59'59.00" 
+   {                                        //                              > (W)-179°59'59.00"
+   str[iii++] = '(';
+   if ( value >= 0 ) 
+      {
+      if ( fmt == FMT_NS ) str[iii++] = 'N';
+      else                 str[iii++] = 'E';
+      str[iii++] = ')'; 
+      str[iii++] = ' '; 
+      }
+   else
+      {
+      if ( fmt == FMT_NS ) str[iii++] = 'S';
+      else                 str[iii++] = 'W';
+      str[iii++] = ')'; 
+      str[iii++] = '-'; 
+      } 
+   if ( fmt == FMT_NS || fmt == FMT_EW ) 
+      {
+      short deg=0,min=0,sec=0,sec100=0;
+      if ( value < 0 ) value = -value;  // abs value
+
+      jjj    =  (RA_ONE_STEP * 16UL * (GEAR_BIG/GEAR_SMALL) * STEP_P_REV ) / RA_DEG_P_REV;    // jjj = nb of nano steps per deg
+      deg    = value / jjj ;                                                 // jjj = nb of deg that fits in what remains of value
+      value -= deg * jjj;   /// values 
+
+      jjj   /= 60;                                                           // jjj = 1 minute with some loss
+      min    = value / jjj ;                                                 // jjj = nb of minutes that fits in what remains of value
+      value -= min * jjj;   /// values 
+
+      jjj   /= 60;                                                           // jjj = 1 second with some loss
+      sec    = value / jjj ;                                                 // jjj = nb of seconds that fits in what remains of value
+      value -= sec * jjj;   /// values 
+      
+      jjj   /= 100;                                                          // jjj = 0.01 second with some loss
+      sec100 = value / jjj ;                                                 // jjj = nb of 0.01 seconds that fits in what remains of value
+      value -= sec100 * jjj;   /// values 
+    
+      if ( fmt == FMT_EW ) 
+         {
+         if ( deg >= 100 ) str[iii++] = '1';
+         else              str[iii++] = '0';
+         if ( deg >= 100 ) deg-=100;
+         } 
+      str[iii++] = (deg/10) + '0';
+      str[iii++] = (deg)%10 + '0';
+      str[iii++] = 0xC2;   // degree character
+      str[iii++] = 0xB0;   // degree character
+      str[iii++] = (min/10) + '0';
+      str[iii++] = (min)%10 + '0';
+      str[iii++] = '\'';  
+      str[iii++] = (sec/10) + '0';
+      str[iii++] = (sec)%10 + '0';
+      str[iii++] = '.';  
+      str[iii++] = (sec100/10) + '0';
+      str[iii++] = (sec100)%10 + '0';
+      str[iii++] = '"';  
+      str[iii]   = 0;  
+      }
+   
+   }
+else if ( fmt == FMT_RA )  // Right Assention
+   {
+   }
+else if ( fmt == FMT_ASC )  // East Minute Seconds
+   {
+   str[iii++] = '[';  
+   str[iii++] = value;  
+   str[iii++] = ']';  
+   str[iii]   = 0;  
+   }
+}
+
+#define SEC 10000
+#define MSEC 10
+void wait(long time,long mult)
+{
+long d_now = d_TIMER1;
+while ( d_TIMER1-d_now < time*mult ); 
 }
 
 /////////////////////////////////////////// RS232 INPUTS ///////////////////////////////////////////////////////////
@@ -527,23 +644,53 @@ else // print field data
          }
     
          d_task ++ ;
-         if ( d_task == NB_DTASKS + 1  ) DISPLAY_DATA( 22,34,0,FMT_HEX,8,d_debug[0] ,l_debug[0]);
-         if ( d_task == NB_DTASKS + 2  ) DISPLAY_DATA( 32,34,0,FMT_HEX,8,d_debug[1] ,l_debug[1]);
-         if ( d_task == NB_DTASKS + 3  ) DISPLAY_DATA( 42,34,0,FMT_HEX,8,d_debug[2] ,l_debug[2]);
-         if ( d_task == NB_DTASKS + 4  ) DISPLAY_DATA( 52,34,0,FMT_HEX,8,d_debug[3] ,l_debug[3]);
-         if ( d_task == NB_DTASKS + 5  ) DISPLAY_DATA( 62,34,0,FMT_HEX,8,d_debug[4] ,l_debug[4]);
-         if ( d_task == NB_DTASKS + 6  ) DISPLAY_DATA( 72,34,0,FMT_HEX,8,d_debug[5] ,l_debug[5]);
-         if ( d_task == NB_DTASKS + 7  ) DISPLAY_DATA( 82,34,0,FMT_HEX,8,d_debug[6] ,l_debug[6]);
-         if ( d_task == NB_DTASKS + 8  ) DISPLAY_DATA( 92,34,0,FMT_HEX,8,d_debug[7] ,l_debug[7]);
-         if ( d_task == NB_DTASKS + 9  ) DISPLAY_DATA( 22,35,0,FMT_HEX,8,d_debug[8] ,l_debug[8]);
-         if ( d_task == NB_DTASKS + 10 ) DISPLAY_DATA( 32,35,0,FMT_HEX,8,d_debug[9] ,l_debug[9]);
-         if ( d_task == NB_DTASKS + 11 ) DISPLAY_DATA( 42,35,0,FMT_HEX,8,d_debug[10],l_debug[10]);
-         if ( d_task == NB_DTASKS + 12 ) DISPLAY_DATA( 52,35,0,FMT_HEX,8,d_debug[11],l_debug[11]);
-         if ( d_task == NB_DTASKS + 13 ) DISPLAY_DATA( 62,35,0,FMT_HEX,8,d_debug[12],l_debug[12]);
-         if ( d_task == NB_DTASKS + 14 ) DISPLAY_DATA( 72,35,0,FMT_HEX,8,d_debug[13],l_debug[13]);
-         if ( d_task == NB_DTASKS + 15 ) DISPLAY_DATA( 82,35,0,FMT_HEX,8,d_debug[14],l_debug[14]);
-         if ( d_task == NB_DTASKS + 16 ) DISPLAY_DATA( 92,35,0,FMT_HEX,8,d_debug[15],l_debug[15]);
-         if ( d_task == NB_DTASKS + 17 ) { first = 0 ; d_task = NB_DTASKS; }
+         if ( d_task >=  NB_DTASKS+1  && d_task <= NB_DTASKS+16 )    
+            {
+            if ( d_task == NB_DTASKS + 1  ) DISPLAY_DATA( 22,35,0,FMT_HEX,8,d_debug[0] ,l_debug[0]);
+            if ( d_task == NB_DTASKS + 2  ) DISPLAY_DATA( 32,35,0,FMT_HEX,8,d_debug[1] ,l_debug[1]);
+            if ( d_task == NB_DTASKS + 3  ) DISPLAY_DATA( 42,35,0,FMT_HEX,8,d_debug[2] ,l_debug[2]);
+            if ( d_task == NB_DTASKS + 4  ) DISPLAY_DATA( 52,35,0,FMT_HEX,8,d_debug[3] ,l_debug[3]);
+            if ( d_task == NB_DTASKS + 5  ) DISPLAY_DATA( 64,35,0,FMT_HEX,8,d_debug[4] ,l_debug[4]);
+            if ( d_task == NB_DTASKS + 6  ) DISPLAY_DATA( 74,35,0,FMT_HEX,8,d_debug[5] ,l_debug[5]);
+            if ( d_task == NB_DTASKS + 7  ) DISPLAY_DATA( 84,35,0,FMT_HEX,8,d_debug[6] ,l_debug[6]);
+            if ( d_task == NB_DTASKS + 8  ) DISPLAY_DATA( 94,35,0,FMT_HEX,8,d_debug[7] ,l_debug[7]);
+            if ( d_task == NB_DTASKS + 9  ) DISPLAY_DATA( 22,36,0,FMT_HEX,8,d_debug[8] ,l_debug[8]);
+            if ( d_task == NB_DTASKS + 10 ) DISPLAY_DATA( 32,36,0,FMT_HEX,8,d_debug[9] ,l_debug[9]);
+            if ( d_task == NB_DTASKS + 11 ) DISPLAY_DATA( 42,36,0,FMT_HEX,8,d_debug[10],l_debug[10]);
+            if ( d_task == NB_DTASKS + 12 ) DISPLAY_DATA( 52,36,0,FMT_HEX,8,d_debug[11],l_debug[11]);
+            if ( d_task == NB_DTASKS + 13 ) DISPLAY_DATA( 64,36,0,FMT_HEX,8,d_debug[12],l_debug[12]);
+            if ( d_task == NB_DTASKS + 14 ) DISPLAY_DATA( 74,36,0,FMT_HEX,8,d_debug[13],l_debug[13]);
+            if ( d_task == NB_DTASKS + 15 ) DISPLAY_DATA( 84,36,0,FMT_HEX,8,d_debug[14],l_debug[14]);
+            if ( d_task == NB_DTASKS + 16 ) DISPLAY_DATA( 94,36,0,FMT_HEX,8,d_debug[15],l_debug[15]);
+            }
+         if ( d_task >=  NB_DTASKS+17  && d_task <= NB_DTASKS+32 )    
+            {
+            if ( d_task == NB_DTASKS + 17 ) DISPLAY_DATA( 22,34,0,FMT_HEX,4,histogram[ 0],l_histogram[ 0]);
+            if ( d_task == NB_DTASKS + 18 ) DISPLAY_DATA( 27,34,0,FMT_HEX,4,histogram[ 1],l_histogram[ 1]);
+            if ( d_task == NB_DTASKS + 19 ) DISPLAY_DATA( 32,34,0,FMT_HEX,4,histogram[ 2],l_histogram[ 2]);
+            if ( d_task == NB_DTASKS + 20 ) DISPLAY_DATA( 37,34,0,FMT_HEX,4,histogram[ 3],l_histogram[ 3]);
+            if ( d_task == NB_DTASKS + 21 ) DISPLAY_DATA( 42,34,0,FMT_HEX,4,histogram[ 4],l_histogram[ 4]);
+            if ( d_task == NB_DTASKS + 22 ) DISPLAY_DATA( 47,34,0,FMT_HEX,4,histogram[ 5],l_histogram[ 5]);
+            if ( d_task == NB_DTASKS + 23 ) DISPLAY_DATA( 52,34,0,FMT_HEX,4,histogram[ 6],l_histogram[ 6]);
+            if ( d_task == NB_DTASKS + 24 ) DISPLAY_DATA( 57,34,0,FMT_HEX,4,histogram[ 7],l_histogram[ 7]);
+            if ( d_task == NB_DTASKS + 25 ) DISPLAY_DATA( 64,34,0,FMT_HEX,4,histogram[ 8],l_histogram[ 8]);
+            if ( d_task == NB_DTASKS + 26 ) DISPLAY_DATA( 69,34,0,FMT_HEX,4,histogram[ 9],l_histogram[ 9]);
+            if ( d_task == NB_DTASKS + 27 ) DISPLAY_DATA( 74,34,0,FMT_HEX,4,histogram[10],l_histogram[10]);
+            if ( d_task == NB_DTASKS + 28 ) DISPLAY_DATA( 79,34,0,FMT_HEX,4,histogram[11],l_histogram[11]);
+            if ( d_task == NB_DTASKS + 29 ) DISPLAY_DATA( 84,34,0,FMT_HEX,4,histogram[12],l_histogram[12]);
+            if ( d_task == NB_DTASKS + 30 ) DISPLAY_DATA( 89,34,0,FMT_HEX,4,histogram[13],l_histogram[13]);
+            if ( d_task == NB_DTASKS + 31 ) DISPLAY_DATA( 94,34,0,FMT_HEX,4,histogram[14],l_histogram[14]);
+            if ( d_task == NB_DTASKS + 32 ) DISPLAY_DATA( 99,34,0,FMT_HEX,4,histogram[15],l_histogram[15]);
+            }
+
+         if ( d_task == NB_DTASKS + 33 ) DISPLAY_DATA( 35,22,0,FMT_HMS,8,seconds,l_seconds);
+         if ( d_task == NB_DTASKS + 34 ) DISPLAY_DATA( 22,25,0,FMT_NS,0,ra_pos,l_ra_pos);
+         if ( d_task == NB_DTASKS + 35 ) DISPLAY_DATA( 22,27,0,FMT_NS,0,ra_pos_hw,l_ra_pos_hw);
+         if ( d_task == NB_DTASKS + 36 ) DISPLAY_DATA( 41,27,0,FMT_EW,0,ra_pos_hw,l_ra_pos_hw);
+d_debug[10] = ra_pos;
+d_debug[11] = ra_pos_hw;
+
+         if ( d_task == NB_DTASKS + 37 ) { first = 0 ; d_task = NB_DTASKS; }
          else                            Next = rs232_tx_buf[rs232_tx_idx++];
          }
       }
@@ -590,23 +737,28 @@ char motor_disable=1;       // Stepper motor Disable
 char goto_cmd=0;    // 1 = goto goto_ra_pos
 long goto_ra_pos=0;
 
-//   pos       = a long word : 0x00000000 = 0 deg  0x80000000 = 180 deg
-//   pos_hw    = current hardware pos and a pulse is generated each time a change is required
-//   pos_cor   = corrected pos = correction(pos_dem)  -> this compensate for the mis-polar-alignment of the telesctope
-//   pos_dem   = demmanded pos = pos + earth correction
-//   pos_earth = correction due to earth movement
-long  ra_pos=0, ra_pos_hw=0, ra_pos_cor=0, ra_pos_dem=0, ra_pos_earth=0, ra_pos_star=0, ra_accel=0, ra_speed=0;   // Right Assension parameters
-long dec_pos=0,dec_pos_hw=0,dec_pos_cor=0,dec_pos_dem=0,dec_pos_earth=0,dec_pos_star=0,dec_accel=0,dec_speed=0;   // Declinasion parameters        
-long  ra_unit_step;  // One step on the step motor is equal to what in 32 bit angle
-long dec_unit_step;  // One step on the step motor is equal to what in 32 bit angle
-long g_goto_state;
-long g_ra_pos_part1;
-char  ra_next=0, dec_next=0;  // Next state for the step command, we do this to allow DIR to settle
 
 ISR(TIMER0_OVF_vect)     // AP0C0 ... process RS232 events
 {                       
+unsigned long histo;
 d_TIMER0++;
+TIMSK0 = 0;     // timer0 interrupt disable (prevent re-entrant)
+sei();
 display_next();
+
+while ( TCNT1*100UL > F_CPU_K*9UL ) ; // if SP0 is about to start, wait... I dont want to be interruped in the next iterations  -> while(TCNT1 > 90% of target)
+TCNT0 = 0;                            // Make sure I'm not called in the next iterations by my own AP0 interrupt
+
+if ( histo_sp0 == 0 ) // if we are not monitoring SP0
+   {  
+   histo = TCNT0;
+   if ( d_debug[8] < histo ) d_debug[8] = histo;  // temp read the highest value
+   histo *= 15 * 10 * 8;  // TCNT0 counts from 0 to F_CPU_K/10/8 (see OCR0A) 
+   histo /= F_CPU_K;      // TCNT0 counts from 0 to F_CPU_K/10/8 (see OCR0A) 
+   if ( histo > 15 ) histo=15;
+   histogram[histo]++;
+   }
+TIMSK0 = 1;     // timer0 interrupt enable
 }
 
 ISR(TIMER1_COMPB_vect)   // Clear the Step outputs
@@ -614,6 +766,7 @@ ISR(TIMER1_COMPB_vect)   // Clear the Step outputs
 long temp;
 set_digital_output(DO_RA_STEP,0);    // eventually, I should use my routines...flush polopu...
 set_digital_output(DO_DEC_STEP,0);   // eventually, I should use my routines...flush polopu...
+set_digital_output(DO_DISABLE  ,motor_disable);   
 
 temp = ra_pos_hw-ra_pos_cor;
 if ( temp >= RA_ONE_STEP )
@@ -763,44 +916,55 @@ return axis->state;
 
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 10 KHz
 {
+static short ssec=0;
 unsigned long histo;
 //static char  goto_state=0;    // 1 = goto goto_ra_pos
 static short earth_comp=0;
 //static short accel_period=0;
 //static long  ra_pos_initial,ra_pos_target,ra_pos_delta,ra_pos_delta_abs,ra_pos_part1,ra_last_high_speed,temp_abs;
 
+ssec++;
+if ( ssec == 10000) {ssec = 0; seconds++;}
+
 d_TIMER1++;             // counts time in 0.1 ms
-if ( motor_disable )  return;  //////////////////// motor disabled ///////////
-set_digital_output(DO_RA_STEP,ra_next);    // eventually, I should use my routines...flush polopu...
-
-///////////// Process earth compensation
-earth_comp++;
-if ( earth_comp > EARTH_COMP )
+if ( ! motor_disable )    //////////////////// motor disabled ///////////
    {
-   earth_comp = 0; 
-   ra_pos_earth += RA_ONE_STEP;    // Correct for the Earth's rotation
+   set_digital_output(DO_RA_STEP,ra_next);    // eventually, I should use my routines...flush polopu...
+   
+   ///////////// Process earth compensation
+   earth_comp++;
+   if ( earth_comp > EARTH_COMP )
+      {
+      earth_comp = 0; 
+      ra_pos_earth += RA_ONE_STEP;    // Correct for the Earth's rotation
+      }
+   
+   ///////////// Process goto
+   
+   process_goto(&ra,goto_ra_pos,goto_cmd);
+   
+   ra_pos = ra.pos;
+   ra_accel = ra.accel;
+   ra_speed = ra.speed;
+   if ( ra.state !=0 ) goto_cmd=0;
+   
+   ra_pos_dem = ra_pos_earth + ra.pos;
+   ra_pos_cor = ra_pos_dem;  // for now, no correction
+   
+   // This below does work and proves that the Step outputs do work
+   // if ( ! (d_TIMER1&3) ) set_digital_output(DO_RA_STEP,1);    // use my routines...flush polopu...
+   // if ( ! (d_TIMER1&1) ) set_digital_output(DO_DEC_STEP,1);   // use my routines...flush polopu...
    }
-
-///////////// Process goto
-
-process_goto(&ra,goto_ra_pos,goto_cmd);
-
-ra_pos = ra.pos;
-ra_accel = ra.accel;
-ra_speed = ra.speed;
-if ( ra.state !=0 ) goto_cmd=0;
-
-ra_pos_dem = ra_pos_earth + ra.pos;
-ra_pos_cor = ra_pos_dem;  // for now, no correction
-
-// This below does work and proves that the Step outputs do work
-// if ( ! (d_TIMER1&3) ) set_digital_output(DO_RA_STEP,1);    // use my routines...flush polopu...
-// if ( ! (d_TIMER1&1) ) set_digital_output(DO_DEC_STEP,1);   // use my routines...flush polopu...
-
 // This section terminates the interrupt routine and will help identify how much CPU time we use in the real-time interrupt
-histo = TCNT1 * 100 / F_CPU_K;  // *10 for 10 slots between 0 and 100%   // *100 for 10 slots between 0 and 10%
-if ( histo > 10 ) histo=10;
-histogram[histo]++;
+if ( histo_sp0 == 1 ) // if we are not monitoring SP0
+   {  
+   histo = TCNT1;
+   if ( d_debug[8] < histo ) d_debug[8] = histo;  // temp read the highest value
+   histo *= 15 * 10;  // TCNT1 counts from 0 to F_CPU_K/10 (see OCR1A) 
+   histo /= F_CPU_K;  // TCNT1 counts from 0 to F_CPU_K/10 (see OCR1A) 
+   if ( histo > 15 ) histo=15;
+   histogram[histo]++;
+   }
 }
 
 ISR(USART_RX_vect)
@@ -931,13 +1095,15 @@ while ( d_TIMER1-d_now < 10000 )   // Async section
    d_debug[1] = d_now;
    }
 d_now   = d_TIMER1;
-while ( d_TIMER1-d_now < 10000 )   // Async section
+d_debug[8]=0;
+while ( d_TIMER1-d_now < 100000 )   // Async section
    {
    d_debug[0] = d_TIMER1;
    d_debug[1] = d_now;
    }
 
 while (console_go); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_starting,d_ram,FMT_NO_VAL,8);  console_go = 1;
+wait(1,SEC);
 while (console_go); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_free_mem,d_ram,FMT_HEX,8);  console_go = 1;
 
 d_now   = d_TIMER1;
@@ -960,6 +1126,7 @@ while ( d_TIMER1-d_now < 10000 )   // Async section
    d_debug[1] = d_now;
    }
 d_now   = d_TIMER1;
+motor_disable = 0;   // Stepper motor enabled...
 while ( d_TIMER1-d_now < 10000 )   // Async section
    {
    d_debug[0] = d_TIMER1;
@@ -968,12 +1135,22 @@ while ( d_TIMER1-d_now < 10000 )   // Async section
 
 while (1 )
    {
+   static int ASC = 120;
    d_now   = d_TIMER1;
    d_debug[2] = d_now;
    while ( d_TIMER1-d_now < 10000 );   // Async section
    d_now   = d_TIMER1;
    d_debug[3] = d_now;
+   if ( console_go==0 ) 
+      {
+      ASC ++ ;
+      display_data((char*)console_buf,0,20,pgm_ascii,ASC,FMT_HEX,2);  console_go = 1;
+      }
    while ( d_TIMER1-d_now < 10000 );   // Async section
+   if ( console_go==0 ) 
+      {
+      display_data((char*)console_buf,0,20,pgm_ascii,ASC,FMT_ASC,2);  console_go = 1;
+      }
    }
 
 d_state = 0;       // simple state machine to test some logic
@@ -1038,9 +1215,6 @@ while(1)
       }
    else if ( d_state == 7 )
       {
-      for(kkkk=0;kkkk<10;kkkk++) pe_str_hex(str_debug[kkkk],d_debug[kkkk],1);
-      for(kkkk=0;kkkk<11;kkkk++) pe_str_hex(str_hist[kkkk],histogram[kkkk],1);
-
       return 0; //end of program
       }
    };
