@@ -47,10 +47,13 @@
 
 enum 
    {
+   FMT_NO_VAL,
    FMT_HEX,
    FMT_DEC,   
    FMT_HMS,   
-   FMT_DEG    
+   FMT_DEG,   
+   PGM_POLOLU,
+   PGM_DIPA328P 
    };
 
 PROGMEM const char NLNL[]="\012\015";
@@ -93,6 +96,8 @@ PROGMEM const char dip328p[]={"\
 short kkkk;
 PROGMEM const char str_debug[][10]={ " debug0:", " debug1:"," debug2:"," debug3:"," debug4:"," debug5:"," debug6:"," debug7:"," debug8:"," debug9:"};
 PROGMEM const char str_hist[][11]={" Hist0:", " Hist1:"," Hist2:"," Hist3:"," Hist4:"," Hist5:"," Hist6:"," Hist7:"," Hist8:"," Hist9:"," Hist10:"};
+PROGMEM const char pgm_free_mem[]="Free Memory:";
+PROGMEM const char pgm_starting[]="Telescope Starting...";
 volatile unsigned long d_TIMER0;
 volatile unsigned long d_TIMER1;
 volatile unsigned long d_USART_RX;
@@ -375,7 +380,7 @@ if ( xxx > 99 ) str[iii++] = (xxx/100) + '0';
 if ( xxx > 9  ) str[iii++] = ((xxx%100)/10) + '0';
 str[iii++] = (xxx%10) + '0';
 str[iii++] = 'H';
-if ( pgm_str!=0 ) while ( (ccc=pgm_read_byte(pgm_str[jjj++])) ) str[iii++] = ccc;
+if ( pgm_str!=0 ) while ( (ccc=pgm_read_byte(&pgm_str[jjj++])) ) str[iii++] = ccc;
 str[iii] = 0;  // in case nothing matches below . . .
 if ( fmt == FMT_HEX )
    {
@@ -389,7 +394,7 @@ if ( fmt == FMT_HEX )
 #define RS232_RX_BUF 32
 unsigned char rs232_rx_buf[RS232_RX_BUF] = {0};
 unsigned char rs232_rx_idx=0;               // <- always points on the NULL
-unsigned char rs232_rx_clr=0;               // set by foreground to tell ap0c0 that it can clear the buffer
+volatile unsigned char rs232_rx_clr=0;               // set by foreground to tell ap0c0 that it can clear the buffer
 /////////////////////////////////////////// RS232 OUTPUTS //////////////////////////////////////////////////////////
 #define RS232_TX_BUF 32
 unsigned char rs232_tx_buf[RS232_TX_BUF] = {0}; // buffer that contains the proper thing to display based on current d_task
@@ -397,8 +402,9 @@ unsigned char rs232_tx_idx=0;
 ///////////////////////////////////////// CONSOLE OUTPUTS //////////////////////////////////////////////////////////
 #define CONSOLE_BUF 132
 unsigned char console_buf[CONSOLE_BUF]; 
-unsigned char console_go=0;               // set to true when something is ready for transmit
-unsigned char console_idx=0;              // when 0, we are not currently transmitting
+volatile unsigned char console_go=0;               // set to true when something is ready for transmit
+volatile const char *console_special=0;           // set to true when something is ready for transmit
+unsigned short console_idx=0;                    // when 0, we are not currently transmitting
 
 //PROGMEM const char *display_tasks[] = {
 char *display_tasks[] = {
@@ -414,6 +420,9 @@ static unsigned char  d_task=0;
 void display_next(void)
 {
 static unsigned char  first=1;
+static unsigned char  cycle=0;
+static unsigned char  console_started=0;
+static unsigned char  console_special_started=0;
 static unsigned short d_idx=0;
 unsigned char Next=0;
 unsigned char CCC;
@@ -455,45 +464,90 @@ if ( d_task<NB_DTASKS ) // print header
    }
 else // print field data
    {
-   if ( rs232_tx_idx != 0 ) Next = rs232_tx_buf[rs232_tx_idx++];  // continue where we were...
-   if ( Next == 0 ) // reached the end
+   if ( console_started )
       {
-      rs232_tx_idx=0;
-      d_task ++ ;
-
-      #define DISPLAY_DATA(XXX,YYY,PGM_STR,FMT,SIZE,VALUE,L_VALUE)            \
-      {                                                                       \
-      if ( L_VALUE != VALUE || first)                                         \
-         {                                                                    \
-         display_data((char*)rs232_tx_buf,XXX,YYY,PGM_STR,VALUE,FMT,SIZE);    \
-         L_VALUE = VALUE;                                                     \
-         }                                                                    \
-      else d_task ++;                                                         \
+      if ( console_started == 3 )
+         {
+         console_started = console_go = 0;
+         Next = '\015';
+         }
+      else if ( console_started == 1 )
+         {
+         Next = console_buf[console_idx++];
+         if ( Next == 0 ) console_started++;  //end of console output
+         }
+      if ( console_started == 2 )
+         { 
+         console_started++;
+         Next = '\012'; 
+         }
       }
- 
- 
-      if ( d_task == NB_DTASKS + 1  ) DISPLAY_DATA( 22,34,0,FMT_HEX,8,d_debug[0] ,l_debug[0]);
-      if ( d_task == NB_DTASKS + 2  ) DISPLAY_DATA( 32,34,0,FMT_HEX,8,d_debug[1] ,l_debug[1]);
-      if ( d_task == NB_DTASKS + 3  ) DISPLAY_DATA( 42,34,0,FMT_HEX,8,d_debug[2] ,l_debug[2]);
-      if ( d_task == NB_DTASKS + 4  ) DISPLAY_DATA( 52,34,0,FMT_HEX,8,d_debug[3] ,l_debug[3]);
-      if ( d_task == NB_DTASKS + 5  ) DISPLAY_DATA( 62,34,0,FMT_HEX,8,d_debug[4] ,l_debug[4]);
-      if ( d_task == NB_DTASKS + 6  ) DISPLAY_DATA( 72,34,0,FMT_HEX,8,d_debug[5] ,l_debug[5]);
-      if ( d_task == NB_DTASKS + 7  ) DISPLAY_DATA( 82,34,0,FMT_HEX,8,d_debug[6] ,l_debug[6]);
-      if ( d_task == NB_DTASKS + 8  ) DISPLAY_DATA( 92,34,0,FMT_HEX,8,d_debug[7] ,l_debug[7]);
-      if ( d_task == NB_DTASKS + 9  ) DISPLAY_DATA( 22,35,0,FMT_HEX,8,d_debug[8] ,l_debug[8]);
-      if ( d_task == NB_DTASKS + 10 ) DISPLAY_DATA( 32,35,0,FMT_HEX,8,d_debug[9] ,l_debug[9]);
-      if ( d_task == NB_DTASKS + 11 ) DISPLAY_DATA( 42,35,0,FMT_HEX,8,d_debug[10],l_debug[10]);
-      if ( d_task == NB_DTASKS + 12 ) DISPLAY_DATA( 52,35,0,FMT_HEX,8,d_debug[11],l_debug[11]);
-      if ( d_task == NB_DTASKS + 13 ) DISPLAY_DATA( 62,35,0,FMT_HEX,8,d_debug[12],l_debug[12]);
-      if ( d_task == NB_DTASKS + 14 ) DISPLAY_DATA( 72,35,0,FMT_HEX,8,d_debug[13],l_debug[13]);
-      if ( d_task == NB_DTASKS + 15 ) DISPLAY_DATA( 82,35,0,FMT_HEX,8,d_debug[14],l_debug[14]);
-      if ( d_task == NB_DTASKS + 16 ) DISPLAY_DATA( 92,35,0,FMT_HEX,8,d_debug[15],l_debug[15]);
-      if ( d_task == NB_DTASKS + 17 ) { first = 0 ; d_task = NB_DTASKS; }
-
-      Next = rs232_tx_buf[rs232_tx_idx++];
+   else if ( console_special_started )
+      {
+      if ( console_buf[console_idx]!=0 && console_special_started==1)  // print to console area
+         {Next = console_buf[console_idx++];}
+      else
+         {
+         if ( console_special_started == 1 ) console_idx = 0;         // a bit complicated, but I save RAM
+         console_special_started = 2;                                 // a bit complicated, but I save RAM
+         Next = pgm_read_byte(&console_special[console_idx++]);
+         if ( Next == 0 ) console_special = 0;  // we are done
+         if ( Next == 0 ) console_special_started = 0;  // we are done
+         }
       }
-   }
-
+   else
+      {
+      if ( rs232_tx_idx != 0 ) Next = rs232_tx_buf[rs232_tx_idx++];  // continue where we were...
+      if ( Next == 0 ) // reached the end
+         {
+         rs232_tx_idx=0;
+         cycle++;
+         if ( cycle%4 == 0 && console_go != 0 ) // once in a while, check for console output
+            {
+            console_idx = 0;
+            console_started = 1; 
+            return;
+            }
+         if ( cycle%4 == 1 && console_special != 0 ) // once in a while, check for console output
+            {
+            console_idx = 0;
+            console_special_started = 1; 
+            display_data((char*)console_buf,0,20,0,0,FMT_NO_VAL,0);
+            return;
+            }
+   
+         #define DISPLAY_DATA(XXX,YYY,XPGM_STR,FMT,SIZE,VALUE,L_VALUE)            \
+         {                                                                       \
+         if ( L_VALUE != VALUE || first)                                         \
+            {                                                                    \
+            display_data((char*)rs232_tx_buf,XXX,YYY,XPGM_STR,VALUE,FMT,SIZE);    \
+            L_VALUE = VALUE;                                                     \
+            }                                                                    \
+         else d_task ++;                                                         \
+         }
+    
+         d_task ++ ;
+         if ( d_task == NB_DTASKS + 1  ) DISPLAY_DATA( 22,34,0,FMT_HEX,8,d_debug[0] ,l_debug[0]);
+         if ( d_task == NB_DTASKS + 2  ) DISPLAY_DATA( 32,34,0,FMT_HEX,8,d_debug[1] ,l_debug[1]);
+         if ( d_task == NB_DTASKS + 3  ) DISPLAY_DATA( 42,34,0,FMT_HEX,8,d_debug[2] ,l_debug[2]);
+         if ( d_task == NB_DTASKS + 4  ) DISPLAY_DATA( 52,34,0,FMT_HEX,8,d_debug[3] ,l_debug[3]);
+         if ( d_task == NB_DTASKS + 5  ) DISPLAY_DATA( 62,34,0,FMT_HEX,8,d_debug[4] ,l_debug[4]);
+         if ( d_task == NB_DTASKS + 6  ) DISPLAY_DATA( 72,34,0,FMT_HEX,8,d_debug[5] ,l_debug[5]);
+         if ( d_task == NB_DTASKS + 7  ) DISPLAY_DATA( 82,34,0,FMT_HEX,8,d_debug[6] ,l_debug[6]);
+         if ( d_task == NB_DTASKS + 8  ) DISPLAY_DATA( 92,34,0,FMT_HEX,8,d_debug[7] ,l_debug[7]);
+         if ( d_task == NB_DTASKS + 9  ) DISPLAY_DATA( 22,35,0,FMT_HEX,8,d_debug[8] ,l_debug[8]);
+         if ( d_task == NB_DTASKS + 10 ) DISPLAY_DATA( 32,35,0,FMT_HEX,8,d_debug[9] ,l_debug[9]);
+         if ( d_task == NB_DTASKS + 11 ) DISPLAY_DATA( 42,35,0,FMT_HEX,8,d_debug[10],l_debug[10]);
+         if ( d_task == NB_DTASKS + 12 ) DISPLAY_DATA( 52,35,0,FMT_HEX,8,d_debug[11],l_debug[11]);
+         if ( d_task == NB_DTASKS + 13 ) DISPLAY_DATA( 62,35,0,FMT_HEX,8,d_debug[12],l_debug[12]);
+         if ( d_task == NB_DTASKS + 14 ) DISPLAY_DATA( 72,35,0,FMT_HEX,8,d_debug[13],l_debug[13]);
+         if ( d_task == NB_DTASKS + 15 ) DISPLAY_DATA( 82,35,0,FMT_HEX,8,d_debug[14],l_debug[14]);
+         if ( d_task == NB_DTASKS + 16 ) DISPLAY_DATA( 92,35,0,FMT_HEX,8,d_debug[15],l_debug[15]);
+         if ( d_task == NB_DTASKS + 17 ) { first = 0 ; d_task = NB_DTASKS; }
+         else                            Next = rs232_tx_buf[rs232_tx_idx++];
+         }
+      }
+   } 
 if ( Next != 0 ) UDR0 = Next;
 }
 
@@ -867,6 +921,7 @@ set_digital_output(DO_RA_STEP  ,PULL_UP_ENABLED);
 set_digital_output(DO_DEC_STEP ,PULL_UP_ENABLED);    
 set_digital_output(DO_10KHZ    ,PULL_UP_ENABLED);    // Set 10 Khz pwm output of OC1B (from TIMER 1) used to control the steps
 set_analog_mode(MODE_8_BIT);                         // 8-bit analog-to-digital conversions
+d_ram = get_free_memory();
 sei();         //enable global interrupts
 
 d_now   = d_TIMER1;
@@ -881,42 +936,45 @@ while ( d_TIMER1-d_now < 10000 )   // Async section
    d_debug[0] = d_TIMER1;
    d_debug[1] = d_now;
    }
-d_now   = d_TIMER1;
-while ( d_TIMER1-d_now < 10000 )   // Async section
-   {
-   d_debug[0] = d_TIMER1;
-   d_debug[1] = d_now;
-   }
-d_now   = d_TIMER1;
-while ( d_TIMER1-d_now < 10000 )   // Async section
-   {
-   d_debug[0] = d_TIMER1;
-   d_debug[1] = d_now;
-   }
-d_now   = d_TIMER1;
-while ( d_TIMER1-d_now < 10000 )   // Async section
-   {
-   d_debug[0] = d_TIMER1;
-   d_debug[1] = d_now;
-   }
-d_now   = d_TIMER1;
-while ( d_TIMER1-d_now < 10000 )   // Async section
-   {
-   d_debug[0] = d_TIMER1;
-   d_debug[1] = d_now;
-   }
 
-d_ram = get_free_memory();
+while (console_go); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_starting,d_ram,FMT_NO_VAL,8);  console_go = 1;
+while (console_go); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_free_mem,d_ram,FMT_HEX,8);  console_go = 1;
 
-psnl("Free Memory:");         // 0x800 is 2K ram which is the total available
-p08x(s_send,d_ram);           // 0x800 is 2K ram which is the total available
-psnl(s_send);                 // 0x800 is 2K ram which is the total available
+d_now   = d_TIMER1;
+while ( d_TIMER1-d_now < 10000 )   // Async section
+   {
+   d_debug[0] = d_TIMER1;
+   d_debug[1] = d_now;
+   }
+d_now   = d_TIMER1;
 
 #ifdef POLOLU
-psnl_progmem(pololu);
+while (console_special); /* wait for ready */ console_special = pololu;
 #else
-psnl_progmem(dip328p);
+while (console_special); /* wait for ready */ console_special = dip328p;
 #endif
+
+while ( d_TIMER1-d_now < 10000 )   // Async section
+   {
+   d_debug[0] = d_TIMER1;
+   d_debug[1] = d_now;
+   }
+d_now   = d_TIMER1;
+while ( d_TIMER1-d_now < 10000 )   // Async section
+   {
+   d_debug[0] = d_TIMER1;
+   d_debug[1] = d_now;
+   }
+
+while (1 )
+   {
+   d_now   = d_TIMER1;
+   d_debug[2] = d_now;
+   while ( d_TIMER1-d_now < 10000 );   // Async section
+   d_now   = d_TIMER1;
+   d_debug[3] = d_now;
+   while ( d_TIMER1-d_now < 10000 );   // Async section
+   }
 
 d_state = 0;       // simple state machine to test some logic
    
