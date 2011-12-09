@@ -45,6 +45,13 @@
 #define RA_MAX_SPEED  (RA_ONE_STEP-RA_ONE_STEP/EARTH_COMP-2)
 #define DEC_MAX_SPEED (DEC_ONE_STEP-2)
 
+enum 
+   {
+   FMT_HEX,
+   FMT_DEC,   
+   FMT_HMS,   
+   FMT_DEG    
+   };
 
 PROGMEM const char NLNL[]="\012\015";
 PROGMEM const char pololu[]={"\
@@ -86,14 +93,78 @@ PROGMEM const char dip328p[]={"\
 short kkkk;
 PROGMEM const char str_debug[][10]={ " debug0:", " debug1:"," debug2:"," debug3:"," debug4:"," debug5:"," debug6:"," debug7:"," debug8:"," debug9:"};
 PROGMEM const char str_hist[][11]={" Hist0:", " Hist1:"," Hist2:"," Hist3:"," Hist4:"," Hist5:"," Hist6:"," Hist7:"," Hist8:"," Hist9:"," Hist10:"};
+volatile unsigned long d_TIMER0;
+volatile unsigned long d_TIMER1;
+volatile unsigned long d_USART_RX;
+volatile unsigned long d_USART_TX;
+unsigned long d_now;
+long d_debug[16], l_debug[16];
+unsigned short histogram[11]; // place to store histogram of 10Khz interrupt routine
 
+////////////////////////////////////////// DISPLAY SECTION //////////////////////////////////////////
+//
+//  000000000011111111112222222222333333333344444444445555555555666666666677777777778888888888999999999900000000001111111111
+//  012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789
+//18| 12345678 - 11h23m32s > event log                      
+//19| 12345678 - 11h23m32s > event log    (first value is the time in sec since the reset)
+//20|_______________________________________________________________________________________________________
+//21|                                                                                                                        
+//22|          DATE/TIME: 2011/JAN/27  11h23m32s                                                                                                                       
+//23|   CURRENT LOCATION: (N)-90 59'59.00" / (W)-179 59'59.00"                                                                                 
+//24|        POLAR ERROR: (N)-90 59'59.00" / (W)-179 59'59.00"                                                                
+//25|      STAR POSITION: (N)-90 59'59.00" /     23h59m59.000s    0x12345678 / 0x12345678                                         
+//26| CORRECTED STAR POS: (N)-90 59'59.00" /     23h59m59.000s    0x12345678 / 0x12345678                                       
+//27|       NEAREST STAR: BETLEGEUSE       / ORION
+//28|   IR CODE RECEIVED: DECODED STRING                                                                                       
+//29|   IR CODE RECEIVED: 12345678 12345678 / 1234 
+//30| PREV CODE RECEIVED: 12345678 12345678               
+//31| PREV PREV RECEIVED: 12345678 12345678                  
+//32|    BATTERY VOLTAGE: 12.0V
+//33|          HISTOGRAM: 1234 1234 1234 1234 1234 1234 1234 1234  1234 1234 1234 1234 1234 1234 1234 1234            <-- once one reaches 65535, values are latched and printed 
+//34|              DEBUG: 12345678  12345678  12345678  12345678   12345678  12345678  12345678  12345678                                               
+//35|                     12345678  12345678  12345678  12345678   12345678  12345678  12345678  12345678                                               
+//36|                LCD: |1234567812345678|    MODE:                                                                                          
+//37|                     |1234567812345678|                                                                                                               
+//38|_______________________________________________________________________________________________________
+//39|    IR-PLUS> GO  23h59m59.000s  90 59'59.00"  (assembled command from IR)
+//40| RS232-PLUS> GO  23h59m59.000s  90 59'59.00"  (assembled command from RS232)
+
+PROGMEM const char display_clear_screen[]     = "\033c\033c\033[2J\033[7h"; // reset reset cls line wrap 
+PROGMEM const char display_define_scrolling[] = "\033[r\033[0;20r";         // enable scrolling + define scrolling
+PROGMEM const char display_sa[]               = "\033[20;0H";                           // this is the last scrooling line
+PROGMEM const char display_ns_line[]          = "\033[21;0H_______________________________________________________________________________________________________";
+
+PROGMEM const char display_main[]={"\012\015\
+          DATE/TIME: \012\015\
+   CURRENT LOCATION: \012\015\
+        POLAR ERROR: \012\015\
+      STAR POSITION: \012\015\
+ CORRECTED STAR POS: \012\015\
+       NEAREST STAR: \012\015\
+   IR CODE RECEIVED: \012\015\
+   IR CODE RECEIVED: \012\015\
+ PREV CODE RECEIVED: \012\015\
+ PREV PREV RECEIVED: \012\015\
+    BATTERY VOLTAGE: \012\015\
+          HISTOGRAM: \012\015\
+              DEBUG: \012\015\
+                     \012\015\
+                LCD: |                |    MODE:\012\015\
+                     |                |         \012\015\
+_______________________________________________________________________________________________________\012\015\
+    IR-PLUS> \012\015\
+ RS232-PLUS> \012\015\
+"};
+// PRINT FORMATS:
+// LAT : (N)-90 59'59.00"
+// LON : (W)-179 59'59.00"
+// RA  : 23h59m59.000s
 ////////////////////////////////////////// DISPLAY SECTION //////////////////////////////////////////
 
 void pc(char ccc);
 void ps(char *ssz);
 void pgm_ps(const char *ssz);
 void ps08x(char *string,long value);
-void display_next(void);
 
 void pc(char ccc)
 {
@@ -236,6 +307,15 @@ p02x(&bof[0],*p_it++);
 bof[8]=0;
 }
 
+void p04x(char *bof,long value)
+{
+unsigned char *p_it = (unsigned char*) &value;
+p_it = (unsigned char*) &value;
+p02x(&bof[2],*p_it++);
+p02x(&bof[0],*p_it++);
+bof[8]=0;
+}
+
 void p16x(char *bof,long msb, long lsb)
 {
 p08x(&bof[0],msb);
@@ -279,6 +359,143 @@ ps(s_send);
 if ( nl ) pgm_ps(NLNL);
 }
 
+// Main function to print data in various format
+void display_data(char *str,short xxx,short yyy,const char *pgm_str,long value,char fmt,char size)
+{
+short iii=0;
+short jjj=0;
+char  ccc;
+// "\033[20;0H" pgm_str value
+str[iii++] = 27;
+str[iii++] = '[';
+if ( yyy > 9  ) str[iii++] = ((yyy%100)/10) + '0';
+str[iii++] = (yyy%10) + '0';
+str[iii++] = ';';
+if ( xxx > 99 ) str[iii++] = (xxx/100) + '0';
+if ( xxx > 9  ) str[iii++] = ((xxx%100)/10) + '0';
+str[iii++] = (xxx%10) + '0';
+str[iii++] = 'H';
+if ( pgm_str!=0 ) while ( (ccc=pgm_read_byte(pgm_str[jjj++])) ) str[iii++] = ccc;
+str[iii] = 0;  // in case nothing matches below . . .
+if ( fmt == FMT_HEX )
+   {
+   if      ( size == 8 ) p08x(&str[iii],value);
+   else if ( size == 4 ) p04x(&str[iii],value);
+   else if ( size == 2 ) p02x(&str[iii],value);
+   }
+}
+
+/////////////////////////////////////////// RS232 INPUTS ///////////////////////////////////////////////////////////
+#define RS232_RX_BUF 32
+unsigned char rs232_rx_buf[RS232_RX_BUF] = {0};
+unsigned char rs232_rx_idx=0;               // <- always points on the NULL
+unsigned char rs232_rx_clr=0;               // set by foreground to tell ap0c0 that it can clear the buffer
+/////////////////////////////////////////// RS232 OUTPUTS //////////////////////////////////////////////////////////
+#define RS232_TX_BUF 32
+unsigned char rs232_tx_buf[RS232_TX_BUF] = {0}; // buffer that contains the proper thing to display based on current d_task
+unsigned char rs232_tx_idx=0;
+///////////////////////////////////////// CONSOLE OUTPUTS //////////////////////////////////////////////////////////
+#define CONSOLE_BUF 132
+unsigned char console_buf[CONSOLE_BUF]; 
+unsigned char console_go=0;               // set to true when something is ready for transmit
+unsigned char console_idx=0;              // when 0, we are not currently transmitting
+
+//PROGMEM const char *display_tasks[] = {
+char *display_tasks[] = {
+(char*)   display_clear_screen,        // 00 PGM string
+(char*)   display_define_scrolling,    // 01 PGM string
+(char*)   display_ns_line,             // 02 PGM string
+(char*)   display_main,                // 03 PGM string
+(char*)   0,
+};
+#define NB_DTASKS 4                    // NB of DISPLAY TASKS IN *display_tasks[]
+
+static unsigned char  d_task=0;
+void display_next(void)
+{
+static unsigned char  first=1;
+static unsigned short d_idx=0;
+unsigned char Next=0;
+unsigned char CCC;
+
+// process RX
+if ( (UCSR0A & 0x80) != 0)    // ********** CA CA LIT BIEN...
+   {
+   CCC = UDR0;
+   if ( rs232_rx_clr )
+      {
+      rs232_rx_clr = rs232_rx_idx = 0;
+      rs232_rx_buf[rs232_rx_idx] = 0;
+      }
+   if ( CCC == 0x08 ) // backspace
+      {
+      rs232_rx_buf[rs232_rx_idx] = 0;
+      if ( rs232_rx_idx > 0 ) rs232_rx_idx--;
+      }
+   else
+      {
+      rs232_rx_buf[rs232_rx_idx++] = CCC;
+      if ( rs232_rx_idx >= RS232_RX_BUF ) rs232_rx_idx=RS232_RX_BUF-1;
+      rs232_rx_buf[rs232_rx_idx] = 0;
+      }
+   }
+
+// process TX
+if ( (UCSR0A & (1 <<UDRE0)) == 0) return;  // not ready to receive next char
+
+if ( d_task<NB_DTASKS ) // print header
+   {
+   Next = pgm_read_byte(&display_tasks[d_task][d_idx++]); // Display PGM
+
+   if ( Next == 0 ) // found null go to next task
+      {
+      rs232_tx_buf[0] = d_idx = 0;
+      if ( pgm_read_byte(&display_tasks[d_task][0]) != 0) d_task++;
+      }
+   }
+else // print field data
+   {
+   if ( rs232_tx_idx != 0 ) Next = rs232_tx_buf[rs232_tx_idx++];  // continue where we were...
+   if ( Next == 0 ) // reached the end
+      {
+      rs232_tx_idx=0;
+      d_task ++ ;
+
+      #define DISPLAY_DATA(XXX,YYY,PGM_STR,FMT,SIZE,VALUE,L_VALUE)            \
+      {                                                                       \
+      if ( L_VALUE != VALUE || first)                                         \
+         {                                                                    \
+         display_data((char*)rs232_tx_buf,XXX,YYY,PGM_STR,VALUE,FMT,SIZE);    \
+         L_VALUE = VALUE;                                                     \
+         }                                                                    \
+      else d_task ++;                                                         \
+      }
+ 
+ 
+      if ( d_task == NB_DTASKS + 1  ) DISPLAY_DATA( 22,34,0,FMT_HEX,8,d_debug[0] ,l_debug[0]);
+      if ( d_task == NB_DTASKS + 2  ) DISPLAY_DATA( 32,34,0,FMT_HEX,8,d_debug[1] ,l_debug[1]);
+      if ( d_task == NB_DTASKS + 3  ) DISPLAY_DATA( 42,34,0,FMT_HEX,8,d_debug[2] ,l_debug[2]);
+      if ( d_task == NB_DTASKS + 4  ) DISPLAY_DATA( 52,34,0,FMT_HEX,8,d_debug[3] ,l_debug[3]);
+      if ( d_task == NB_DTASKS + 5  ) DISPLAY_DATA( 62,34,0,FMT_HEX,8,d_debug[4] ,l_debug[4]);
+      if ( d_task == NB_DTASKS + 6  ) DISPLAY_DATA( 72,34,0,FMT_HEX,8,d_debug[5] ,l_debug[5]);
+      if ( d_task == NB_DTASKS + 7  ) DISPLAY_DATA( 82,34,0,FMT_HEX,8,d_debug[6] ,l_debug[6]);
+      if ( d_task == NB_DTASKS + 8  ) DISPLAY_DATA( 92,34,0,FMT_HEX,8,d_debug[7] ,l_debug[7]);
+      if ( d_task == NB_DTASKS + 9  ) DISPLAY_DATA( 22,35,0,FMT_HEX,8,d_debug[8] ,l_debug[8]);
+      if ( d_task == NB_DTASKS + 10 ) DISPLAY_DATA( 32,35,0,FMT_HEX,8,d_debug[9] ,l_debug[9]);
+      if ( d_task == NB_DTASKS + 11 ) DISPLAY_DATA( 42,35,0,FMT_HEX,8,d_debug[10],l_debug[10]);
+      if ( d_task == NB_DTASKS + 12 ) DISPLAY_DATA( 52,35,0,FMT_HEX,8,d_debug[11],l_debug[11]);
+      if ( d_task == NB_DTASKS + 13 ) DISPLAY_DATA( 62,35,0,FMT_HEX,8,d_debug[12],l_debug[12]);
+      if ( d_task == NB_DTASKS + 14 ) DISPLAY_DATA( 72,35,0,FMT_HEX,8,d_debug[13],l_debug[13]);
+      if ( d_task == NB_DTASKS + 15 ) DISPLAY_DATA( 82,35,0,FMT_HEX,8,d_debug[14],l_debug[14]);
+      if ( d_task == NB_DTASKS + 16 ) DISPLAY_DATA( 92,35,0,FMT_HEX,8,d_debug[15],l_debug[15]);
+      if ( d_task == NB_DTASKS + 17 ) { first = 0 ; d_task = NB_DTASKS; }
+
+      Next = rs232_tx_buf[rs232_tx_idx++];
+      }
+   }
+
+if ( Next != 0 ) UDR0 = Next;
+}
 
 
 ////////////////////////////////////////// INTERRUPT SECTION ////////////////////////////////////////////
@@ -315,14 +532,9 @@ if ( nl ) pgm_ps(NLNL);
 //-  26 0x0032 SPM READY Store Program Memory Ready
 //-  
 
-unsigned long d_TIMER0;
-unsigned long d_TIMER1;
-unsigned long d_USART_RX;
-unsigned long d_USART_TX;
 char motor_disable=1;       // Stepper motor Disable
 char goto_cmd=0;    // 1 = goto goto_ra_pos
 long goto_ra_pos=0;
-unsigned long histogram[11]; // place to store histogram of 10Khz interrupt routine
 
 //   pos       = a long word : 0x00000000 = 0 deg  0x80000000 = 180 deg
 //   pos_hw    = current hardware pos and a pulse is generated each time a change is required
@@ -333,7 +545,6 @@ long  ra_pos=0, ra_pos_hw=0, ra_pos_cor=0, ra_pos_dem=0, ra_pos_earth=0, ra_pos_
 long dec_pos=0,dec_pos_hw=0,dec_pos_cor=0,dec_pos_dem=0,dec_pos_earth=0,dec_pos_star=0,dec_accel=0,dec_speed=0;   // Declinasion parameters        
 long  ra_unit_step;  // One step on the step motor is equal to what in 32 bit angle
 long dec_unit_step;  // One step on the step motor is equal to what in 32 bit angle
-long debug[10];
 long g_goto_state;
 long g_ra_pos_part1;
 char  ra_next=0, dec_next=0;  // Next state for the step command, we do this to allow DIR to settle
@@ -341,6 +552,7 @@ char  ra_next=0, dec_next=0;  // Next state for the step command, we do this to 
 ISR(TIMER0_OVF_vect)     // AP0C0 ... process RS232 events
 {                       
 d_TIMER0++;
+display_next();
 }
 
 ISR(TIMER1_COMPB_vect)   // Clear the Step outputs
@@ -417,7 +629,7 @@ else if ( axis->state == 2 )  // detect max speed, or halway point
    axis->pos_part1 = axis->pos - axis->pos_initial;
    if ( axis->pos_part1 > 0 ) temp_abs =  2*axis->pos_part1;
    else                       temp_abs = -2*axis->pos_part1;
-debug[1] = axis->pos_part1;
+d_debug[1] = axis->pos_part1;
 
    if ( temp_abs >= axis->pos_delta ) // we reached the mid point
       {
@@ -439,9 +651,9 @@ else if ( axis->state == 3 )  // cruise speed
       axis->state = 4; // decelerate
       axis->accel_period = 0;  // reset the sequence 
       }
-debug[2] = axis->pos - debug[1];
-debug[4] = axis->pos_delta;
-debug[8] = temp_abs;
+d_debug[2] = axis->pos - d_debug[1];
+d_debug[4] = axis->pos_delta;
+d_debug[8] = temp_abs;
    }
 else if ( axis->state == 4 )  // set deceleration
    {
@@ -449,15 +661,15 @@ else if ( axis->state == 4 )  // set deceleration
    else                                            axis->accel =  10; // going backward but decelerate
    axis->state++;
    axis->speed = axis->last_high_speed;  // restore last high speed
-debug[7] = axis->speed;
+d_debug[7] = axis->speed;
    }
 else if ( axis->state == 5 )  // deceleration
    {
    if ( axis->last_high_speed * axis->speed < 0 ) axis->state = 6;
 //   if ( axis->accel > 0 && axis->speed > 0 ) axis->state = 6;
 //   if ( axis->accel < 0 && axis->speed < 0 ) axis->state = 6;
-debug[3]=axis->pos - debug[2] - debug[1];
-debug[9]=axis->speed;
+d_debug[3]=axis->pos - d_debug[2] - d_debug[1];
+d_debug[9]=axis->speed;
    }
 else if ( axis->state == 6 )  // done, since the math is far from perfect, we often are not at the exact spot
    {
@@ -567,8 +779,8 @@ UCSR0C = (3 <<UCSZ00);              // 8 bits, no parity, 1 stop
 void init_disp(void)
 {
 // TIMSK2 |= 1 << OCIE2A;    // Interrupt on A comparator
-   TCCR2B  = 0x02;           // Clock divider set to 8 , this will cause a Motor driver PWM at 10KHz
-   TCCR2A  = 0xF3;           // Forced to 0xF3 by the get_ms() routines
+//   TCCR2B  = 0x02;           // Clock divider set to 8 , this will cause a Motor driver PWM at 10KHz
+//   TCCR2A  = 0xF3;           // Forced to 0xF3 by the get_ms() routines
 
    TIMSK1 |= 1 << OCIE1B;    // timer1 interrupt when Output Compare B Match
    TIMSK1 |= 1 <<  TOIE1;    // timer1 interrupt when Overflow                    ///////////////// SP0C0
@@ -635,7 +847,6 @@ return 0;
 
 #ifdef MAIN_TELESCOPE
 unsigned long d_ram;
-unsigned long d_now;
 unsigned long d_state;
 
 
@@ -645,7 +856,6 @@ int main_telescope(void)
 ///////////////////////////////// Init /////////////////////////////////////////
 init_rs232();
 init_disp();
-sei();         //enable global interrupts
 
 
 ps("\033[2J");
@@ -657,6 +867,44 @@ set_digital_output(DO_RA_STEP  ,PULL_UP_ENABLED);
 set_digital_output(DO_DEC_STEP ,PULL_UP_ENABLED);    
 set_digital_output(DO_10KHZ    ,PULL_UP_ENABLED);    // Set 10 Khz pwm output of OC1B (from TIMER 1) used to control the steps
 set_analog_mode(MODE_8_BIT);                         // 8-bit analog-to-digital conversions
+sei();         //enable global interrupts
+
+d_now   = d_TIMER1;
+while ( d_TIMER1-d_now < 10000 )   // Async section
+   {
+   d_debug[0] = d_TIMER1;
+   d_debug[1] = d_now;
+   }
+d_now   = d_TIMER1;
+while ( d_TIMER1-d_now < 10000 )   // Async section
+   {
+   d_debug[0] = d_TIMER1;
+   d_debug[1] = d_now;
+   }
+d_now   = d_TIMER1;
+while ( d_TIMER1-d_now < 10000 )   // Async section
+   {
+   d_debug[0] = d_TIMER1;
+   d_debug[1] = d_now;
+   }
+d_now   = d_TIMER1;
+while ( d_TIMER1-d_now < 10000 )   // Async section
+   {
+   d_debug[0] = d_TIMER1;
+   d_debug[1] = d_now;
+   }
+d_now   = d_TIMER1;
+while ( d_TIMER1-d_now < 10000 )   // Async section
+   {
+   d_debug[0] = d_TIMER1;
+   d_debug[1] = d_now;
+   }
+d_now   = d_TIMER1;
+while ( d_TIMER1-d_now < 10000 )   // Async section
+   {
+   d_debug[0] = d_TIMER1;
+   d_debug[1] = d_now;
+   }
 
 d_ram = get_free_memory();
 
@@ -670,22 +918,16 @@ psnl_progmem(pololu);
 psnl_progmem(dip328p);
 #endif
 
-d_now   = d_TIMER1;
 d_state = 0;       // simple state machine to test some logic
    
-while(1)   // Async section
+while(1);
+
+ 
+while(1)
    {
    // RS232 commands received
    // RS232 output
    set_digital_output(DO_DISABLE  ,motor_disable);   
-
-void p_str_hex(char* str,long hex, char nl)
-{
-ps(str);
-p08x(s_send,hex);
-ps(s_send);
-if ( nl ) ps("\012\015");
-}
 
    p_str_hex(" goto state:",g_goto_state,0);
    p_str_hex(" ra_pos_cor:",ra_pos_cor,0);
@@ -738,7 +980,7 @@ if ( nl ) ps("\012\015");
       }
    else if ( d_state == 7 )
       {
-      for(kkkk=0;kkkk<10;kkkk++) pe_str_hex(str_debug[kkkk],debug[kkkk],1);
+      for(kkkk=0;kkkk<10;kkkk++) pe_str_hex(str_debug[kkkk],d_debug[kkkk],1);
       for(kkkk=0;kkkk<11;kkkk++) pe_str_hex(str_hist[kkkk],histogram[kkkk],1);
 
       return 0; //end of program
