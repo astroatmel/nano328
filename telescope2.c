@@ -413,7 +413,6 @@ void display_data(char *str,short xxx,short yyy,const char *pgm_str,long value,c
 {
 short iii=0;
 long  jjj=0;
-long  kkk=value;
 short svalue=(short)value;
 char  ccc;
 // "\033[20;0H" pgm_str value
@@ -469,105 +468,145 @@ else if ( fmt == FMT_NS || fmt == FMT_EW )  // North South / East Weast     > (N
       } 
    if ( fmt == FMT_NS || fmt == FMT_EW ) 
       {
-      short deg=0,min=0,sec=0,sec100=0;
+      short vvv=0,prob=0;
       if ( value < 0 ) value = -value;  // abs value
 
 //    jjj    =  (RA_ONE_STEP * 16UL * (GEAR_BIG/GEAR_SMALL) * STEP_P_REV ) / RA_DEG_P_REV;    // jjj = nb of nano steps per deg    = 35792000/3   |||| target: 35791394.13/3 = 11930464.71
-      jjj    =  11930464UL ;    // jjj = nb of nano steps per deg    = 35792000/3   |||| target: 35791394.13/3 = 11930464.71
-      deg    = value / jjj ;                                                 // jjj = nb of deg that fits in what remains of value
-      value -= deg * jjj;   /// values 
+      jjj    =  1193046471UL;    // jjj = nb of nano steps per deg    = 35792000/3   |||| target: 35791394.13/3 = 11930464.71   so 119304647UL gives 100 degrees
+      vvv    = value / jjj ;                                                 // jjj = nb of deg that fits in what remains of value
+      value -= vvv * jjj;  
+      if ( vvv>9 ) {vvv=9;prob|=0x800;}
+      if ( fmt == FMT_EW )str[iii++] = vvv + '0';     // 100 deg
 
-      jjj   /= 60;                                                           // jjj = 1 minute with some loss
-      min    = value / jjj ;                                                 // jjj = nb of minutes that fits in what remains of value
-      value -= min * jjj;   /// values 
+      jjj   /= 10;
+      vvv    = value / jjj ;
+      value -= vvv * jjj;
+      if ( vvv>9 ) {vvv=9;prob|=0x400;}
+      str[iii++] = vvv + '0';                         // 10 deg
 
-      jjj   /= 60;                                                           // jjj = 1 second with some loss
-      sec    = value / jjj ;                                                 // jjj = nb of seconds that fits in what remains of value
-      value -= sec * jjj;   /// values 
-      
-      jjj   /= 100;                                                          // jjj = 0.01 second with some loss
-      sec100 = value / jjj ;                                                 // jjj = nb of 0.01 seconds that fits in what remains of value
-      value -= sec100 * jjj;   /// values 
-    
-      if ( fmt == FMT_EW ) 
-         {
-         if ( deg >= 100 ) str[iii++] = '1';
-         else              str[iii++] = '0';
-         if ( deg >= 100 ) deg-=100;
-         } 
-      str[iii++] = (deg/10) + '0';
-      str[iii++] = (deg)%10 + '0';
+      jjj   /= 10;
+      vvv    = value / jjj ;
+      value -= vvv * jjj;
+      if ( vvv>9 ) {vvv=9;prob|=0x200;}
+      str[iii++] = vvv + '0';                         // 1 deg
+
       str[iii++] = 0xC2;   // degree character
       str[iii++] = 0xB0;   // degree character
-      str[iii++] = (min/10) + '0';
-      str[iii++] = (min)%10 + '0';
+
+      jjj   /= 6;
+      vvv    = value / jjj ;
+      value -= vvv * jjj;
+      if ( vvv>5 ) {vvv=5;prob|=0x100;}
+      str[iii++] = vvv + '0';                         // 10 min
+
+      jjj   /= 10;
+      vvv    = value / jjj ;
+      value -= vvv * jjj;
+      if ( vvv>9 ) {vvv=9;prob|=0x080;}
+      str[iii++] = vvv + '0';                         // 1 min
+
       str[iii++] = '\'';  
-      str[iii++] = (sec/10) + '0';
-      str[iii++] = (sec)%10 + '0';
+      
+      jjj   /= 6;
+      vvv    = value / jjj ;
+      value -= vvv * jjj;
+      if ( vvv>5 ) {vvv=5;prob|=0x040;}
+      str[iii++] = vvv + '0';                         // 10 sec
+
+      jjj   /= 10;
+      vvv    = value / jjj ;
+      value -= vvv * jjj;
+      if ( vvv>9 ) {vvv=9;prob|=0x020;}
+      str[iii++] = vvv + '0';                         // 1 sec
+
       str[iii++] = '.';  
-      str[iii++] = (sec100/10) + '0';
-      str[iii++] = (sec100)%10 + '0';
+
+      jjj   /= 10;
+      vvv    = value / jjj ;
+      value -= vvv * jjj;
+      if ( vvv>9 ) {vvv=9;prob|=0x010;}
+      str[iii++] = vvv + '0';                         // 10th sec
+
+      jjj   /= 10;
+      vvv    = value / jjj ;
+      value -= vvv * jjj;
+      if ( vvv>9 ) {vvv=9;prob|=0x008;}
+      str[iii++] = vvv + '0';                         // 100th sec
       str[iii++] = '"';  
       str[iii]   = 0;  
-      if ( min >= 61 || sec >=61 || sec100>=101 || deg>180) 
+
+      if ( prob ) 
          {
-         if(console_go==0) display_data((char*)console_buf,0,20,pgm_display_big,kkk,FMT_HEX,8);  console_go = 1;
-         }
-      else if ( min >= 60 || sec >=60 || sec100>=100 || deg>180) 
-         {
-         if(console_go==0) 
-             {
-             if      (min    >= 60)  { display_data((char*)console_buf,0,20,pgm_display_bug,1,FMT_HEX,2);  console_go = 1; }
-             else if (sec    >= 60)  { display_data((char*)console_buf,0,20,pgm_display_bug,2,FMT_HEX,2);  console_go = 1; }
-             else if (sec100 >= 100) { display_data((char*)console_buf,0,20,pgm_display_bug,4,FMT_HEX,2);  console_go = 1; }
-             else if (deg    >= 180) { display_data((char*)console_buf,0,20,pgm_display_bug,8,FMT_HEX,2);  console_go = 1; }
-             }
+         if(console_go==0) display_data((char*)console_buf,0,20,pgm_display_bug,prob,FMT_HEX,8);  console_go = 1;
          }
       }
    
    }
 else if ( fmt == FMT_RA )  // Right Assention    23h59m59.000s
    {
-   short hour=0,min=0,sec=0,sec100=0;
+   short vvv=0,prob=0;
    if ( value < 0 ) value = -value;  // abs value
 
 // jjj    =  (RA_ONE_STEP * 16UL * (GEAR_BIG/GEAR_SMALL) * STEP_P_REV * 5);    // jjj = nb of nano steps per deg    = 35792000*5   |||| target: 35791394.13*5 = 178956970.7
-   jjj    =  178956970UL ;    // jjj = nb of nano steps per deg    =  35792000*5   |||| target: 35791394.13*5 = 178956970.7
-   hour   = value / jjj ;                                                 // jjj = nb of deg that fits in what remains of value
-   value -= hour * jjj;   /// values 
+   jjj    =  1789569707UL ;    // jjj = nb of nano steps per deg    =  35792000*5   |||| target: 35791394.13*5 = 178956970.7   so 1789569707 is in 10h
+   vvv    = value / jjj ;                                                 // jjj = nb of deg that fits in what remains of value
+   if ( vvv>2 ) {vvv=2;prob|=0x800;}
+   str[iii++] = vvv + '0';                         // 10 hour
 
-   jjj   /= 60;                                                           // jjj = 1 minute with some loss
-   min    = value / jjj ;                                                 // jjj = nb of minutes that fits in what remains of value
-   value -= min * jjj;   /// values 
+   jjj   /= 10;
+   vvv    = value / jjj ;
+   value -= vvv * jjj;
+   if ( vvv>9 ) {vvv=9;prob|=0x400;}
+   str[iii++] = vvv + '0';                         // 1 hour
 
-   jjj   /= 60;                                                           // jjj = 1 second with some loss
-   sec    = value / jjj ;                                                 // jjj = nb of seconds that fits in what remains of value
-   value -= sec * jjj;   /// values 
-   
-   jjj   /= 100;                                                          // jjj = 0.01 second with some loss
-   sec100 = value / jjj ;                                                 // jjj = nb of 0.01 seconds that fits in what remains of value
-   value -= sec100 * jjj;   /// values 
- 
-   str[iii++] = (hour/10) + '0';
-   str[iii++] = (hour)%10 + '0';
    str[iii++] = 'h';   // degree character
-   str[iii++] = (min/10) + '0';
-   str[iii++] = (min)%10 + '0';
+
+   jjj   /= 6;
+   vvv    = value / jjj ;
+   value -= vvv * jjj;
+   if ( vvv>5 ) {vvv=5;prob|=0x200;}
+   str[iii++] = vvv + '0';                         // 10 min
+
+   jjj   /= 10;
+   vvv    = value / jjj ;
+   value -= vvv * jjj;
+   if ( vvv>9 ) {vvv=9;prob|=0x100;}
+   str[iii++] = vvv + '0';                         // 1 min
+
    str[iii++] = 'm';  
-   str[iii++] = (sec/10) + '0';
-   str[iii++] = (sec)%10 + '0';
+
+   jjj   /= 6;
+   vvv    = value / jjj ;
+   value -= vvv * jjj;
+   if ( vvv>5 ) {vvv=5;prob|=0x080;}
+   str[iii++] = vvv + '0';                         // 10 sec
+
+   jjj   /= 10;
+   vvv    = value / jjj ;
+   value -= vvv * jjj;
+   if ( vvv>9 ) {vvv=9;prob|=0x040;}
+   str[iii++] = vvv + '0';                         // 1 sec
+
    str[iii++] = '.';  
-   str[iii++] = (sec100/10) + '0';
-   str[iii++] = (sec100)%10 + '0';
+
+   jjj   /= 10;
+   vvv    = value / jjj ;
+   value -= vvv * jjj;
+   if ( vvv>9 ) {vvv=9;prob|=0x020;}
+   str[iii++] = vvv + '0';                         // 10th sec
+
+   jjj   /= 10;
+   vvv    = value / jjj ;
+   value -= vvv * jjj;
+   if ( vvv>9 ) {vvv=9;prob|=0x010;}
+   str[iii++] = vvv + '0';                         // 100th sec sec
+
    str[iii++] = 's';  
    str[iii]   = 0;  
-   if ( min >= 61 || sec >=61 || sec100>=101 || hour>24) 
+ 
+   if ( prob ) 
       {
-      if(console_go==0) {display_data((char*)console_buf,0,20,pgm_display_big_ra,kkk,FMT_HEX,8);  console_go = 1;}
-      }
-   else if ( min >= 60 || sec >=60 || sec100>=100 || hour>24) 
-      {
-      if(console_go==0) {display_data((char*)console_buf,0,20,pgm_display_bug_ra,kkk,FMT_HEX,8);  console_go = 1;}
+      if(console_go==0) {display_data((char*)console_buf,0,20,pgm_display_bug_ra,prob,FMT_HEX,8);  console_go = 1;}
       }
    }
 else if ( fmt == FMT_STR )  // String
@@ -1003,8 +1042,8 @@ static short earth_comp2=0;
 //static short accel_period=0;
 //static long  ra_pos_initial,ra_pos_target,ra_pos_delta,ra_pos_delta_abs,ra_pos_part1,ra_last_high_speed,temp_abs;
 
-ssec++;
 if ( ssec == 10000) {ssec = 0; seconds++;}
+ssec++;
 
 d_TIMER1++;             // counts time in 0.1 ms
 if ( ! motor_disable )    //////////////////// motor disabled ///////////
