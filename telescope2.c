@@ -115,6 +115,7 @@ volatile unsigned long d_TIMER1;
 volatile unsigned long d_USART_RX;
 volatile unsigned long d_USART_TX;
 unsigned long d_now;
+short ssec=0;
 long seconds=0,l_seconds;
 long d_debug[16], l_debug[16];
 unsigned short histogram[16],l_histogram[16],histo_sp0=1; // place to store histogram of 10Khz interrupt routine
@@ -475,19 +476,19 @@ else if ( fmt == FMT_NS || fmt == FMT_EW )  // North South / East Weast     > (N
       jjj    =  1193046471UL;    // jjj = nb of nano steps per deg    = 35792000/3   |||| target: 35791394.13/3 = 11930464.71   so 119304647UL gives 100 degrees
       vvv    = value / jjj ;                                                 // jjj = nb of deg that fits in what remains of value
       value -= vvv * jjj;  
-      if ( vvv>9 ) {vvv=9;prob|=0x800;}
+      if ( vvv>9 ) {vvv=9;prob|=0x4000;}
       if ( fmt == FMT_EW )str[iii++] = vvv + '0';     // 100 deg
 
       jjj   /= 10;
       vvv    = value / jjj ;
       value -= vvv * jjj;
-      if ( vvv>9 ) {vvv=9;prob|=0x400;}
+      if ( vvv>9 ) {vvv=9;prob|=0x2000;}
       str[iii++] = vvv + '0';                         // 10 deg
 
       jjj   /= 10;
       vvv    = value / jjj ;
       value -= vvv * jjj;
-      if ( vvv>9 ) {vvv=9;prob|=0x200;}
+      if ( vvv>9 ) {vvv=9;prob|=0x1000;}
       str[iii++] = vvv + '0';                         // 1 deg
 
       str[iii++] = 0xC2;   // degree character
@@ -496,13 +497,13 @@ else if ( fmt == FMT_NS || fmt == FMT_EW )  // North South / East Weast     > (N
       jjj   /= 6;
       vvv    = value / jjj ;
       value -= vvv * jjj;
-      if ( vvv>5 ) {vvv=5;prob|=0x100;}
+      if ( vvv>5 ) {vvv=5;prob|=0x200;}
       str[iii++] = vvv + '0';                         // 10 min
 
       jjj   /= 10;
       vvv    = value / jjj ;
       value -= vvv * jjj;
-      if ( vvv>9 ) {vvv=9;prob|=0x080;}
+      if ( vvv>9 ) {vvv=9;prob|=0x100;}
       str[iii++] = vvv + '0';                         // 1 min
 
       str[iii++] = '\'';  
@@ -510,13 +511,13 @@ else if ( fmt == FMT_NS || fmt == FMT_EW )  // North South / East Weast     > (N
       jjj   /= 6;
       vvv    = value / jjj ;
       value -= vvv * jjj;
-      if ( vvv>5 ) {vvv=5;prob|=0x040;}
+      if ( vvv>5 ) {vvv=5;prob|=0x020;}
       str[iii++] = vvv + '0';                         // 10 sec
 
       jjj   /= 10;
       vvv    = value / jjj ;
       value -= vvv * jjj;
-      if ( vvv>9 ) {vvv=9;prob|=0x020;}
+      if ( vvv>9 ) {vvv=9;prob|=0x010;}
       str[iii++] = vvv + '0';                         // 1 sec
 
       str[iii++] = '.';  
@@ -524,13 +525,13 @@ else if ( fmt == FMT_NS || fmt == FMT_EW )  // North South / East Weast     > (N
       jjj   /= 10;
       vvv    = value / jjj ;
       value -= vvv * jjj;
-      if ( vvv>9 ) {vvv=9;prob|=0x010;}
+      if ( vvv>9 ) {vvv=9;prob|=0x002;}
       str[iii++] = vvv + '0';                         // 10th sec
 
       jjj   /= 10;
       vvv    = value / jjj ;
       value -= vvv * jjj;
-      if ( vvv>9 ) {vvv=9;prob|=0x008;}
+      if ( vvv>9 ) {vvv=9;prob|=0x001;}
       str[iii++] = vvv + '0';                         // 100th sec
       str[iii++] = '"';  
       str[iii]   = 0;  
@@ -545,18 +546,17 @@ else if ( fmt == FMT_NS || fmt == FMT_EW )  // North South / East Weast     > (N
 else if ( fmt == FMT_RA )  // Right Assention    23h59m59.000s
    {
    short vvv=0,prob=0;
-   if ( value < 0 ) value = -value;  // abs value
 
 // jjj    =  (RA_ONE_STEP * 16UL * (GEAR_BIG/GEAR_SMALL) * STEP_P_REV * 5);    // jjj = nb of nano steps per deg    = 35792000*5   |||| target: 35791394.13*5 = 178956970.7
    jjj    =  1789569707UL ;    // jjj = nb of nano steps per deg    =  35792000*5   |||| target: 35791394.13*5 = 178956970.7   so 1789569707 is in 10h
-   vvv    = value / jjj ;                                                 // jjj = nb of deg that fits in what remains of value
-   if ( vvv>2 ) {vvv=2;prob|=0x800;}
+   vvv    = ((unsigned long) value) / jjj ;        // jjj = nb of deg that fits in what remains of value
+   if ( vvv>2 ) {vvv=2;prob|=0x2000;}
    str[iii++] = vvv + '0';                         // 10 hour
 
    jjj   /= 10;
    vvv    = value / jjj ;
    value -= vvv * jjj;
-   if ( vvv>9 ) {vvv=9;prob|=0x400;}
+   if ( vvv>9 ) {vvv=9;prob|=0x1000;}
    str[iii++] = vvv + '0';                         // 1 hour
 
    str[iii++] = 'h';   // degree character
@@ -564,13 +564,13 @@ else if ( fmt == FMT_RA )  // Right Assention    23h59m59.000s
    jjj   /= 6;
    vvv    = value / jjj ;
    value -= vvv * jjj;
-   if ( vvv>5 ) {vvv=5;prob|=0x200;}
+   if ( vvv>5 ) {vvv=5;prob|=0x0200;}
    str[iii++] = vvv + '0';                         // 10 min
 
    jjj   /= 10;
    vvv    = value / jjj ;
    value -= vvv * jjj;
-   if ( vvv>9 ) {vvv=9;prob|=0x100;}
+   if ( vvv>9 ) {vvv=9;prob|=0x0100;}
    str[iii++] = vvv + '0';                         // 1 min
 
    str[iii++] = 'm';  
@@ -578,13 +578,13 @@ else if ( fmt == FMT_RA )  // Right Assention    23h59m59.000s
    jjj   /= 6;
    vvv    = value / jjj ;
    value -= vvv * jjj;
-   if ( vvv>5 ) {vvv=5;prob|=0x080;}
+   if ( vvv>5 ) {vvv=5;prob|=0x0020;}
    str[iii++] = vvv + '0';                         // 10 sec
 
    jjj   /= 10;
    vvv    = value / jjj ;
    value -= vvv * jjj;
-   if ( vvv>9 ) {vvv=9;prob|=0x040;}
+   if ( vvv>9 ) {vvv=9;prob|=0x0010;}
    str[iii++] = vvv + '0';                         // 1 sec
 
    str[iii++] = '.';  
@@ -592,13 +592,13 @@ else if ( fmt == FMT_RA )  // Right Assention    23h59m59.000s
    jjj   /= 10;
    vvv    = value / jjj ;
    value -= vvv * jjj;
-   if ( vvv>9 ) {vvv=9;prob|=0x020;}
+   if ( vvv>9 ) {vvv=9;prob|=0x0002;}
    str[iii++] = vvv + '0';                         // 10th sec
 
    jjj   /= 10;
    vvv    = value / jjj ;
    value -= vvv * jjj;
-   if ( vvv>9 ) {vvv=9;prob|=0x010;}
+   if ( vvv>9 ) {vvv=9;prob|=0x0001;}
    str[iii++] = vvv + '0';                         // 100th sec sec
 
    str[iii++] = 's';  
@@ -1034,7 +1034,6 @@ return axis->state;
 
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 10 KHz
 {
-static short ssec=0;
 unsigned long histo;
 //static char  goto_state=0;    // 1 = goto goto_ra_pos
 static short earth_comp=0;
@@ -1248,7 +1247,7 @@ while ( d_TIMER1-d_now < 10000 )   // Async section
    }
 d_now   = d_TIMER1;
 for(iii=0;iii<16;iii++) histogram[iii]=0;
-seconds = 0;
+seconds = ssec = 0;
 motor_disable = 0;   // Stepper motor enabled...
 
 while ( d_TIMER1-d_now < 10000 )   // Async section
@@ -1349,8 +1348,14 @@ return 0;
 }
 
 /*
-$author:$
-$version:$
-$log:$
+$Author$
+$Date$
+$Header$
+$Id$
+$Locker$
+$Revision$
+$Source$
+$State$ 
+$Log$
 
 */
