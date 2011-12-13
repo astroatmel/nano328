@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/12 04:19:54 $
-$Id: telescope.c,v 1.14 2011/12/12 04:19:54 pmichel Exp pmichel $
+$Date: 2011/12/13 02:30:45 $
+$Id: telescope.c,v 1.15 2011/12/13 02:30:45 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.14 $
+$Revision: 1.15 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -31,7 +31,7 @@ TODO:
 
 */
 #define MAIN_TELESCOPE
-#define AP0_DISPLAY 1
+#define AP0_DISPLAY 0    // ca plante asse souvent si j'essaye de rouller avec AP)
 //#define MAIN_VT_TEST
 
 // This is a Little Endian CPU
@@ -81,6 +81,7 @@ TODO:
 ///       = 9600 * 9 (seconds)              200 Steps = 9 Seconds = 3 degrees (RA axis)     
 ///       = 9600 * 200 steps                  1 Step  = 0.045 Sec
 ///
+#define DEAD_BAND        (147767296)                        // 0x8CEC000      // This is 0x100000000 - TICKS_P_DAY = 147767296
 #define TICKS_P_STEP     (6*360)                            // 2160           // 2160 which is easy to sub divide without fractions
 #define TICKS_P_DAY      (9600UL*200UL*TICKS_P_STEP      )  // 4147200000     // One day = 360deg = 9600*200 micro steps
 #define TICKS_P_DEG      (9600UL*200UL*TICKS_P_STEP/360UL)  // 11520000       // One day = 360deg = 9600*200 steps
@@ -94,6 +95,18 @@ TODO:
 #define DEC_ONE_STEP     (TICKS_P_STEP*2)
 #define RA_MAX_SPEED     (TICKS_P_STEP-TICKS_P_STEP/EARTH_COMP-2)
 #define DEC_MAX_SPEED    (DEC_ONE_STEP-2)
+
+// This macro makes sure we never stay in the dead band
+#define ADD_VALUE_TO_POS(VALUE,POS)                                         \
+{                                                                           \
+POS += VALUE;                                                               \
+if ( (unsigned long)(POS) >= TICKS_P_DAY )   /* we are in the dead band */  \
+   {                                                                        \
+   if ( VALUE > 0 ) POS += DEAD_BAND; /* step over the dead band */         \
+   else             POS -= DEAD_BAND; /* step over the dead band */         \
+   }                                                                        \
+}
+
 
 enum 
    {
@@ -186,7 +199,7 @@ volatile unsigned long d_USART_TX;
 unsigned long d_now;
 short ssec=0;
 long seconds=0,l_seconds;
-long d_debug[16], l_debug[16];
+volatile long d_debug[16], l_debug[16];
 unsigned short histogram[16],l_histogram[16],histo_sp0=1; // place to store histogram of 10Khz interrupt routine
 
 //   pos       = a long word : 0x00000000 = 0 deg  0x80000000 = 180 deg
@@ -203,6 +216,7 @@ long dec_unit_step;  // One step on the step motor is equal to what in 32 bit an
 long g_goto_state;
 long g_ra_pos_part1;
 char  ra_next=0, dec_next=0;  // Next state for the step command, we do this to allow DIR to settle
+volatile char moving=0;
 
 /////////////////////////////////////////// RS232 INPUTS ///////////////////////////////////////////////////////////
 #define RS232_RX_BUF 32
@@ -579,7 +593,6 @@ else if ( fmt == FMT_NS || fmt == FMT_EW )  // North South / East Weast     > (N
    str[iii++] = '"';  
    str[iii]   = 0;  
 
-d_debug[7] = prob;
    if ( prob ) 
       {
       if(console_go==0) display_data((char*)console_buf,0,20,pgm_display_bug,prob,FMT_HEX,8);  console_go = 1;
@@ -650,6 +663,7 @@ else if ( fmt == FMT_ASC )  // ASCII
 void display_next(void);
 void display_next_bg(void) 
 {
+d_debug[12]++;
 if ( AP0_DISPLAY == 0 ) display_next();  // if not printing from AP0, then print here
 }
 
@@ -835,31 +849,30 @@ else // print field data
          if ( d_task == NB_DTASKS + 38 ) DISPLAY_DATA( 39,26,0,FMT_EW,0,ra_pos_cor,l_ra_pos_cor1);    // CORRECTED STAR POSITION
          if ( d_task == NB_DTASKS + 39 ) DISPLAY_DATA( 57,26,0,FMT_RA,0,ra_pos_cor,l_ra_pos_cor2);    // CORRECTED STAR POSITION
 
-//       if ( d_task == NB_DTASKS + 40 ) DISPLAY_DATA( 22,27,0,FMT_NS,0,dec_pos_hw,l_dec_pos_hw);     // TELESCOPE POSITION
-//       if ( d_task == NB_DTASKS + 41 ) DISPLAY_DATA( 39,27,0,FMT_EW,0,ra_pos_hw,l_ra_pos_hw1);      // TELESCOPE POSITION
-//       if ( d_task == NB_DTASKS + 42 ) DISPLAY_DATA( 57,27,0,FMT_RA,0,ra_pos_hw,l_ra_pos_hw2);      // TELESCOPE POSITION
+         if ( d_task == NB_DTASKS + 40 ) DISPLAY_DATA( 22,27,0,FMT_NS,0,dec_pos_hw,l_dec_pos_hw);     // TELESCOPE POSITION
+         if ( d_task == NB_DTASKS + 41 ) DISPLAY_DATA( 39,27,0,FMT_EW,0,ra_pos_hw,l_ra_pos_hw1);      // TELESCOPE POSITION
+         if ( d_task == NB_DTASKS + 42 ) DISPLAY_DATA( 57,27,0,FMT_RA,0,ra_pos_hw,l_ra_pos_hw2);      // TELESCOPE POSITION
 
          stmp = (short)rs232_rx_buf;
-         if ( d_task == NB_DTASKS + 40 ) DISPLAY_DATA( 14,41,0,FMT_STR,0,stmp,tmp);
+         if ( d_task == NB_DTASKS + 43 ) DISPLAY_DATA( 14,41,0,FMT_STR,0,stmp,tmp);
 
-         stmp = pgm_constellation[cur_const];
-d_debug[0] =  pgm_read_dword(pgm_constellation[cur_const]);
-d_debug[1] =  pgm_read_dword(d_debug[0]);
-         if ( d_task == NB_DTASKS + 41 ) DISPLAY_DATA( 22,28,0,PGM_STR,0,stmp,tmp);
-         stmp = pgm_stars_name;
-d_debug[8] =  pgm_stars_name;
-d_debug[9] =  pgm_stars_name+cur_star;
-         if ( d_task == NB_DTASKS + 42 ) DISPLAY_DATA( 39,28,0,PGM_STR,0,stmp,tmp);
+//         stmp = pgm_constellation[cur_const];
+//d_debug[0] =  pgm_read_dword(pgm_constellation[cur_const]);
+//d_debug[1] =  pgm_read_dword(d_debug[0]);
+//         if ( d_task == NB_DTASKS + 44 ) DISPLAY_DATA( 22,28,0,PGM_STR,0,stmp,tmp);
+//         stmp = pgm_stars_name;
+//d_debug[9] =  pgm_stars_name+cur_star;
+//         if ( d_task == NB_DTASKS + 45 ) DISPLAY_DATA( 39,28,0,PGM_STR,0,stmp,tmp);
 
          ltmp = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);  tmp=0;
-         if ( d_task == NB_DTASKS + 43 ) DISPLAY_DATA( 22,29,0,FMT_NS,0,ltmp,tmp);      // NEAREAST STAR POSITION
+         if ( d_task == NB_DTASKS + 44 ) DISPLAY_DATA( 22,29,0,FMT_NS,0,ltmp,tmp);      // NEAREAST STAR POSITION
          ltmp = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);  tmp=0;
-         if ( d_task == NB_DTASKS + 44 ) DISPLAY_DATA( 39,29,0,FMT_EW,0,ltmp,tmp);      // NEAREAST STAR POSITION
+         if ( d_task == NB_DTASKS + 45 ) DISPLAY_DATA( 39,29,0,FMT_EW,0,ltmp,tmp);      // NEAREAST STAR POSITION
                                                               tmp=0;
-         if ( d_task == NB_DTASKS + 45 ) DISPLAY_DATA( 57,29,0,FMT_RA,0,ltmp,tmp);      // NEAREAST STAR POSITION
+         if ( d_task == NB_DTASKS + 46 ) DISPLAY_DATA( 57,29,0,FMT_RA,0,ltmp,tmp);      // NEAREAST STAR POSITION
 
 
-         if ( d_task == NB_DTASKS + 46 ) { first = 0 ; d_task = NB_DTASKS; }
+         if ( d_task == NB_DTASKS + 47 ) { first = 0 ; d_task = NB_DTASKS; }
          else                            Next = rs232_tx_buf[rs232_tx_idx++];
          }
       }
@@ -926,13 +939,12 @@ if ( AP0_DISPLAY==1 )
 if ( histo_sp0 == 0 ) // if we are not monitoring SP0
    {  
    histo = TCNT0;
-   if ( d_debug[8] < histo ) d_debug[8] = histo;  // temp read the highest value
    histo *= 15 * 10 * 8;  // TCNT0 counts from 0 to F_CPU_K/10/8 (see OCR0A) 
    histo /= F_CPU_K;      // TCNT0 counts from 0 to F_CPU_K/10/8 (see OCR0A) 
    if ( histo > 15 ) histo=15;
    histogram[histo]++;
-   d_debug[8] = -1;  // temp read the highest value
    }
+
 if ( AP0_DISPLAY==1 ) TIMSK0 = 1;     // timer0 interrupt enable
 }
 
@@ -947,13 +959,15 @@ temp = ra_pos_hw-ra_pos_cor;
 if ( temp >= TICKS_P_STEP )
    {
    set_digital_output(DO_RA_DIR,0); // go backward
-   ra_pos_hw -= TICKS_P_STEP;
+   //ra_pos_hw -= TICKS_P_STEP;
+   ADD_VALUE_TO_POS(-TICKS_P_STEP,ra_pos_hw);
    ra_next=1;
    }
 else if ( -temp >= TICKS_P_STEP )
    {
    set_digital_output(DO_RA_DIR,1); // go forward
-   ra_pos_hw += TICKS_P_STEP;
+   //ra_pos_hw += TICKS_P_STEP;
+   ADD_VALUE_TO_POS(TICKS_P_STEP,ra_pos_hw);
    ra_next=1;
    }
 else
@@ -1012,8 +1026,6 @@ else if ( axis->state == 2 )  // detect max speed, or halway point
    if ( axis->pos_part1 > 0 ) temp_abs =  2*axis->pos_part1;
    else                       temp_abs = -2*axis->pos_part1;
 d_debug[1] = axis->pos_part1;
-d_debug[13] = axis->speed;
-d_debug[14] = axis->max_speed;
 
    if ( temp_abs >= axis->pos_delta ) // we reached the mid point
       {
@@ -1036,7 +1048,6 @@ else if ( axis->state == 3 )  // cruise speed
       axis->accel_period = 0;  // reset the sequence 
       }
 d_debug[2] = axis->pos - d_debug[1];
-d_debug[4] = axis->pos_delta;
    }
 else if ( axis->state == 4 )  // set deceleration
    {
@@ -1044,7 +1055,6 @@ else if ( axis->state == 4 )  // set deceleration
    else                                            axis->accel =  10; // going backward but decelerate
    axis->state++;
    axis->speed = axis->last_high_speed;  // restore last high speed
-d_debug[7] = axis->speed;
    }
 else if ( axis->state == 5 )  // deceleration
    {
@@ -1085,7 +1095,8 @@ if ( axis->accel_seq > axis->accel_period )
    if ( -axis->speed > axis->max_speed && axis->accel < 0 ) axis->accel = 0;
    if ( -axis->speed > axis->max_speed )                    axis->speed = -axis->max_speed;
    }
-axis->pos += axis->speed;
+//axis->pos += axis->speed;
+ADD_VALUE_TO_POS(axis->speed,axis->pos);
 
 return axis->state;
 }
@@ -1108,7 +1119,8 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
    ///////////// Process earth compensation
    // this takes a lot of time . . . .:earth_comp = (earth_comp+1)%EARTH_COMP;
    earth_comp++ ; if ( earth_comp == EARTH_COMP ) earth_comp = 0;
-   if ( earth_comp == 0 ) ra_pos_earth += TICKS_P_STEP;    // Correct for the Earth's rotation
+   //if ( earth_comp == 0 ) ra_pos_earth += TICKS_P_STEP;    // Correct for the Earth's rotation
+   if ( earth_comp == 0 ) ADD_VALUE_TO_POS(TICKS_P_STEP,ra_pos_earth);    // Correct for the Earth's rotation
    
    ///////////// Process goto
    
@@ -1118,10 +1130,18 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
    ra_accel = ra.accel;
    ra_speed = ra.speed;
    if ( ra.state !=0 ) goto_cmd=0;
+   if ( (ra.state == 0) && (dec.state == 0)) moving=0;
+   else                                      moving=1;  // we are still moving 
    
    ra_pos_dem = ra_pos_earth + ra.pos;
    ra_pos_cor = ra_pos_dem;  // for now, no correction
    
+d_debug[4]=ra_speed;
+d_debug[5]=ra_pos;
+d_debug[6]=ra_pos_dem;
+d_debug[7]=ra_pos_hw;
+d_debug[13]=goto_cmd + 0x100*moving;
+d_debug[15]=ra.state;
    // This below does work and proves that the Step outputs do work
    // if ( ! (d_TIMER1&3) ) set_digital_output(DO_RA_STEP,1);    // use my routines...flush polopu...
    // if ( ! (d_TIMER1&1) ) set_digital_output(DO_DEC_STEP,1);   // use my routines...flush polopu...
@@ -1130,7 +1150,6 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
 if ( histo_sp0 == 1 ) // if we are not monitoring SP0
    {  
    histo = TCNT1;
-//   if ( d_debug[8] < histo ) d_debug[8] = histo;  // temp read the highest value
    histo *= 15 * 10;  // TCNT1 counts from 0 to F_CPU_K/10 (see OCR1A) 
    histo /= F_CPU_K;  // TCNT1 counts from 0 to F_CPU_K/10 (see OCR1A) 
    if ( histo > 15 ) histo=15;
@@ -1294,32 +1313,49 @@ while (console_special); /* wait for ready */ console_special = pololu;
 while (console_special); /* wait for ready */ console_special = dip328p;
 #endif
 
-while ( d_TIMER1-d_now < 10000 )   // Async section
-   {
-// d_debug[0] = d_TIMER1;
-// d_debug[1] = d_now;
-   display_next_bg();
-   }
+d_debug[14]=0x3333;
+wait(5,SEC);
+
 d_now   = d_TIMER1;
 for(iii=0;iii<16;iii++) histogram[iii]=0;
 seconds = ssec = 0;
 motor_disable = 0;   // Stepper motor enabled...
 
-while ( d_TIMER1-d_now < 10000 )   // Async section
-   {
-// d_debug[0] = d_TIMER1;
-// d_debug[1] = d_now;
-   display_next_bg();
-   }
+d_debug[14]=0x4444;
+wait(5,SEC);
 
+d_debug[14]=0x5555;
 //goto_ra_pos = TICKS_P_STEP * 200UL * 5UL * 16UL * 10UL; // thats 30 degrees , thats 10 turns, thats 357920000 , thats 0x15556D00     got:1555605F
-//goto_cmd = 1;  
+goto_ra_pos = TICKS_P_STEP * 200UL * 5UL * 16UL * 3UL; 
+goto_cmd = 1;  
+d_debug[14]=0x6666;
+while ( moving || goto_cmd ) display_next_bg();  // wait for the reposition to be complete
+wait(5,SEC);
+
+
+d_debug[14]=0x7777;
+// go the other way around
+goto_ra_pos = TICKS_P_STEP * 200UL * 5UL * 16UL * 2UL;
+goto_cmd = 1;  
+while ( moving || goto_cmd ) display_next_bg();  // wait for the reposition to be complete
+wait(5,SEC);
+
+d_debug[14]=0x8888;
+// go the other way around
+goto_ra_pos = TICKS_P_DAY -TICKS_P_STEP * 200UL * 5UL * 16UL * 3UL;
+goto_cmd = 1;  
+while ( moving || goto_cmd ) display_next_bg();  // wait for the reposition to be complete
+wait(5,SEC);
+
+
 
 while (1 )
    {
+   d_debug[14]=0xAAAA;
    d_now   = d_TIMER1;
    d_debug[2] = d_now;
    wait(1,SEC);
+   d_debug[14]=0xBBBB;
    d_now   = d_TIMER1;
    d_debug[3] = d_now;
    wait(1,SEC);
@@ -1346,6 +1382,9 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.15  2011/12/13 02:30:45  pmichel
+Starting to process the dead band
+
 Revision 1.14  2011/12/12 04:19:54  pmichel
 Now using 6*360 ticks per steps
 and all the math is so much easyer now
