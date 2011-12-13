@@ -1,13 +1,12 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/13 02:30:45 $
-$Id: telescope.c,v 1.15 2011/12/13 02:30:45 pmichel Exp pmichel $
+$Date: 2011/12/13 04:50:35 $
+$Id: telescope.c,v 1.16 2011/12/13 04:50:35 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.15 $
+$Revision: 1.16 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
-- handle the dead part above 9600*200*6*360 in both direction
 - process RETURN as command complete
 - display command on LCD
 - Display Galaxy and Input text only on change
@@ -28,11 +27,8 @@ TODO:
 - do banding in SP0 to handle both axis and not burn too much CPU time
 
 
-
 */
-#define MAIN_TELESCOPE
 #define AP0_DISPLAY 0    // ca plante asse souvent si j'essaye de rouller avec AP)
-//#define MAIN_VT_TEST
 
 // This is a Little Endian CPU
 // Notes
@@ -42,32 +38,28 @@ TODO:
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
-
-
 #define DO_DISABLE       IO_D2
 #define DO_RA_DIR        IO_D4
 #define DO_RA_STEP       IO_D7
 #define DO_DEC_STEP      IO_B4
 #define DO_10KHZ         IO_B2
-
 #define DI_REMOTE        IO_C3
-
 #define ADC6C            6
 #define AI_COMMAND       ADC6C
  
 ////////////////////////////////// DEFINES /////////////////////////////////////   TICKS_P_STEP * 16 * GEAR_BIG/GEAR_SMALL * STEP_P_REV / RA_DEG_P_REV
-#define F_CPU_K       20000
-#define FRAME         10000
-#define baud          9600
-#define GEAR_BIG      120
-#define GEAR_SMALL    24
-#define STEP_P_REV    200
-#define RA_DEG_P_REV  3
-#define DEC_DEG_P_REV 6
-#define POLOLU        1
+#define F_CPU_K          20000
+#define FRAME            10000
+#define baud             9600
+#define GEAR_BIG         120
+#define GEAR_SMALL       24
+#define STEP_P_REV       200
+#define RA_DEG_P_REV     3
+#define DEC_DEG_P_REV    6
+#define POLOLU           1
 #define ACCEL_PERIOD     100
 // 450 = nb cycles per day / nb steps per full turn  = 24*60*60*10000Hz / [ (360/RA_DEG_P_REV) * 200 steps per motor turn * (GEAR_BIG/GEAR_SMALL) * 16 microstep
-#define EARTH_COMP    450    
+#define EARTH_COMP       450    
 // Maximum number of step per full circle on RA axis
 // one turn on RA is 3 deg, so 360 deg is 120 turns
 // the gear ration is 120 for 24, so the ration is 5 (5 turn of the stepper moter is one turn on the RA axis)
@@ -161,18 +153,17 @@ PROGMEM const char dip328p[]={"\
                             -----------\012\015\
 "};
 
-PROGMEM const char *pgm_constellation[4]={ "Orion",  // 0 = Orion
-                                          "Lyra",   // 1 = Lyra
-                                          "Gynus",  // 2 = Gynus
-                                          0         // Last = NULL
-                                        };
-PROGMEM const char *pgm_stars_name[6]   ={ "\000Betelgeuse (Red)",     // \000 = Orion
-                                          "\000Rigel (Blue)",         // \000 = Orion
-                                          "\001Vega",                 // \001 = Lyra
-                                          "\002Deneb",                // \002 = Gynus
-                                          "\002Sadr",                 // \002 = Gynus
-                                          0
-                                        };
+#define CONSTELLATION_SIZE 10
+PROGMEM const char pgm_constellation[] = "Orion    \0"\
+                                         "Lyra     \0"\
+                                         "Gynus    \0";
+                          
+#define STAR_SIZE 18
+PROGMEM const char pgm_stars_name[]   =  "\000Betelgeuse (Red)\0"\
+                                         "\000Rigel (Blue)    \0"\
+                                         "\001Vega            \0"\
+                                         "\002Deneb           \0"\
+                                         "\002Sadr            \0";
                                        //   RA                                                DEC
 PROGMEM const unsigned long pgm_stars_pos[] =
                     { ( 5*TICKS_P_HOUR+55*TICKS_P_MIN+10.3*TICKS_P_SEC), (  7*TICKS_P_DEG+24*TICKS_P_DEG_MIN+25  *TICKS_P_DEG_SEC),     // Betelgeuse
@@ -185,8 +176,6 @@ PROGMEM const unsigned long pgm_stars_pos[] =
 short cur_const=1,cur_star=2;
 
 short kkkk;
-PROGMEM const char str_debug[][10]={ " debug0:", " debug1:"," debug2:"," debug3:"," debug4:"," debug5:"," debug6:"," debug7:"," debug8:"," debug9:"};
-PROGMEM const char str_hist[][11]={" Hist0:", " Hist1:"," Hist2:"," Hist3:"," Hist4:"," Hist5:"," Hist6:"," Hist7:"," Hist8:"," Hist9:"," Hist10:"};
 PROGMEM const char pgm_free_mem[]="Free Memory:";
 PROGMEM const char pgm_starting[]="Telescope Starting...";
 PROGMEM const char pgm_ascii[]="ascii:";
@@ -857,22 +846,24 @@ else // print field data
          if ( d_task == NB_DTASKS + 43 ) DISPLAY_DATA( 14,41,0,FMT_STR,0,stmp,tmp);
 
 //         stmp = pgm_constellation[cur_const];
+//d_debug[0] =  pgm_read_dword(pgm_constellation[1]);
+//d_debug[1] =  pgm_read_dword(tototo);
 //d_debug[0] =  pgm_read_dword(pgm_constellation[cur_const]);
 //d_debug[1] =  pgm_read_dword(d_debug[0]);
-//         if ( d_task == NB_DTASKS + 44 ) DISPLAY_DATA( 22,28,0,PGM_STR,0,stmp,tmp);
+         if ( d_task == NB_DTASKS + 44 ) DISPLAY_DATA( 22,28,pgm_constellation + cur_const*CONSTELLATION_SIZE    ,FMT_NO_VAL,0,stmp,tmp);
 //         stmp = pgm_stars_name;
-//d_debug[9] =  pgm_stars_name+cur_star;
-//         if ( d_task == NB_DTASKS + 45 ) DISPLAY_DATA( 39,28,0,PGM_STR,0,stmp,tmp);
+//d_debug[2] =  pgm_stars_name+cur_star;
+         if ( d_task == NB_DTASKS + 45 ) DISPLAY_DATA( 39,28,pgm_stars_name + cur_star*STAR_SIZE + 1       ,FMT_NO_VAL,0,stmp,tmp);
 
          ltmp = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);  tmp=0;
-         if ( d_task == NB_DTASKS + 44 ) DISPLAY_DATA( 22,29,0,FMT_NS,0,ltmp,tmp);      // NEAREAST STAR POSITION
+         if ( d_task == NB_DTASKS + 46 ) DISPLAY_DATA( 22,29,0,FMT_NS,0,ltmp,tmp);      // NEAREAST STAR POSITION
          ltmp = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);  tmp=0;
-         if ( d_task == NB_DTASKS + 45 ) DISPLAY_DATA( 39,29,0,FMT_EW,0,ltmp,tmp);      // NEAREAST STAR POSITION
+         if ( d_task == NB_DTASKS + 47 ) DISPLAY_DATA( 39,29,0,FMT_EW,0,ltmp,tmp);      // NEAREAST STAR POSITION
                                                               tmp=0;
-         if ( d_task == NB_DTASKS + 46 ) DISPLAY_DATA( 57,29,0,FMT_RA,0,ltmp,tmp);      // NEAREAST STAR POSITION
+         if ( d_task == NB_DTASKS + 48 ) DISPLAY_DATA( 57,29,0,FMT_RA,0,ltmp,tmp);      // NEAREAST STAR POSITION
 
 
-         if ( d_task == NB_DTASKS + 47 ) { first = 0 ; d_task = NB_DTASKS; }
+         if ( d_task == NB_DTASKS + 49 ) { first = 0 ; d_task = NB_DTASKS; }
          else                            Next = rs232_tx_buf[rs232_tx_idx++];
          }
       }
@@ -1025,7 +1016,6 @@ else if ( axis->state == 2 )  // detect max speed, or halway point
    axis->pos_part1 = axis->pos - axis->pos_initial;
    if ( axis->pos_part1 > 0 ) temp_abs =  2*axis->pos_part1;
    else                       temp_abs = -2*axis->pos_part1;
-d_debug[1] = axis->pos_part1;
 
    if ( temp_abs >= axis->pos_delta ) // we reached the mid point
       {
@@ -1047,7 +1037,6 @@ else if ( axis->state == 3 )  // cruise speed
       axis->state = 4; // decelerate
       axis->accel_period = 0;  // reset the sequence 
       }
-d_debug[2] = axis->pos - d_debug[1];
    }
 else if ( axis->state == 4 )  // set deceleration
    {
@@ -1061,8 +1050,6 @@ else if ( axis->state == 5 )  // deceleration
    if ( axis->last_high_speed * axis->speed < 0 ) axis->state = 6;
 //   if ( axis->accel > 0 && axis->speed > 0 ) axis->state = 6;
 //   if ( axis->accel < 0 && axis->speed < 0 ) axis->state = 6;
-d_debug[3]=axis->pos - d_debug[2] - d_debug[1];
-d_debug[9]=axis->speed;
    }
 else if ( axis->state == 6 )  // done, since the math is far from perfect, we often are not at the exact spot
    {
@@ -1223,37 +1210,6 @@ return free_memory;
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
 
 
-#ifdef MAIN_VT_TEST
-int main_vt_test(void)     // To test VT100 codes
-{
-short iii,xxx=0,yyy=111;
-
-// long temp = F_CPU/(16UL*baud)-1;  //set uart baud rate register
-// UBRR0H = (temp >> 8);
-// UBRR0L = (temp & 0xFF);
-// UCSR0B = (1 <<RXEN0 | 1 << TXEN0 ); // enable RX and TX
-// UCSR0C = (3<<UCSZ00);  // 8 bits, no parity, 1 stop
-
-init_rs232();
-
-ps("\033[2J");
-ps("starting...\n");
-for ( iii=0 ; iii<200 ; iii++ )
-   {
-   if(iii>10) xxx= 0x0F00;
-   if(iii>20) xxx=-0x0F00;
-   ps("\033[M");  //scroll up
-   ps08x("\012\015 Filtered value=",yyy);
-   ps08x("  input=",xxx);
-   ps08x("  iii=",iii);
-   }
-while(1) ps("A5A5\012\015");
-return 0;
-}
-#endif
-
-
-#ifdef MAIN_TELESCOPE
 unsigned long d_ram;
 unsigned long d_state;
 
@@ -1279,33 +1235,11 @@ set_analog_mode(MODE_8_BIT);                         // 8-bit analog-to-digital 
 d_ram = get_free_memory();
 sei();         //enable global interrupts
 
-d_now   = d_TIMER1;
-while ( d_TIMER1-d_now < 10000 )   // Async section
-   {
-// d_debug[0] = d_TIMER1;
-// d_debug[1] = d_now;
-   display_next_bg();
-   }
-d_now   = d_TIMER1;
-while ( d_TIMER1-d_now < 1000 )   // Async section
-   {
-// d_debug[0] = d_TIMER1;
-// d_debug[1] = d_now;
-   display_next_bg();
-   }
-
+wait(1,SEC);
 while (console_go) display_next_bg(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_starting,d_ram,FMT_NO_VAL,8);  console_go = 1;
 wait(1,SEC);
 while (console_go) display_next_bg(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_free_mem,d_ram,FMT_HEX,8);  console_go = 1;
-
-d_now   = d_TIMER1;
-while ( d_TIMER1-d_now < 10000 )   // Async section
-   {
-// d_debug[0] = d_TIMER1;
-// d_debug[1] = d_now;
-   display_next_bg();
-   }
-d_now   = d_TIMER1;
+wait(1,SEC);
 
 #ifdef POLOLU
 while (console_special); /* wait for ready */ console_special = pololu;
@@ -1314,7 +1248,7 @@ while (console_special); /* wait for ready */ console_special = dip328p;
 #endif
 
 d_debug[14]=0x3333;
-wait(5,SEC);
+wait(2,SEC);
 
 d_now   = d_TIMER1;
 for(iii=0;iii<16;iii++) histogram[iii]=0;
@@ -1353,7 +1287,6 @@ while (1 )
    {
    d_debug[14]=0xAAAA;
    d_now   = d_TIMER1;
-   d_debug[2] = d_now;
    wait(1,SEC);
    d_debug[14]=0xBBBB;
    d_now   = d_TIMER1;
@@ -1367,21 +1300,23 @@ while(1);
 
 return 0;
 }
-#endif
 
 int main(void)
 {
-#ifdef MAIN_TELESCOPE
-main_telescope();  // Logic Detector
-#endif
-#ifdef MAIN_VT_TEST
-main_vt_test();    // To test VT100 codes
-#endif
+main_telescope(); 
 return 0;
 }
 
 /*
 $Log: telescope.c,v $
+Revision 1.16  2011/12/13 04:50:35  pmichel
+Dead band done
+Be careful when using goto position, if you specify -VALUE
+and if happens that it's outside the dead band, you might not get the proper value
+always use TICKS_P_DAY - VALUE for negative values
+
+As for AP0, the thing becomes very unstable when AP0 is active
+
 Revision 1.15  2011/12/13 02:30:45  pmichel
 Starting to process the dead band
 
