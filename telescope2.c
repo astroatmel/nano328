@@ -1,10 +1,34 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/11 19:24:02 $
-$Id: telescope.c,v 1.13 2011/12/11 19:24:02 pmichel Exp pmichel $
+$Date: 2011/12/12 04:19:54 $
+$Id: telescope.c,v 1.14 2011/12/12 04:19:54 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.13 $
+$Revision: 1.14 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
+
+TODO:
+- handle the dead part above 9600*200*6*360 in both direction
+- process RETURN as command complete
+- display command on LCD
+- Display Galaxy and Input text only on change
+- decode modes:  GOTO / MOVEMENT / DIRCTORY
+- decode command directory_mode       [SEARCH]              (DIRECTORY MODE : search in the star catalog)
+- decode command next_star            [VOL +-]              (DIRECTORY MODE)
+- decode command next_constellation   [CH  +-]              (DIRECTORY MODE) 
+- decode command go_star              [PLAY]                (DIRECTORY MODE : go to the selected star) 
+- decode command set_star             [RECORD]              (DIRECTORY MODE : the current H/W position is the corrected position for the active star) 
+- decode command accel_mode           [SPEED + use arrows]  (MOVEMENT MODE : slew position)
+- decode command stop                 [OK]                  (MOVEMENT MODE : slew to a stop)
+- decode command next_star            [VOL +-]              (MOVEMENT MODE : slew to the next start)
+- decode command next_constellation   [CH  +-]              (MOVEMENT MODE : slew to the next start in the next constellation) 
+- decode command go_mode              [GO BACK]             (GOTO MODE : enter manual coordinate)
+- decode command go_ra                [VOL+- + numbers]     (GOTO MODE : manual goto ex: CH+ 0130 means : North 1 deg 30 minutes 00.00 sec)
+- decode command go_dec               [CH+- + numbers]      (GOTO MODE)
+- decode IR
+- do banding in SP0 to handle both axis and not burn too much CPU time
+
+
+
 */
 #define MAIN_TELESCOPE
 #define AP0_DISPLAY 1
@@ -25,6 +49,8 @@ $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 #define DO_RA_STEP       IO_D7
 #define DO_DEC_STEP      IO_B4
 #define DO_10KHZ         IO_B2
+
+#define DI_REMOTE        IO_C3
 
 #define ADC6C            6
 #define AI_COMMAND       ADC6C
@@ -56,6 +82,7 @@ $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 ///       = 9600 * 200 steps                  1 Step  = 0.045 Sec
 ///
 #define TICKS_P_STEP     (6*360)                            // 2160           // 2160 which is easy to sub divide without fractions
+#define TICKS_P_DAY      (9600UL*200UL*TICKS_P_STEP      )  // 4147200000     // One day = 360deg = 9600*200 micro steps
 #define TICKS_P_DEG      (9600UL*200UL*TICKS_P_STEP/360UL)  // 11520000       // One day = 360deg = 9600*200 steps
 #define TICKS_P_180_DEG  (9600UL*200UL*TICKS_P_STEP/2UL  )  // 2073600000     // One day = 360deg = 9600*200 micro steps
 #define TICKS_P_DEG_MIN  (TICKS_P_DEG/60UL)                 // 192000         // 
@@ -93,7 +120,7 @@ PROGMEM const char pololu[]={"\
            PB1  < 04   IO/PWM             21 >  M2A\012\015\
 10Khz Out  PB2  < 05   IO/PWM     AI/IO   20 >  PC5 (ADC5/SCL)\012\015\
 DEC_STEP   PB4  < 06   IO         AI/IO   19 >  PC4 (ADC4/SDA)\012\015\
-           PB5  < 07   IO         AI/IO   18 >  PC3 (ADC3)\012\015\
+           PB5  < 07   IO         AI/IO   18 >  PC3 (ADC3) IR REMOTE \012\015\
 DI RX232   PD0  < 08   IO         AI/IO   17 >  PC2 (ADC2)\012\015\
 DO TX232   PD1  < 09   IO         AI/IO   16 >  PC1 (ADC1)\012\015\
 DISABLE    PD2  < 10   IO         AI/IO   15 >  PC0 (ADC0)\012\015\
@@ -121,21 +148,29 @@ PROGMEM const char dip328p[]={"\
                             -----------\012\015\
 "};
 
-PROGMEM const char *pgm_constellation[]={ "Orion",  // 0 = Orion
+PROGMEM const char *pgm_constellation[4]={ "Orion",  // 0 = Orion
                                           "Lyra",   // 1 = Lyra
                                           "Gynus",  // 2 = Gynus
                                           0         // Last = NULL
                                         };
-PROGMEM const char *pgm_stars_name[]   ={ "\000Betelgeuse (Red)",     // \000 = Orion
-                                          "\000Bellatrix",            // \000 = Orion
-                                          "\000Saiph",                // \000 = Orion
+PROGMEM const char *pgm_stars_name[6]   ={ "\000Betelgeuse (Red)",     // \000 = Orion
                                           "\000Rigel (Blue)",         // \000 = Orion
                                           "\001Vega",                 // \001 = Lyra
                                           "\002Deneb",                // \002 = Gynus
                                           "\002Sadr",                 // \002 = Gynus
-                                          "\002Albireo",              // \002 = Gynus
                                           0
                                         };
+                                       //   RA                                                DEC
+PROGMEM const unsigned long pgm_stars_pos[] =
+                    { ( 5*TICKS_P_HOUR+55*TICKS_P_MIN+10.3*TICKS_P_SEC), (  7*TICKS_P_DEG+24*TICKS_P_DEG_MIN+25  *TICKS_P_DEG_SEC),     // Betelgeuse
+                      ( 5*TICKS_P_HOUR+14*TICKS_P_MIN+32.3*TICKS_P_SEC), (  8*TICKS_P_DEG+12*TICKS_P_DEG_MIN+ 6  *TICKS_P_DEG_SEC),     // Rigel
+                      (18*TICKS_P_HOUR+36*TICKS_P_MIN+56.3*TICKS_P_SEC), ( 38*TICKS_P_DEG+47*TICKS_P_DEG_MIN+ 3  *TICKS_P_DEG_SEC),     // Vega
+                      (20*TICKS_P_HOUR+41*TICKS_P_MIN+25.9*TICKS_P_SEC), ( 45*TICKS_P_DEG+16*TICKS_P_DEG_MIN+49  *TICKS_P_DEG_SEC),     // Deneb
+                      (20*TICKS_P_HOUR+22*TICKS_P_MIN+13.7*TICKS_P_SEC), ( 40*TICKS_P_DEG+15*TICKS_P_DEG_MIN+24  *TICKS_P_DEG_SEC),     // Sadr
+                      0,0 // last one
+                    };
+short cur_const=1,cur_star=2;
+
 short kkkk;
 PROGMEM const char str_debug[][10]={ " debug0:", " debug1:"," debug2:"," debug3:"," debug4:"," debug5:"," debug6:"," debug7:"," debug8:"," debug9:"};
 PROGMEM const char str_hist[][11]={" Hist0:", " Hist1:"," Hist2:"," Hist3:"," Hist4:"," Hist5:"," Hist6:"," Hist7:"," Hist8:"," Hist9:"," Hist10:"};
@@ -195,7 +230,7 @@ unsigned short console_idx=0;                    // when 0, we are not currently
 //22|          DATE/TIME: 2011/JAN/27  11h23m32s                                                                                                                       
 //23|   CURRENT LOCATION: (N)-90 59'59.0"  (W)-179 59'59.0"                                                                                 
 //24|        POLAR ERROR: (N)-90 59'59.0"  (W)-179 59'59.0"                                                                
-//25|      STAR POSITION: (N)-90 59'59.0"  (W)-179 59'59.0"  23h59m59.000s  0x12345678 / 0x12345678                                         
+//25|       SKY POSITION: (N)-90 59'59.0"  (W)-179 59'59.0"  23h59m59.000s  0x12345678 / 0x12345678                                         
 //26| CORRECTED STAR POS: (N)-90 59'59.0"  (W)-179 59'59.0"  23h59m59.000s  0x12345678 / 0x12345678                                       
 //27|      TELESCOPE POS: (N)-90 59'59.0"  (W)-179 59'59.0"  23h59m59.000s  0x12345678 / 0x12345678                                       
 //28|       NEAREST STAR: BETLEGEUSE       / ORION         
@@ -223,7 +258,7 @@ PROGMEM const char display_main[]={"\012\015\
           DATE/TIME: \012\015\
    CURRENT LOCATION: \012\015\
         POLAR ERROR: \012\015\
-      STAR POSITION: \012\015\
+       SKY POSITION: \012\015\
  CORRECTED STAR POS: \012\015\
       TELESCOPE POS: \012\015\
        NEAREST STAR: \012\015\
@@ -498,6 +533,7 @@ else if ( fmt == FMT_NS || fmt == FMT_EW )  // North South / East Weast     > (N
       else                 str[iii++] = 'E';
       str[iii++] = ')'; 
       str[iii++] = ' '; 
+      if ( fmt == FMT_NS && value>TICKS_P_DEG*90) value = TICKS_P_180_DEG-value;
       }
    else
       {
@@ -505,12 +541,13 @@ else if ( fmt == FMT_NS || fmt == FMT_EW )  // North South / East Weast     > (N
       else                 str[iii++] = 'W';
       str[iii++] = ')'; 
       str[iii++] = '-'; 
-      value = TICKS_P_180_DEG - value;
+      value = TICKS_P_DAY - value;
+      if ( fmt == FMT_NS && value>TICKS_P_DEG*90) value = TICKS_P_180_DEG-value;
       } 
 
    vvv = value / TICKS_P_DEG; 
    value -= vvv * TICKS_P_DEG;
-   if ( vvv>180 ) {vvv=180;prob|=0x1000;}
+   if ( vvv>180 ) {vvv=180;prob|=0x2000;}
 
    if ( fmt == FMT_EW )str[iii++] = (vvv/100) + '0';     // 100 deg
    str[iii++] = (vvv/10)%10 + '0'; 
@@ -521,7 +558,7 @@ else if ( fmt == FMT_NS || fmt == FMT_EW )  // North South / East Weast     > (N
 
    vvv = value / TICKS_P_DEG_MIN ;
    value -= vvv * TICKS_P_DEG_MIN;
-   if ( vvv>=60 ) {vvv=59;prob|=0x100;}
+   if ( vvv>=60 ) {vvv=59;prob|=0x200;}
    str[iii++] = (vvv/10)%10 + '0'; 
    str[iii++] = (vvv)%10    + '0'; 
 
@@ -529,14 +566,14 @@ else if ( fmt == FMT_NS || fmt == FMT_EW )  // North South / East Weast     > (N
    
    vvv = value / TICKS_P_DEG_SEC ;
    value -= vvv * TICKS_P_DEG_SEC;
-   if ( vvv>=60 ) {vvv=59;prob|=0x10;}
+   if ( vvv>=60 ) {vvv=59;prob|=0x20;}
    str[iii++] = (vvv/10)%10 + '0'; 
    str[iii++] = (vvv)%10    + '0'; 
 
    str[iii++] = '.';  
 
    vvv = (10*value) / TICKS_P_DEG_SEC ;
-   if ( vvv>=10 ) {vvv=9;prob|=0x1;}
+   if ( vvv>=10 ) {vvv=9;prob|=0x2;}
    str[iii++] = (vvv)%10 + '0'; 
 
    str[iii++] = '"';  
@@ -646,7 +683,7 @@ static unsigned char  console_special_started=0;
 static unsigned short d_idx=0;
 unsigned char Next=0;
 unsigned char CCC;
-long tmp=0;
+long ltmp,tmp=0;
 short stmp=0;
 
 // process RX
@@ -790,25 +827,39 @@ else // print field data
 
          if ( d_task == NB_DTASKS + 33 ) DISPLAY_DATA( 35,22,0,FMT_HMS,8,seconds,l_seconds);
 
-         if ( d_task == NB_DTASKS + 34 ) DISPLAY_DATA( 22,25,0,FMT_NS,0,dec_pos,l_dec_pos);           // STAR POSITION
-         if ( d_task == NB_DTASKS + 35 ) DISPLAY_DATA( 39,25,0,FMT_EW,0,ra_pos,l_ra_pos1);            // STAR POSITION
-         if ( d_task == NB_DTASKS + 36 ) DISPLAY_DATA( 57,25,0,FMT_RA,0,ra_pos,l_ra_pos2);            // STAR POSITION
+         if ( d_task == NB_DTASKS + 34 ) DISPLAY_DATA( 22,25,0,FMT_NS,0,dec_pos,l_dec_pos);           // SKY POSITION
+         if ( d_task == NB_DTASKS + 35 ) DISPLAY_DATA( 39,25,0,FMT_EW,0,ra_pos,l_ra_pos1);            // SKY POSITION
+         if ( d_task == NB_DTASKS + 36 ) DISPLAY_DATA( 57,25,0,FMT_RA,0,ra_pos,l_ra_pos2);            // SKY POSITION
 
          if ( d_task == NB_DTASKS + 37 ) DISPLAY_DATA( 22,26,0,FMT_NS,0,dec_pos_cor,l_dec_pos_cor);   // CORRECTED STAR POSITION
          if ( d_task == NB_DTASKS + 38 ) DISPLAY_DATA( 39,26,0,FMT_EW,0,ra_pos_cor,l_ra_pos_cor1);    // CORRECTED STAR POSITION
          if ( d_task == NB_DTASKS + 39 ) DISPLAY_DATA( 57,26,0,FMT_RA,0,ra_pos_cor,l_ra_pos_cor2);    // CORRECTED STAR POSITION
 
-         if ( d_task == NB_DTASKS + 40 ) DISPLAY_DATA( 22,27,0,FMT_NS,0,dec_pos_hw,l_dec_pos_hw);     // TELESCOPE POSITION
-         if ( d_task == NB_DTASKS + 41 ) DISPLAY_DATA( 39,27,0,FMT_EW,0,ra_pos_hw,l_ra_pos_hw1);      // TELESCOPE POSITION
-         if ( d_task == NB_DTASKS + 42 ) DISPLAY_DATA( 57,27,0,FMT_RA,0,ra_pos_hw,l_ra_pos_hw2);      // TELESCOPE POSITION
+//       if ( d_task == NB_DTASKS + 40 ) DISPLAY_DATA( 22,27,0,FMT_NS,0,dec_pos_hw,l_dec_pos_hw);     // TELESCOPE POSITION
+//       if ( d_task == NB_DTASKS + 41 ) DISPLAY_DATA( 39,27,0,FMT_EW,0,ra_pos_hw,l_ra_pos_hw1);      // TELESCOPE POSITION
+//       if ( d_task == NB_DTASKS + 42 ) DISPLAY_DATA( 57,27,0,FMT_RA,0,ra_pos_hw,l_ra_pos_hw2);      // TELESCOPE POSITION
 
          stmp = (short)rs232_rx_buf;
-         if ( d_task == NB_DTASKS + 43 ) DISPLAY_DATA( 14,41,0,FMT_STR,0,stmp,tmp);
+         if ( d_task == NB_DTASKS + 40 ) DISPLAY_DATA( 14,41,0,FMT_STR,0,stmp,tmp);
 
-         stmp = (short)pgm_constellation[0];
-         if ( d_task == NB_DTASKS + 44 ) DISPLAY_DATA( 22,28,0,FMT_STR,0,stmp,tmp);
+         stmp = pgm_constellation[cur_const];
+d_debug[0] =  pgm_read_dword(pgm_constellation[cur_const]);
+d_debug[1] =  pgm_read_dword(d_debug[0]);
+         if ( d_task == NB_DTASKS + 41 ) DISPLAY_DATA( 22,28,0,PGM_STR,0,stmp,tmp);
+         stmp = pgm_stars_name;
+d_debug[8] =  pgm_stars_name;
+d_debug[9] =  pgm_stars_name+cur_star;
+         if ( d_task == NB_DTASKS + 42 ) DISPLAY_DATA( 39,28,0,PGM_STR,0,stmp,tmp);
 
-         if ( d_task == NB_DTASKS + 45 ) { first = 0 ; d_task = NB_DTASKS; }
+         ltmp = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);  tmp=0;
+         if ( d_task == NB_DTASKS + 43 ) DISPLAY_DATA( 22,29,0,FMT_NS,0,ltmp,tmp);      // NEAREAST STAR POSITION
+         ltmp = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);  tmp=0;
+         if ( d_task == NB_DTASKS + 44 ) DISPLAY_DATA( 39,29,0,FMT_EW,0,ltmp,tmp);      // NEAREAST STAR POSITION
+                                                              tmp=0;
+         if ( d_task == NB_DTASKS + 45 ) DISPLAY_DATA( 57,29,0,FMT_RA,0,ltmp,tmp);      // NEAREAST STAR POSITION
+
+
+         if ( d_task == NB_DTASKS + 46 ) { first = 0 ; d_task = NB_DTASKS; }
          else                            Next = rs232_tx_buf[rs232_tx_idx++];
          }
       }
@@ -1295,6 +1346,10 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.14  2011/12/12 04:19:54  pmichel
+Now using 6*360 ticks per steps
+and all the math is so much easyer now
+
 Revision 1.13  2011/12/11 19:24:02  pmichel
 Version that uses 2^32 full span
 but I see more problems than benefits
