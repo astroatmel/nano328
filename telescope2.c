@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/13 04:50:35 $
-$Id: telescope.c,v 1.16 2011/12/13 04:50:35 pmichel Exp pmichel $
+$Date: 2011/12/13 06:08:25 $
+$Id: telescope.c,v 1.17 2011/12/13 06:08:25 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.16 $
+$Revision: 1.17 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -84,9 +84,7 @@ TODO:
 #define TICKS_P_MIN      (TICKS_P_HOUR/60UL)                // 2880000        // 
 #define TICKS_P_SEC      (TICKS_P_HOUR/3600UL)              // 48000          // 
 
-#define DEC_ONE_STEP     (TICKS_P_STEP*2)
-#define RA_MAX_SPEED     (TICKS_P_STEP-TICKS_P_STEP/EARTH_COMP-2)
-#define DEC_MAX_SPEED    (DEC_ONE_STEP-2)
+#define MAX_SPEED        (TICKS_P_STEP-TICKS_P_STEP/EARTH_COMP-2)
 
 // This macro makes sure we never stay in the dead band
 #define ADD_VALUE_TO_POS(VALUE,POS)                                         \
@@ -98,6 +96,33 @@ if ( (unsigned long)(POS) >= TICKS_P_DAY )   /* we are in the dead band */  \
    else             POS -= DEAD_BAND; /* step over the dead band */         \
    }                                                                        \
 }
+
+// I define: 
+// A step is a pure step from the motor (only one coil is 100% ON at a time)        200 steps = 1 full turn ... with the gear ratio : 1000 steps = 1 full turn = 3 deg (ra) = 12 minutes  
+// A microstep is 1/16th of a step and is managed by the stepper motor controller   16 microstep = 1 step
+// A TICK is the name I use for the fraction of microsteps,                         2160 ticks = 1 microstep 
+
+typedef struct   // those values are required per axis to be able to execute goto commands
+   {             // I use a structure so that both DEC and RA axis can use the exact same routines
+   char  deg_per_rev;      // units: deg/knob rev ; when the axis's know is turned one full turn, how much does the telescope move 
+   char  accel;            // units: nanostep per iteration per iteration
+   char  accel_seq;        // no units (it's the sequence counter)
+   long  pos_initial;      // units: ticks
+   long  pos_target;       // units: ticks
+   long  pos_delta;        // units: ticks (it's the required displacement: pos_target-pos_initial)
+   long  pos;              // units: ticks (this is the current sky position)
+   long  pos_dem;          // units: ticks (demanded position = sky position + Earth compensation)
+   long  pos_cor;          // units: ticks (corrected demmanded position using polar error)
+   long  pos_hw;           // units: ticks (current position of the tube, this value should be the same as the corrected position) 
+   long  pos_earth;        // units: ticks (it's the calculation of the ticks caused by the earth's rotation)
+   long  pos_part1;        // units: ticks (it's ths total amount of displacement during acceleration)
+   long  speed;            // units: ticks per iteration
+   long  last_high_speed;  // units: ticks per iteration 
+   char  goto_cmd;         // no units (it's to tell the function to start a goto command)
+   char  state;            // no units                     
+   } AXIS;
+AXIS ra;
+AXIS dec;
 
 
 enum 
@@ -191,13 +216,6 @@ long seconds=0,l_seconds;
 volatile long d_debug[16], l_debug[16];
 unsigned short histogram[16],l_histogram[16],histo_sp0=1; // place to store histogram of 10Khz interrupt routine
 
-//   pos       = a long word : 0x00000000 = 0 deg  0x80000000 = 180 deg
-//   pos_hw    = current hardware pos and a pulse is generated each time a change is required
-//   pos_cor   = corrected pos = correction(pos_dem)  -> this compensate for the mis-polar-alignment of the telesctope
-//   pos_dem   = demmanded pos = pos + earth correction
-//   pos_earth = correction due to earth movement
-long  ra_pos=0, ra_pos_hw=0, ra_pos_cor=0, ra_pos_dem=0, ra_pos_earth=0, ra_pos_star=0, ra_accel=0, ra_speed=0;   // Right Assension parameters
-long dec_pos=0,dec_pos_hw=0,dec_pos_cor=0,dec_pos_dem=0,dec_pos_earth=0,dec_pos_star=0,dec_accel=0,dec_speed=0;   // Declinasion parameters        
 long l_ra_pos1,l_ra_pos2,l_dec_pos,l_ra_pos_hw,l_ra_pos_hw1,l_ra_pos_hw2,l_dec_pos_hw;
 long l_ra_pos_cor1,l_ra_pos_cor2,l_dec_pos_cor;
 long  ra_unit_step;  // One step on the step motor is equal to what in 32 bit angle
@@ -830,17 +848,17 @@ else // print field data
 
          if ( d_task == NB_DTASKS + 33 ) DISPLAY_DATA( 35,22,0,FMT_HMS,8,seconds,l_seconds);
 
-         if ( d_task == NB_DTASKS + 34 ) DISPLAY_DATA( 22,25,0,FMT_NS,0,dec_pos,l_dec_pos);           // SKY POSITION
-         if ( d_task == NB_DTASKS + 35 ) DISPLAY_DATA( 39,25,0,FMT_EW,0,ra_pos,l_ra_pos1);            // SKY POSITION
-         if ( d_task == NB_DTASKS + 36 ) DISPLAY_DATA( 57,25,0,FMT_RA,0,ra_pos,l_ra_pos2);            // SKY POSITION
+         if ( d_task == NB_DTASKS + 34 ) DISPLAY_DATA( 22,25,0,FMT_NS,0,dec.pos,l_dec_pos);           // SKY POSITION
+         if ( d_task == NB_DTASKS + 35 ) DISPLAY_DATA( 39,25,0,FMT_EW,0,ra.pos,l_ra_pos1);            // SKY POSITION
+         if ( d_task == NB_DTASKS + 36 ) DISPLAY_DATA( 57,25,0,FMT_RA,0,ra.pos,l_ra_pos2);            // SKY POSITION
 
-         if ( d_task == NB_DTASKS + 37 ) DISPLAY_DATA( 22,26,0,FMT_NS,0,dec_pos_cor,l_dec_pos_cor);   // CORRECTED STAR POSITION
-         if ( d_task == NB_DTASKS + 38 ) DISPLAY_DATA( 39,26,0,FMT_EW,0,ra_pos_cor,l_ra_pos_cor1);    // CORRECTED STAR POSITION
-         if ( d_task == NB_DTASKS + 39 ) DISPLAY_DATA( 57,26,0,FMT_RA,0,ra_pos_cor,l_ra_pos_cor2);    // CORRECTED STAR POSITION
+         if ( d_task == NB_DTASKS + 37 ) DISPLAY_DATA( 22,26,0,FMT_NS,0,dec.pos_cor,l_dec_pos_cor);   // CORRECTED STAR POSITION
+         if ( d_task == NB_DTASKS + 38 ) DISPLAY_DATA( 39,26,0,FMT_EW,0,ra.pos_cor,l_ra_pos_cor1);    // CORRECTED STAR POSITION
+         if ( d_task == NB_DTASKS + 39 ) DISPLAY_DATA( 57,26,0,FMT_RA,0,ra.pos_cor,l_ra_pos_cor2);    // CORRECTED STAR POSITION
 
-         if ( d_task == NB_DTASKS + 40 ) DISPLAY_DATA( 22,27,0,FMT_NS,0,dec_pos_hw,l_dec_pos_hw);     // TELESCOPE POSITION
-         if ( d_task == NB_DTASKS + 41 ) DISPLAY_DATA( 39,27,0,FMT_EW,0,ra_pos_hw,l_ra_pos_hw1);      // TELESCOPE POSITION
-         if ( d_task == NB_DTASKS + 42 ) DISPLAY_DATA( 57,27,0,FMT_RA,0,ra_pos_hw,l_ra_pos_hw2);      // TELESCOPE POSITION
+         if ( d_task == NB_DTASKS + 40 ) DISPLAY_DATA( 22,27,0,FMT_NS,0,dec.pos_hw,l_dec_pos_hw);     // TELESCOPE POSITION
+         if ( d_task == NB_DTASKS + 41 ) DISPLAY_DATA( 39,27,0,FMT_EW,0,ra.pos_hw,l_ra_pos_hw1);      // TELESCOPE POSITION
+         if ( d_task == NB_DTASKS + 42 ) DISPLAY_DATA( 57,27,0,FMT_RA,0,ra.pos_hw,l_ra_pos_hw2);      // TELESCOPE POSITION
 
          stmp = (short)rs232_rx_buf;
          if ( d_task == NB_DTASKS + 43 ) DISPLAY_DATA( 14,41,0,FMT_STR,0,stmp,tmp);
@@ -946,19 +964,17 @@ set_digital_output(DO_RA_STEP,0);    // eventually, I should use my routines...f
 set_digital_output(DO_DEC_STEP,0);   // eventually, I should use my routines...flush polopu...
 set_digital_output(DO_DISABLE  ,motor_disable);   
 
-temp = ra_pos_hw-ra_pos_cor;
+temp = ra.pos_hw-ra.pos_cor;
 if ( temp >= TICKS_P_STEP )
    {
    set_digital_output(DO_RA_DIR,0); // go backward
-   //ra_pos_hw -= TICKS_P_STEP;
-   ADD_VALUE_TO_POS(-TICKS_P_STEP,ra_pos_hw);
+   ADD_VALUE_TO_POS(-TICKS_P_STEP,ra.pos_hw);
    ra_next=1;
    }
 else if ( -temp >= TICKS_P_STEP )
    {
    set_digital_output(DO_RA_DIR,1); // go forward
-   //ra_pos_hw += TICKS_P_STEP;
-   ADD_VALUE_TO_POS(TICKS_P_STEP,ra_pos_hw);
+   ADD_VALUE_TO_POS(TICKS_P_STEP,ra.pos_hw);
    ra_next=1;
    }
 else
@@ -967,33 +983,9 @@ else
    }
 }
 
-typedef struct   // those values are required per axis to be able to execute goto commands
-   {             // I use a structure so that both DEC and RA axis can use the exact same routines
-   short max_speed;        // units: nanostep per iteration       // A step is a pure step from the motor (only one coil is 100% ON at a time)
-   short one_step;         // units: nanostep                     // A microstep is 1/16th of a step and is managed by the stepper motor controller
-   char  deg_per_rev;      // units: deg/knob rev ; when the axis's know is turned one full turn, how much does the telescope move 
-   char  accel_period;     // no units (it how many iteration between speed re-calculation)
-   char  accel;            // units: nanostep per iteration per iteration
-   char  accel_seq;        // no units (it's the sequence counter)
-   long  pos;              // units: nanostep
-   long  pos_initial;      // units: nanostep
-   long  pos_target;       // units: nanostep
-   long  pos_delta;        // units: nanostep (it's the required displacement: pos_target-pos_initial)
-   long  pos_part1;        // units: nanostep (it's ths total amount of displacement during acceleration)
-   long  speed;            // units: nanostep per iteration
-   long  last_high_speed;  // units: nanostep per iteration       // I define:       [of course the "nanostep" below is not really nano (10^-9)   ]
-   char  goto_cmd;         // no units (it's to tell the function to start a goto command)
-   char  state;            // no units                            // A nanostep is the full telescope 360/2^32 ... on the RA axis, 1 microstep ~= 2236.962 nanosteps
-   } AXIS;
-AXIS ra ={RA_MAX_SPEED ,TICKS_P_STEP ,RA_DEG_P_REV ,ACCEL_PERIOD};
-AXIS dec={DEC_MAX_SPEED,DEC_ONE_STEP,DEC_DEG_P_REV,ACCEL_PERIOD};
-
 short process_goto(AXIS *axis, long goto_pos, char goto_cmd)
 {
 long temp_abs;
-axis->max_speed    = RA_MAX_SPEED;
-axis->one_step     = TICKS_P_STEP;
-axis->accel_period = ACCEL_PERIOD;
 
 if      ( axis->state == 0 ) // idle
    {
@@ -1004,7 +996,7 @@ else if ( axis->state == 1 ) // setup the goto
    axis->pos_initial  = axis->pos; 
    axis->pos_target   = goto_pos;
    axis->pos_delta    = axis->pos_target - axis->pos_initial;
-   axis->accel_period = 0;  // reset the sequence 
+   axis->accel_seq    = 0;  // reset the sequence 
    if ( axis->pos_target - axis->pos_initial > 0 ) axis->accel =  10; // going forward
    else                                            axis->accel = -10; // going backward
    if ( axis->pos_delta > 0 ) axis->pos_delta =  axis->pos_delta;
@@ -1020,9 +1012,9 @@ else if ( axis->state == 2 )  // detect max speed, or halway point
    if ( temp_abs >= axis->pos_delta ) // we reached the mid point
       {
       axis->state = 4; // decelerate
-      axis->accel_period = axis->accel_period - axis->accel_seq;  // reverse the last plateau
+      axis->accel_seq = ACCEL_PERIOD - axis->accel_seq;  // reverse the last plateau
       }
-   if ( axis->speed == axis->max_speed || -axis->speed == axis->max_speed ) // reached steady state
+   if ( axis->speed == MAX_SPEED || -axis->speed == MAX_SPEED ) // reached steady state
       {
       axis->state = 3; // cruise
       }
@@ -1035,7 +1027,7 @@ else if ( axis->state == 3 )  // cruise speed
    if ( temp_abs >= axis->pos_delta ) // we reached the end of the cruise period
       {
       axis->state = 4; // decelerate
-      axis->accel_period = 0;  // reset the sequence 
+      axis->accel_seq = 0;  // reset the sequence 
       }
    }
 else if ( axis->state == 4 )  // set deceleration
@@ -1060,7 +1052,7 @@ else if ( axis->state == 6 )  // done, since the math is far from perfect, we of
    if ( abs < 0 )              abs = -abs;
    if ( tmp > 0 )              axis->speed = -100; // we went a bit too far, slowly go back
    else                        axis->speed =  100; // we stopped short, sloly go forward
-   if ( abs < axis->one_step ) axis->state = 7;    // we are very close, we are done
+   if ( abs < TICKS_P_STEP   ) axis->state = 7;    // we are very close, we are done
    }
 else if ( axis->state == 7 )  // done, since the math is far from perfect, we often are not at the exact spod
    {
@@ -1073,14 +1065,14 @@ g_ra_pos_part1 = axis->pos_part1;
 
 /////// do the math...
 axis->accel_seq++;
-if ( axis->accel_seq > axis->accel_period )
+if ( axis->accel_seq > ACCEL_PERIOD )
    {
    axis->accel_seq = 0;
    axis->speed += axis->accel;
-   if (  axis->speed > axis->max_speed && axis->accel > 0 ) axis->accel = 0;
-   if (  axis->speed > axis->max_speed )                    axis->speed = axis->max_speed;
-   if ( -axis->speed > axis->max_speed && axis->accel < 0 ) axis->accel = 0;
-   if ( -axis->speed > axis->max_speed )                    axis->speed = -axis->max_speed;
+   if (  axis->speed > MAX_SPEED && axis->accel > 0 ) axis->accel =  0;
+   if (  axis->speed > MAX_SPEED )                    axis->speed =  MAX_SPEED;
+   if ( -axis->speed > MAX_SPEED && axis->accel < 0 ) axis->accel =  0;
+   if ( -axis->speed > MAX_SPEED )                    axis->speed = -MAX_SPEED;
    }
 //axis->pos += axis->speed;
 ADD_VALUE_TO_POS(axis->speed,axis->pos);
@@ -1106,27 +1098,23 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
    ///////////// Process earth compensation
    // this takes a lot of time . . . .:earth_comp = (earth_comp+1)%EARTH_COMP;
    earth_comp++ ; if ( earth_comp == EARTH_COMP ) earth_comp = 0;
-   //if ( earth_comp == 0 ) ra_pos_earth += TICKS_P_STEP;    // Correct for the Earth's rotation
-   if ( earth_comp == 0 ) ADD_VALUE_TO_POS(TICKS_P_STEP,ra_pos_earth);    // Correct for the Earth's rotation
+   if ( earth_comp == 0 ) ADD_VALUE_TO_POS(TICKS_P_STEP,ra.pos_earth);    // Correct for the Earth's rotation
    
    ///////////// Process goto
    
    process_goto(&ra,goto_ra_pos,goto_cmd);
    
-   ra_pos = ra.pos;
-   ra_accel = ra.accel;
-   ra_speed = ra.speed;
    if ( ra.state !=0 ) goto_cmd=0;
    if ( (ra.state == 0) && (dec.state == 0)) moving=0;
    else                                      moving=1;  // we are still moving 
    
-   ra_pos_dem = ra_pos_earth + ra.pos;
-   ra_pos_cor = ra_pos_dem;  // for now, no correction
+   ra.pos_dem = ra.pos_earth + ra.pos;
+   ra.pos_cor = ra.pos_dem;  // for now, no correction
    
-d_debug[4]=ra_speed;
-d_debug[5]=ra_pos;
-d_debug[6]=ra_pos_dem;
-d_debug[7]=ra_pos_hw;
+d_debug[4]=ra.speed;
+d_debug[5]=ra.pos;
+d_debug[6]=ra.pos_dem;
+d_debug[7]=ra.pos_hw;
 d_debug[13]=goto_cmd + 0x100*moving;
 d_debug[15]=ra.state;
    // This below does work and proves that the Step outputs do work
@@ -1309,6 +1297,9 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.17  2011/12/13 06:08:25  pmichel
+Little hack to be able to store the stars
+
 Revision 1.16  2011/12/13 04:50:35  pmichel
 Dead band done
 Be careful when using goto position, if you specify -VALUE
