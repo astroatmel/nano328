@@ -1,12 +1,14 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/13 06:08:25 $
-$Id: telescope.c,v 1.17 2011/12/13 06:08:25 pmichel Exp pmichel $
+$Date: 2011/12/14 04:18:49 $
+$Id: telescope.c,v 1.18 2011/12/14 04:18:49 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.17 $
+$Revision: 1.18 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
+- add a panic button that stops a movement (without the need to reset and loose everything)
+- add a way to change the direction of movement, when going to far positions, the tube might start to turn the wring way (shortedt path)
 - process RETURN as command complete
 - display command on LCD
 - Display Galaxy and Input text only on change
@@ -38,14 +40,46 @@ TODO:
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
-#define DO_DISABLE       IO_D2
-#define DO_RA_DIR        IO_D4
-#define DO_RA_STEP       IO_D7
-#define DO_DEC_STEP      IO_B4
-#define DO_10KHZ         IO_B2
-#define DI_REMOTE        IO_C3
 #define ADC6C            6
-#define AI_COMMAND       ADC6C
+#define AI_BATTERY       ADC6C
+
+#define DO_10KHZ         IO_B2
+#define DI_REMOTE        IO_D7
+#define DO_DISABLE       IO_D4
+
+#define DO_RA_DIR        IO_C3  // 0x11   17
+#define DO_RA_STEP       IO_C2  // 0x10   16
+#define DO_DEC_DIR       IO_C1  // 0x0F   15
+#define DO_DEC_STEP      IO_C0  // 0x0E   14
+
+char fast_portc=0;
+// Use all pins of PORTB for fast outputs  ... B0 B1 cant be used, and B4 B5 causes problem at download time
+#define FAST_SET_RA_DIR_(VAL)                   \
+   {                                           \
+   set_digital_output(DO_RA_DIR  ,VAL    );    \
+   }
+#define FAST_SET_RA_STEP_(VAL)                  \
+   {                                           \
+   set_digital_output(DO_RA_STEP ,VAL    );    \
+   }
+#define FAST_SET_RA_DIR(VAL)                   \
+   {                                           \
+   if ( VAL ) PORTC |= (1<<DO_RA_DIR);      /* Set   C3 */   \
+   else       PORTC &= 255-(1<<DO_RA_DIR);  /* Reset C3 */   \
+   }
+#define FAST_SET_RA_STEP(VAL)                  \
+   {                                           \
+   if ( VAL ) PORTC |= (1<<DO_RA_STEP);      /* Set   C2 */   \
+   else       PORTC &= 255-(1<<DO_RA_STEP);  /* Reset C2 */   \
+   }
+#define FAST_SET_DEC_DIR(VAL)                  \
+   {                                           \
+   set_digital_output(DO_DEC_DIR  ,VAL    );   \
+   }
+#define FAST_SET_DEC_STEP(VAL)                 \
+   {                                           \
+   set_digital_output(DO_DEC_STEP ,VAL    );   \
+   }
  
 ////////////////////////////////// DEFINES /////////////////////////////////////   TICKS_P_STEP * 16 * GEAR_BIG/GEAR_SMALL * STEP_P_REV / RA_DEG_P_REV
 #define F_CPU_K          20000
@@ -104,9 +138,6 @@ if ( (unsigned long)(POS) >= TICKS_P_DAY )   /* we are in the dead band */  \
 
 typedef struct   // those values are required per axis to be able to execute goto commands
    {             // I use a structure so that both DEC and RA axis can use the exact same routines
-   char  deg_per_rev;      // units: deg/knob rev ; when the axis's know is turned one full turn, how much does the telescope move 
-   char  accel;            // units: nanostep per iteration per iteration
-   char  accel_seq;        // no units (it's the sequence counter)
    long  pos_initial;      // units: ticks
    long  pos_target;       // units: ticks
    long  pos_delta;        // units: ticks (it's the required displacement: pos_target-pos_initial)
@@ -118,9 +149,14 @@ typedef struct   // those values are required per axis to be able to execute got
    long  pos_part1;        // units: ticks (it's ths total amount of displacement during acceleration)
    long  speed;            // units: ticks per iteration
    long  last_high_speed;  // units: ticks per iteration 
-   char  goto_cmd;         // no units (it's to tell the function to start a goto command)
+   char  accel;            // units: nanostep per iteration per iteration
+   char  accel_seq;        // no units (it's the sequence counter)
+// char  goto_cmd;         // no units (it's to tell the function to start a goto command)
    char  state;            // no units                     
+   unsigned char  next;             // no units (should there be a step at the next iteration ? )                    
+   unsigned char  direction;        // no units (which direction ? )                    
    } AXIS;
+
 AXIS ra;
 AXIS dec;
 
@@ -149,13 +185,13 @@ PROGMEM const char pololu[]={"\
            PB0  < 03   IO/CLK/TIMER       22 >  M2BN\012\015\
            PB1  < 04   IO/PWM             21 >  M2A\012\015\
 10Khz Out  PB2  < 05   IO/PWM     AI/IO   20 >  PC5 (ADC5/SCL)\012\015\
-DEC_STEP   PB4  < 06   IO         AI/IO   19 >  PC4 (ADC4/SDA)\012\015\
-           PB5  < 07   IO         AI/IO   18 >  PC3 (ADC3) IR REMOTE \012\015\
-DI RX232   PD0  < 08   IO         AI/IO   17 >  PC2 (ADC2)\012\015\
-DO TX232   PD1  < 09   IO         AI/IO   16 >  PC1 (ADC1)\012\015\
-DISABLE    PD2  < 10   IO         AI/IO   15 >  PC0 (ADC0)\012\015\
-RA_DIR     PD4  < 11   IO         AI      14 >      (ADC6)\012\015\
-RA_STEP    PD7  < 12   IO                 13 >  PC6 (RESET)\012\015\
+           PB4  < 06   IO         AI/IO   19 >  PC4 (ADC4/SDA)\012\015\
+           PB5  < 07   IO         AI/IO   18 >  PC3 (ADC3) RA_DIR\012\015\
+DI RX232   PD0  < 08   IO         AI/IO   17 >  PC2 (ADC2) RA_STEP\012\015\
+DO TX232   PD1  < 09   IO         AI/IO   16 >  PC1 (ADC1) DEC_DIR\012\015\
+           PD2  < 10   IO         AI/IO   15 >  PC0 (ADC0) DEC_STEP\012\015\
+DISABLE    PD4  < 11   IO         AI      14 >      (ADC6) BATTERY MONITOR\012\015\
+IR REMOTE  PD7  < 12   IO                 13 >  PC6 (RESET)\012\015\
                 ------------------------------\012\015\
 "};
 
@@ -178,32 +214,30 @@ PROGMEM const char dip328p[]={"\
                             -----------\012\015\
 "};
 
-#define CONSTELLATION_SIZE 10
-PROGMEM const char pgm_constellation[] = "Orion    \0"\
-                                         "Lyra     \0"\
-                                         "Gynus    \0";
-                          
-#define STAR_SIZE 18
-PROGMEM const char pgm_stars_name[]   =  "\000Betelgeuse (Red)\0"\
-                                         "\000Rigel (Blue)    \0"\
-                                         "\001Vega            \0"\
-                                         "\002Deneb           \0"\
-                                         "\002Sadr            \0";
-                                       //   RA                                                DEC
-PROGMEM const unsigned long pgm_stars_pos[] =
-                    { ( 5*TICKS_P_HOUR+55*TICKS_P_MIN+10.3*TICKS_P_SEC), (  7*TICKS_P_DEG+24*TICKS_P_DEG_MIN+25  *TICKS_P_DEG_SEC),     // Betelgeuse
-                      ( 5*TICKS_P_HOUR+14*TICKS_P_MIN+32.3*TICKS_P_SEC), (  8*TICKS_P_DEG+12*TICKS_P_DEG_MIN+ 6  *TICKS_P_DEG_SEC),     // Rigel
-                      (18*TICKS_P_HOUR+36*TICKS_P_MIN+56.3*TICKS_P_SEC), ( 38*TICKS_P_DEG+47*TICKS_P_DEG_MIN+ 3  *TICKS_P_DEG_SEC),     // Vega
-                      (20*TICKS_P_HOUR+41*TICKS_P_MIN+25.9*TICKS_P_SEC), ( 45*TICKS_P_DEG+16*TICKS_P_DEG_MIN+49  *TICKS_P_DEG_SEC),     // Deneb
-                      (20*TICKS_P_HOUR+22*TICKS_P_MIN+13.7*TICKS_P_SEC), ( 40*TICKS_P_DEG+15*TICKS_P_DEG_MIN+24  *TICKS_P_DEG_SEC),     // Sadr
+#define STAR_NAME_LEN 23
+short cur_star=2;   // currently selected star
+PROGMEM const char pgm_stars_name[]   =  // format: Constellation:Star Name , the s/w will use the first 2 letters to tell when we reach the next constellation
+                    {
+                     "Orion:Betelgeuse (Red)\0"\
+                     "Orion:Rigel (Blue)    \0"\
+                     "Pisces:19psc          \0"\
+                     "Lyra:Vega             \0"\
+                     "Gynus:Deneb           \0"\
+                     "Gynus:Sadr            \0"\
+                    };
+PROGMEM const unsigned long pgm_stars_pos[] =    // Note, the positions below must match the above star names
+                    {                  //   RA                                                DEC
+                      ( 5*TICKS_P_HOUR+55*TICKS_P_MIN+10.3*TICKS_P_SEC), (  7*TICKS_P_DEG+24*TICKS_P_DEG_MIN+25  *TICKS_P_DEG_SEC),     // Orion:Betelgeuse (Red)
+                      ( 5*TICKS_P_HOUR+14*TICKS_P_MIN+32.3*TICKS_P_SEC), (  8*TICKS_P_DEG+12*TICKS_P_DEG_MIN+ 6  *TICKS_P_DEG_SEC),     // Orion:Rigel (Blue)
+                      (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // Pisces:19psc
+                      (18*TICKS_P_HOUR+36*TICKS_P_MIN+56.3*TICKS_P_SEC), ( 38*TICKS_P_DEG+47*TICKS_P_DEG_MIN+ 3  *TICKS_P_DEG_SEC),     // Lyra:Vega
+                      (20*TICKS_P_HOUR+41*TICKS_P_MIN+25.9*TICKS_P_SEC), ( 45*TICKS_P_DEG+16*TICKS_P_DEG_MIN+49  *TICKS_P_DEG_SEC),     // Gynus:Deneb
+                      (20*TICKS_P_HOUR+22*TICKS_P_MIN+13.7*TICKS_P_SEC), ( 40*TICKS_P_DEG+15*TICKS_P_DEG_MIN+24  *TICKS_P_DEG_SEC),     // Gynus:Sadr
                       0,0 // last one
                     };
-short cur_const=1,cur_star=2;
 
-short kkkk;
 PROGMEM const char pgm_free_mem[]="Free Memory:";
 PROGMEM const char pgm_starting[]="Telescope Starting...";
-PROGMEM const char pgm_ascii[]="ascii:";
 PROGMEM const char pgm_display_bug[]="Display routines problem with value (FMT_NE/EW):";
 PROGMEM const char pgm_display_bug_ra[]="Display routines problem with value (FMT_RA):";
 volatile unsigned long d_TIMER0;
@@ -218,17 +252,18 @@ unsigned short histogram[16],l_histogram[16],histo_sp0=1; // place to store hist
 
 long l_ra_pos1,l_ra_pos2,l_dec_pos,l_ra_pos_hw,l_ra_pos_hw1,l_ra_pos_hw2,l_dec_pos_hw;
 long l_ra_pos_cor1,l_ra_pos_cor2,l_dec_pos_cor;
-long  ra_unit_step;  // One step on the step motor is equal to what in 32 bit angle
-long dec_unit_step;  // One step on the step motor is equal to what in 32 bit angle
 long g_goto_state;
 long g_ra_pos_part1;
-char  ra_next=0, dec_next=0;  // Next state for the step command, we do this to allow DIR to settle
+
 volatile char moving=0;
+volatile char motor_disable=1;       // Stepper motor Disable
+volatile char goto_cmd=0;            // 1 = goto goto_ra_pos
+
 
 /////////////////////////////////////////// RS232 INPUTS ///////////////////////////////////////////////////////////
 #define RS232_RX_BUF 32
 unsigned char rs232_rx_buf[RS232_RX_BUF] = {0};
-unsigned char rs232_rx_idx=0;               // <- always points on the NULL
+unsigned char rs232_rx_idx=0;                         // <- always points on the NULL
 volatile unsigned char rs232_rx_clr=0;               // set by foreground to tell ap0c0 that it can clear the buffer
 /////////////////////////////////////////// RS232 OUTPUTS //////////////////////////////////////////////////////////
 #define RS232_TX_BUF 64
@@ -707,6 +742,13 @@ unsigned char CCC;
 long ltmp,tmp=0;
 short stmp=0;
 
+d_debug[4]=ra.speed;
+d_debug[5]=ra.pos;
+d_debug[6]=ra.pos_dem;
+d_debug[13]=goto_cmd + 0x100*moving;
+d_debug[7]=dec.state;
+d_debug[15]=ra.state;
+
 // process RX
 if ( (UCSR0A & 0x80) != 0)    // ********** CA CA LIT BIEN...
    {
@@ -863,25 +905,17 @@ else // print field data
          stmp = (short)rs232_rx_buf;
          if ( d_task == NB_DTASKS + 43 ) DISPLAY_DATA( 14,41,0,FMT_STR,0,stmp,tmp);
 
-//         stmp = pgm_constellation[cur_const];
-//d_debug[0] =  pgm_read_dword(pgm_constellation[1]);
-//d_debug[1] =  pgm_read_dword(tototo);
-//d_debug[0] =  pgm_read_dword(pgm_constellation[cur_const]);
-//d_debug[1] =  pgm_read_dword(d_debug[0]);
-         if ( d_task == NB_DTASKS + 44 ) DISPLAY_DATA( 22,28,pgm_constellation + cur_const*CONSTELLATION_SIZE    ,FMT_NO_VAL,0,stmp,tmp);
-//         stmp = pgm_stars_name;
-//d_debug[2] =  pgm_stars_name+cur_star;
-         if ( d_task == NB_DTASKS + 45 ) DISPLAY_DATA( 39,28,pgm_stars_name + cur_star*STAR_SIZE + 1       ,FMT_NO_VAL,0,stmp,tmp);
+         if ( d_task == NB_DTASKS + 44 ) DISPLAY_DATA( 22,28,pgm_stars_name + cur_star*STAR_NAME_LEN ,FMT_NO_VAL,0,stmp,tmp);
 
          ltmp = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);  tmp=0;
-         if ( d_task == NB_DTASKS + 46 ) DISPLAY_DATA( 22,29,0,FMT_NS,0,ltmp,tmp);      // NEAREAST STAR POSITION
+         if ( d_task == NB_DTASKS + 45 ) DISPLAY_DATA( 22,29,0,FMT_NS,0,ltmp,tmp);      // NEAREAST STAR POSITION
          ltmp = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);  tmp=0;
-         if ( d_task == NB_DTASKS + 47 ) DISPLAY_DATA( 39,29,0,FMT_EW,0,ltmp,tmp);      // NEAREAST STAR POSITION
+         if ( d_task == NB_DTASKS + 46 ) DISPLAY_DATA( 39,29,0,FMT_EW,0,ltmp,tmp);      // NEAREAST STAR POSITION
                                                               tmp=0;
-         if ( d_task == NB_DTASKS + 48 ) DISPLAY_DATA( 57,29,0,FMT_RA,0,ltmp,tmp);      // NEAREAST STAR POSITION
+         if ( d_task == NB_DTASKS + 47 ) DISPLAY_DATA( 57,29,0,FMT_RA,0,ltmp,tmp);      // NEAREAST STAR POSITION
 
 
-         if ( d_task == NB_DTASKS + 49 ) { first = 0 ; d_task = NB_DTASKS; }
+         if ( d_task == NB_DTASKS + 48 ) { first = 0 ; d_task = NB_DTASKS; }
          else                            Next = rs232_tx_buf[rs232_tx_idx++];
          }
       }
@@ -924,10 +958,6 @@ if ( Next != 0 ) UDR0 = Next;
 //-  26 0x0032 SPM READY Store Program Memory Ready
 //-  
 
-char motor_disable=1;       // Stepper motor Disable
-char goto_cmd=0;    // 1 = goto goto_ra_pos
-long goto_ra_pos=0;
-
 
 ISR(TIMER0_OVF_vect)     // AP0C0 ... process RS232 events
 {                       
@@ -960,30 +990,54 @@ if ( AP0_DISPLAY==1 ) TIMSK0 = 1;     // timer0 interrupt enable
 ISR(TIMER1_COMPB_vect)   // Clear the Step outputs
 {
 long temp;
-set_digital_output(DO_RA_STEP,0);    // eventually, I should use my routines...flush polopu...
-set_digital_output(DO_DEC_STEP,0);   // eventually, I should use my routines...flush polopu...
-set_digital_output(DO_DISABLE  ,motor_disable);   
+// too long to complete !! set_digital_output(DO_RA_STEP,0);    // eventually, I should use my routines...flush polopu...
+// too long to complete !! set_digital_output(DO_DEC_STEP,0);   // eventually, I should use my routines...flush polopu...
+//FAST_SET_RA_STEP(0);
+//FAST_SET_DEC_STEP(0);
 
 temp = ra.pos_hw-ra.pos_cor;
 if ( temp >= TICKS_P_STEP )
    {
-   set_digital_output(DO_RA_DIR,0); // go backward
+   // too long to complete !!set_digital_output(DO_RA_DIR,0); // go backward
+   //FAST_SET_RA_DIR(0);
+   ra.direction=0x00;
    ADD_VALUE_TO_POS(-TICKS_P_STEP,ra.pos_hw);
-   ra_next=1;
+   ra.next=0x04;
    }
 else if ( -temp >= TICKS_P_STEP )
    {
-   set_digital_output(DO_RA_DIR,1); // go forward
+   // too long to complete !!set_digital_output(DO_RA_DIR,1); // go forward
+   //FAST_SET_RA_DIR(1);
+   ra.direction=0x08;
    ADD_VALUE_TO_POS(TICKS_P_STEP,ra.pos_hw);
-   ra_next=1;
+   ra.next=0x04;
    }
-else
+else { ra.next=0; }
+
+temp = dec.pos_hw-dec.pos_cor;
+if ( temp >= (2*TICKS_P_STEP) )      // The DEC axis has 2 times less teeths 
    {
-   ra_next=0;
+   // too long to complete !!set_digital_output(DO_DEC_DIR,0); // go backward
+   //FAST_SET_DEC_DIR(0);
+   dec.direction=0x00;
+   ADD_VALUE_TO_POS(-(2*TICKS_P_STEP),dec.pos_hw);
+   dec.next=0x01;
    }
+else if ( -temp >= (2*TICKS_P_STEP) )
+   {
+   // too long to complete !!set_digital_output(DO_DEC_DIR,1); // go forward
+   //FAST_SET_DEC_DIR(1);
+   dec.direction=0x02;
+   ADD_VALUE_TO_POS( (2*TICKS_P_STEP),dec.pos_hw);
+   dec.next=0x01;
+   }
+else { dec.next=0; }
+
+PORTC = ra.direction | dec.direction;    // I do this to optimize execution time
+
 }
 
-short process_goto(AXIS *axis, long goto_pos, char goto_cmd)
+short process_goto(AXIS *axis,char ra_axis)
 {
 long temp_abs;
 
@@ -994,7 +1048,6 @@ if      ( axis->state == 0 ) // idle
 else if ( axis->state == 1 ) // setup the goto
    {
    axis->pos_initial  = axis->pos; 
-   axis->pos_target   = goto_pos;
    axis->pos_delta    = axis->pos_target - axis->pos_initial;
    axis->accel_seq    = 0;  // reset the sequence 
    if ( axis->pos_target - axis->pos_initial > 0 ) axis->accel =  10; // going forward
@@ -1002,6 +1055,7 @@ else if ( axis->state == 1 ) // setup the goto
    if ( axis->pos_delta > 0 ) axis->pos_delta =  axis->pos_delta;
    else                       axis->pos_delta = -axis->pos_delta;
    axis->state++;
+   if ( axis->pos_delta == 0 ) axis->state=6; // No movement required
    }
 else if ( axis->state == 2 )  // detect max speed, or halway point
    {
@@ -1074,8 +1128,15 @@ if ( axis->accel_seq > ACCEL_PERIOD )
    if ( -axis->speed > MAX_SPEED && axis->accel < 0 ) axis->accel =  0;
    if ( -axis->speed > MAX_SPEED )                    axis->speed = -MAX_SPEED;
    }
-//axis->pos += axis->speed;
 ADD_VALUE_TO_POS(axis->speed,axis->pos);
+
+axis->pos_dem = axis->pos;
+if ( ra_axis ) ADD_VALUE_TO_POS(axis->pos_earth,axis->pos_dem);   // add the earth's rotation only on the RA axis
+
+axis->pos_cor = axis->pos_dem;
+
+//ra.pos_dem = ra.pos_earth + ra.pos;
+//ra.pos_cor = ra.pos_dem;  // for now, no correction
 
 return axis->state;
 }
@@ -1093,34 +1154,45 @@ if ( ssec == 0) seconds++;
 d_TIMER1++;             // counts time in 0.1 ms
 if ( ! motor_disable )    //////////////////// motor disabled ///////////
    {
-   set_digital_output(DO_RA_STEP,ra_next);    // eventually, I should use my routines...flush polopu...
-   
+// These takes too long to complete !!!  set_digital_output(DO_RA_STEP ,ra.next);     // eventually, I should use my routines...flush polopu...
+// These takes too long to complete !!!  set_digital_output(DO_DEC_STEP,dec.next);    // eventually, I should use my routines...flush polopu...
+//   FAST_SET_RA_STEP(ra.next);    //   >
+//   FAST_SET_DEC_STEP(dec.next);  //   > 1/16
+//   if ( ra.next )  fast_portc |= (1<<DO_RA_STEP);
+//   if ( dec.next ) fast_portc |= (1<<DO_DEC_STEP);
+//   PORTC = ra.next | dec.next;
+   PORTC = ra.next | dec.next | ra.direction | dec.direction;    // I do this to optimize execution time
+ 
    ///////////// Process earth compensation
    // this takes a lot of time . . . .:earth_comp = (earth_comp+1)%EARTH_COMP;
    earth_comp++ ; if ( earth_comp == EARTH_COMP ) earth_comp = 0;
    if ( earth_comp == 0 ) ADD_VALUE_TO_POS(TICKS_P_STEP,ra.pos_earth);    // Correct for the Earth's rotation
    
    ///////////// Process goto
+
+   process_goto(&ra ,1); // 1 : specify that this is the RA axis     >> 2/16
+   process_goto(&dec,0); // 0 : this is the DEC axis
+//   if ( d_TIMER1 & 1 ) process_goto(&ra ,1); // 1 : specify that this is the RA axis     >> 2/16
+//   else                process_goto(&dec,0); // 0 : this is the DEC axis
+ 
+   d_debug[0 ]=ra.pos_initial;
+   d_debug[8 ]=dec.pos_initial;
    
-   process_goto(&ra,goto_ra_pos,goto_cmd);
+   d_debug[1 ]=ra.pos_target;
+   d_debug[9 ]=dec.pos_target;
    
-   if ( ra.state !=0 ) goto_cmd=0;
+   d_debug[2 ]=ra.pos_delta;
+   d_debug[10]=dec.pos_delta;
+   
+   d_debug[3 ]=ra.state;
+   d_debug[11]=dec.state;
+   
    if ( (ra.state == 0) && (dec.state == 0)) moving=0;
    else                                      moving=1;  // we are still moving 
+   if ( moving ) goto_cmd=0;                            // command received
    
-   ra.pos_dem = ra.pos_earth + ra.pos;
-   ra.pos_cor = ra.pos_dem;  // for now, no correction
-   
-d_debug[4]=ra.speed;
-d_debug[5]=ra.pos;
-d_debug[6]=ra.pos_dem;
-d_debug[7]=ra.pos_hw;
-d_debug[13]=goto_cmd + 0x100*moving;
-d_debug[15]=ra.state;
-   // This below does work and proves that the Step outputs do work
-   // if ( ! (d_TIMER1&3) ) set_digital_output(DO_RA_STEP,1);    // use my routines...flush polopu...
-   // if ( ! (d_TIMER1&1) ) set_digital_output(DO_DEC_STEP,1);   // use my routines...flush polopu...
    }
+
 // This section terminates the interrupt routine and will help identify how much CPU time we use in the real-time interrupt
 if ( histo_sp0 == 1 ) // if we are not monitoring SP0
    {  
@@ -1218,7 +1290,10 @@ set_digital_output(DO_DISABLE  ,motor_disable);   // Start disabled
 set_digital_output(DO_RA_DIR   ,PULL_UP_ENABLED);
 set_digital_output(DO_RA_STEP  ,PULL_UP_ENABLED);    
 set_digital_output(DO_DEC_STEP ,PULL_UP_ENABLED);    
+set_digital_output(DO_DEC_STEP ,PULL_UP_ENABLED);    
 set_digital_output(DO_10KHZ    ,PULL_UP_ENABLED);    // Set 10 Khz pwm output of OC1B (from TIMER 1) used to control the steps
+//DDRB = 0xFF; // All pins of port B as output
+
 set_analog_mode(MODE_8_BIT);                         // 8-bit analog-to-digital conversions
 d_ram = get_free_memory();
 sei();         //enable global interrupts
@@ -1235,6 +1310,7 @@ while (console_special); /* wait for ready */ console_special = pololu;
 while (console_special); /* wait for ready */ console_special = dip328p;
 #endif
 
+
 d_debug[14]=0x3333;
 wait(2,SEC);
 
@@ -1242,13 +1318,15 @@ d_now   = d_TIMER1;
 for(iii=0;iii<16;iii++) histogram[iii]=0;
 seconds = ssec = 0;
 motor_disable = 0;   // Stepper motor enabled...
+set_digital_output(DO_DISABLE  ,motor_disable);   
 
 d_debug[14]=0x4444;
 wait(5,SEC);
 
 d_debug[14]=0x5555;
-//goto_ra_pos = TICKS_P_STEP * 200UL * 5UL * 16UL * 10UL; // thats 30 degrees , thats 10 turns, thats 357920000 , thats 0x15556D00     got:1555605F
-goto_ra_pos = TICKS_P_STEP * 200UL * 5UL * 16UL * 3UL; 
+//ra.pos_target = TICKS_P_STEP * 200UL * 5UL * 16UL * 10UL; // thats 30 degrees , thats 10 turns, thats 357920000 , thats 0x15556D00     got:1555605F
+ra.pos_target = TICKS_P_STEP * 200UL * 5UL * 16UL * 3UL; 
+dec.pos_target = 0;
 goto_cmd = 1;  
 d_debug[14]=0x6666;
 while ( moving || goto_cmd ) display_next_bg();  // wait for the reposition to be complete
@@ -1257,18 +1335,28 @@ wait(5,SEC);
 
 d_debug[14]=0x7777;
 // go the other way around
-goto_ra_pos = TICKS_P_STEP * 200UL * 5UL * 16UL * 2UL;
+ra.pos_target = TICKS_P_STEP * 200UL * 5UL * 16UL * 2UL;
+dec.pos_target = 0;
 goto_cmd = 1;  
 while ( moving || goto_cmd ) display_next_bg();  // wait for the reposition to be complete
 wait(5,SEC);
 
 d_debug[14]=0x8888;
 // go the other way around
-goto_ra_pos = TICKS_P_DAY -TICKS_P_STEP * 200UL * 5UL * 16UL * 3UL;
+ra.pos_target = TICKS_P_DAY -TICKS_P_STEP * 200UL * 5UL * 16UL * 3UL;
+dec.pos_target = 0;
 goto_cmd = 1;  
 while ( moving || goto_cmd ) display_next_bg();  // wait for the reposition to be complete
 wait(5,SEC);
 
+
+d_debug[14]=0x9999;
+// go the other way around
+ra.pos_target  = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);
+dec.pos_target = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);
+goto_cmd = 1;  
+while ( moving || goto_cmd ) display_next_bg();  // wait for the reposition to be complete
+wait(5,SEC);
 
 
 while (1 )
@@ -1297,6 +1385,10 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.18  2011/12/14 04:18:49  pmichel
+Started some cleanup,
+tested and still working...
+
 Revision 1.17  2011/12/13 06:08:25  pmichel
 Little hack to be able to store the stars
 
