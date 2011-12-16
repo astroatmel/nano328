@@ -1,26 +1,25 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/15 05:39:46 $
-$Id: telescope.c,v 1.19 2011/12/15 05:39:46 pmichel Exp pmichel $
+$Date: 2011/12/16 04:56:26 $
+$Id: telescope.c,v 1.20 2011/12/16 04:56:26 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.19 $
+$Revision: 1.20 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
 - add a panic button that stops a movement (without the need to reset and loose everything)
 - add a way to change the direction of movement, when going to far positions, the tube might start to turn the wring way (shortedt path)
 - process RETURN as command complete
-- Display Galaxy and Input text only on change
 - decode modes:  GOTO / MOVEMENT / DIRCTORY
 - decode command directory_mode       [SEARCH]              (DIRECTORY MODE : search in the star catalog)
-- decode command next_star            [VOL +-]              (DIRECTORY MODE)
-- decode command next_constellation   [CH  +-]              (DIRECTORY MODE) 
+- decode command next_star            [CH  +-]              (DIRECTORY MODE) 
 - decode command go_star              [PLAY]                (DIRECTORY MODE : go to the selected star) 
 - decode command set_star             [RECORD]              (DIRECTORY MODE : the current H/W position is the corrected position for the active star) 
 - decode command accel_mode           [SPEED + use arrows]  (MOVEMENT MODE : slew position)
 - decode command stop                 [OK]                  (MOVEMENT MODE : slew to a stop)
 - decode command next_star            [VOL +-]              (MOVEMENT MODE : slew to the next start)
 - decode command next_constellation   [CH  +-]              (MOVEMENT MODE : slew to the next start in the next constellation) 
+- decode command set_pos              [RECORD + Number]     (MOVEMENT MODE : the current H/W position is stored in memory to go back after) 
 - decode command go_mode              [GO BACK]             (GOTO MODE : enter manual coordinate)
 - decode command go_ra                [VOL+- + numbers]     (GOTO MODE : manual goto ex: CH+ 0130 means : North 1 deg 30 minutes 00.00 sec)
 - decode command go_dec               [CH+- + numbers]      (GOTO MODE)
@@ -193,6 +192,17 @@ DO TX232   PD1  < 09   IO         AI/IO   16 >  PC1 (ADC1) DEC_DIR\012\015\
 DISABLE    PD4  < 11   IO         AI      14 >      (ADC6) BATTERY MONITOR\012\015\
 IR REMOTE  PD7  < 12   IO                 13 >  PC6 (RESET)\012\015\
                 ------------------------------\012\015\
+\012\015\
+RS232 Commands:\012\015\
+  <   >  Prev/Next Catalog Star\012\015\
+  [   ]  Move to Prev/Next Catalog Star\012\015\
+    8    Move North\012\015\
+  4 5 6  Move West / All Stop / Move East\012\015\
+    2    Move South\012\015\
+      *  Go to current star\012\015\
+      +  Save current position to slot X\012\015\
+    G    Go to position specified by the next characters\012\015\
+\012\015\
 "};
 
 PROGMEM const char dip328p[]={"\
@@ -224,6 +234,7 @@ PROGMEM const char pgm_stars_name[]   =  // format: Constellation:Star Name , th
                      "Lyra:Vega             \0"\
                      "Gynus:Deneb           \0"\
                      "Gynus:Sadr            \0"\
+                     "\0"\
                     };
 PROGMEM const unsigned long pgm_stars_pos[] =    // Note, the positions below must match the above star names
                     {                  //   RA                                                DEC
@@ -290,8 +301,8 @@ unsigned short console_idx=0;                    // when 0, we are not currently
 //25|       SKY POSITION: (N)-90 59'59.0"  (W)-179 59'59.0"  23h59m59.000s  0x12345678 / 0x12345678                                         
 //26| CORRECTED STAR POS: (N)-90 59'59.0"  (W)-179 59'59.0"  23h59m59.000s  0x12345678 / 0x12345678                                       
 //27|      TELESCOPE POS: (N)-90 59'59.0"  (W)-179 59'59.0"  23h59m59.000s  0x12345678 / 0x12345678                                       
-//28|       NEAREST STAR: BETLEGEUSE       / ORION         
-//29|   NEAREST STAR POS: (N)-90 59'59.0"  (W)-179 59'59.0"  23h59m59.000s   
+//28|       CATALOG STAR: BETLEGEUSE       / ORION         
+//29|   CATALOG STAR POS: (N)-90 59'59.0"  (W)-179 59'59.0"  23h59m59.000s   
 //30|   IR CODE RECEIVED: DECODED STRING                                                                                       
 //31|   IR CODE RECEIVED: 12345678 12345678 / 1234              GOTO STATE:
 //32| PREV CODE RECEIVED: 12345678 12345678                          ACCEL:
@@ -320,8 +331,8 @@ PROGMEM const char display_main[]={"\012\015\
        SKY POSITION: \012\015\
  CORRECTED STAR POS: \012\015\
       TELESCOPE POS: \012\015\
-       NEAREST STAR: \012\015\
-   NEAREST STAR POS: \012\015\
+       CATALOG STAR: \012\015\
+   CATALOG STAR POS: \012\015\
    IR CODE RECEIVED: \012\015\
    IR CODE RECEIVED: \012\015\
  PREV CODE RECEIVED: \012\015\
@@ -712,6 +723,36 @@ void display_next_bg(void)
 {
 d_debug[12]++;
 if ( AP0_DISPLAY == 0 ) display_next();  // if not printing from AP0, then print here
+
+///// Process Keyboard and IR commands
+
+if ( rs232_rx_idx==1 )  // check if it's a single key command
+   {
+   if( rs232_rx_buf[0] == '<' || rs232_rx_buf[0] == '>')
+      {
+      if ( rs232_rx_buf[0] == '>') cur_star++; 
+      if ( rs232_rx_buf[0] == '<') cur_star--; 
+      if ( 0 == pgm_read_byte(pgm_stars_name + cur_star*STAR_NAME_LEN) ) cur_star=0; // we reached the last star
+      if ( cur_star<0 )
+         {
+         short iii;
+         for(iii=0;pgm_read_byte(pgm_stars_name + iii*STAR_NAME_LEN);iii++ );  // search the last star
+         cur_star = iii-1;
+         }
+      rs232_rx_buf[0] = 0;
+      rs232_rx_idx=0;
+      }
+   else if ( rs232_rx_buf[0] == '[' || rs232_rx_buf[0] == '[')
+      {
+      }
+   else if ( rs232_rx_buf[0] == '4' || rs232_rx_buf[0] == '6' || rs232_rx_buf[0] == '8' || rs232_rx_buf[6] == '2' )
+      {
+      }
+   else if ( rs232_rx_buf[0] == '5')
+      {
+      }
+   }
+   
 }
 
 #define SEC 10000
@@ -1328,16 +1369,15 @@ sei();         //enable global interrupts
 
 wait(1,SEC);
 while (console_go) display_next_bg(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_starting,d_ram,FMT_NO_VAL,8);  console_go = 1;
-wait(1,SEC);
-while (console_go) display_next_bg(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_free_mem,d_ram,FMT_HEX,8);  console_go = 1;
-wait(1,SEC);
 
 #ifdef POLOLU
-while (console_special); /* wait for ready */ console_special = pololu;
+   while (console_special); /* wait for ready */ console_special = pololu;
 #else
-while (console_special); /* wait for ready */ console_special = dip328p;
+   while (console_special); /* wait for ready */ console_special = dip328p;
 #endif
 
+while (console_go) display_next_bg(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_free_mem,d_ram,FMT_HEX,8);  console_go = 1;
+wait(1,SEC);
 
 d_debug[14]=0x3333;
 wait(2,SEC);
@@ -1413,6 +1453,9 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.20  2011/12/16 04:56:26  pmichel
+Added 16 mode debug
+
 Revision 1.19  2011/12/15 05:39:46  pmichel
 Working with 2 axis
 using 6/16 of cputime in standby and 8/16 when moving
