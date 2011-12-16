@@ -1,16 +1,15 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/14 04:18:49 $
-$Id: telescope.c,v 1.18 2011/12/14 04:18:49 pmichel Exp pmichel $
+$Date: 2011/12/15 05:39:46 $
+$Id: telescope.c,v 1.19 2011/12/15 05:39:46 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.18 $
+$Revision: 1.19 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
 - add a panic button that stops a movement (without the need to reset and loose everything)
 - add a way to change the direction of movement, when going to far positions, the tube might start to turn the wring way (shortedt path)
 - process RETURN as command complete
-- display command on LCD
 - Display Galaxy and Input text only on change
 - decode modes:  GOTO / MOVEMENT / DIRCTORY
 - decode command directory_mode       [SEARCH]              (DIRECTORY MODE : search in the star catalog)
@@ -26,7 +25,8 @@ TODO:
 - decode command go_ra                [VOL+- + numbers]     (GOTO MODE : manual goto ex: CH+ 0130 means : North 1 deg 30 minutes 00.00 sec)
 - decode command go_dec               [CH+- + numbers]      (GOTO MODE)
 - decode IR
-- do banding in SP0 to handle both axis and not burn too much CPU time
+- display command on LCD
+- do banding in SP0 to handle both axis and not burn too much CPU time, tried quickly and it doesn't work first shot
 
 
 */
@@ -215,7 +215,7 @@ PROGMEM const char dip328p[]={"\
 "};
 
 #define STAR_NAME_LEN 23
-short cur_star=2;   // currently selected star
+short cur_star=2,l_cur_star;   // currently selected star
 PROGMEM const char pgm_stars_name[]   =  // format: Constellation:Star Name , the s/w will use the first 2 letters to tell when we reach the next constellation
                     {
                      "Orion:Betelgeuse (Red)\0"\
@@ -247,7 +247,7 @@ volatile unsigned long d_USART_TX;
 unsigned long d_now;
 short ssec=0;
 long seconds=0,l_seconds;
-volatile long d_debug[16], l_debug[16];
+volatile long d_debug[32], l_debug[32];
 unsigned short histogram[16],l_histogram[16],histo_sp0=1; // place to store histogram of 10Khz interrupt routine
 
 long l_ra_pos1,l_ra_pos2,l_dec_pos,l_ra_pos_hw,l_ra_pos_hw1,l_ra_pos_hw2,l_dec_pos_hw;
@@ -263,7 +263,8 @@ volatile char goto_cmd=0;            // 1 = goto goto_ra_pos
 /////////////////////////////////////////// RS232 INPUTS ///////////////////////////////////////////////////////////
 #define RS232_RX_BUF 32
 unsigned char rs232_rx_buf[RS232_RX_BUF] = {0};
-unsigned char rs232_rx_idx=0;                         // <- always points on the NULL
+unsigned char rs232_rx_idx=0;                          // <- always points on the NULL
+unsigned char l_rs232_rx_idx=0;                       // 
 volatile unsigned char rs232_rx_clr=0;               // set by foreground to tell ap0c0 that it can clear the buffer
 /////////////////////////////////////////// RS232 OUTPUTS //////////////////////////////////////////////////////////
 #define RS232_TX_BUF 64
@@ -297,13 +298,15 @@ unsigned short console_idx=0;                    // when 0, we are not currently
 //33| PREV PREV RECEIVED: 12345678 12345678                          SPEED:  
 //34|    BATTERY VOLTAGE: 12.0V
 //35|          HISTOGRAM: 1234 1234 1234 1234 1234 1234 1234 1234  1234 1234 1234 1234 1234 1234 1234 1234            <-- once one reaches 65535, values are latched and printed 
-//35|              DEBUG: 12345678  12345678  12345678  12345678   12345678  12345678  12345678  12345678                                               
+//36|              DEBUG: 12345678  12345678  12345678  12345678   12345678  12345678  12345678  12345678                                               
 //37|                     12345678  12345678  12345678  12345678   12345678  12345678  12345678  12345678                                               
-//38|                LCD: |1234567812345678|    MODE:                                                                                          
-//39|                     |1234567812345678|                                                                                                               
-//40|_______________________________________________________________________________________________________
-//41|    IR-PLUS> GO  23h59m59.000s  90 59'59.00"  (assembled command from IR)
-//42| RS232-PLUS> GO  23h59m59.000s  90 59'59.00"  (assembled command from RS232)
+//38|                     12345678  12345678  12345678  12345678   12345678  12345678  12345678  12345678                                               
+//39|                     12345678  12345678  12345678  12345678   12345678  12345678  12345678  12345678                                               
+//40|                LCD: |1234567812345678|    MODE:                                                                                          
+//41|                     |1234567812345678|                                                                                                               
+//42|_______________________________________________________________________________________________________
+//43|    IR-PLUS> GO  23h59m59.000s  90 59'59.00"  (assembled command from IR)
+//44| RS232-PLUS> GO  23h59m59.000s  90 59'59.00"  (assembled command from RS232)
 
 PROGMEM const char display_clear_screen[]     = "\033c\033c\033[2J\033[7h"; // reset reset cls line wrap 
 PROGMEM const char display_define_scrolling[] = "\033[r\033[0;20r";         // enable scrolling + define scrolling
@@ -326,7 +329,9 @@ PROGMEM const char display_main[]={"\012\015\
     BATTERY VOLTAGE: \012\015\
       SP0 HISTOGRAM: \012\015\
               DEBUG: \012\015\
-                     \012\015\
+\012\015\
+\012\015\
+\012\015\
                 LCD: |                |    MODE:\012\015\
                      |                |         \012\015\
 _______________________________________________________________________________________________________\012\015\
@@ -887,35 +892,59 @@ else // print field data
             if ( d_task == NB_DTASKS + 31 ) DISPLAY_DATA( 94,35,0,FMT_HEX,4,histogram[14],l_histogram[14]);
             if ( d_task == NB_DTASKS + 32 ) DISPLAY_DATA( 99,35,0,FMT_HEX,4,histogram[15],l_histogram[15]);
             }
+         if ( d_task >=  NB_DTASKS+33  && d_task <= NB_DTASKS+48 )    
+            {
+            if ( d_task == NB_DTASKS + 33 ) DISPLAY_DATA( 22,38,0,FMT_HEX,8,d_debug[16],l_debug[16]);
+            if ( d_task == NB_DTASKS + 34 ) DISPLAY_DATA( 32,38,0,FMT_HEX,8,d_debug[17],l_debug[17]);
+            if ( d_task == NB_DTASKS + 35 ) DISPLAY_DATA( 42,38,0,FMT_HEX,8,d_debug[18],l_debug[18]);
+            if ( d_task == NB_DTASKS + 36 ) DISPLAY_DATA( 52,38,0,FMT_HEX,8,d_debug[19],l_debug[19]);
+            if ( d_task == NB_DTASKS + 37 ) DISPLAY_DATA( 64,38,0,FMT_HEX,8,d_debug[20],l_debug[20]);
+            if ( d_task == NB_DTASKS + 38 ) DISPLAY_DATA( 74,38,0,FMT_HEX,8,d_debug[21],l_debug[21]);
+            if ( d_task == NB_DTASKS + 39 ) DISPLAY_DATA( 84,38,0,FMT_HEX,8,d_debug[22],l_debug[22]);
+            if ( d_task == NB_DTASKS + 40 ) DISPLAY_DATA( 94,38,0,FMT_HEX,8,d_debug[23],l_debug[23]);
+            if ( d_task == NB_DTASKS + 41 ) DISPLAY_DATA( 22,39,0,FMT_HEX,8,d_debug[24],l_debug[24]);
+            if ( d_task == NB_DTASKS + 42 ) DISPLAY_DATA( 32,39,0,FMT_HEX,8,d_debug[25],l_debug[25]);
+            if ( d_task == NB_DTASKS + 43 ) DISPLAY_DATA( 42,39,0,FMT_HEX,8,d_debug[26],l_debug[26]);
+            if ( d_task == NB_DTASKS + 44 ) DISPLAY_DATA( 52,39,0,FMT_HEX,8,d_debug[27],l_debug[27]);
+            if ( d_task == NB_DTASKS + 45 ) DISPLAY_DATA( 64,39,0,FMT_HEX,8,d_debug[28],l_debug[28]);
+            if ( d_task == NB_DTASKS + 46 ) DISPLAY_DATA( 74,39,0,FMT_HEX,8,d_debug[29],l_debug[29]);
+            if ( d_task == NB_DTASKS + 47 ) DISPLAY_DATA( 84,39,0,FMT_HEX,8,d_debug[30],l_debug[30]);
+            if ( d_task == NB_DTASKS + 48 ) DISPLAY_DATA( 94,39,0,FMT_HEX,8,d_debug[31],l_debug[31]);
+            }
 
-         if ( d_task == NB_DTASKS + 33 ) DISPLAY_DATA( 35,22,0,FMT_HMS,8,seconds,l_seconds);
+         if ( d_task == NB_DTASKS + 65 ) DISPLAY_DATA( 35,22,0,FMT_HMS,8,seconds,l_seconds);
 
-         if ( d_task == NB_DTASKS + 34 ) DISPLAY_DATA( 22,25,0,FMT_NS,0,dec.pos,l_dec_pos);           // SKY POSITION
-         if ( d_task == NB_DTASKS + 35 ) DISPLAY_DATA( 39,25,0,FMT_EW,0,ra.pos,l_ra_pos1);            // SKY POSITION
-         if ( d_task == NB_DTASKS + 36 ) DISPLAY_DATA( 57,25,0,FMT_RA,0,ra.pos,l_ra_pos2);            // SKY POSITION
+         if ( d_task == NB_DTASKS + 66 ) DISPLAY_DATA( 22,25,0,FMT_NS,0,dec.pos,l_dec_pos);           // SKY POSITION
+         if ( d_task == NB_DTASKS + 67 ) DISPLAY_DATA( 39,25,0,FMT_EW,0,ra.pos,l_ra_pos1);            // SKY POSITION
+         if ( d_task == NB_DTASKS + 68 ) DISPLAY_DATA( 57,25,0,FMT_RA,0,ra.pos,l_ra_pos2);            // SKY POSITION
 
-         if ( d_task == NB_DTASKS + 37 ) DISPLAY_DATA( 22,26,0,FMT_NS,0,dec.pos_cor,l_dec_pos_cor);   // CORRECTED STAR POSITION
-         if ( d_task == NB_DTASKS + 38 ) DISPLAY_DATA( 39,26,0,FMT_EW,0,ra.pos_cor,l_ra_pos_cor1);    // CORRECTED STAR POSITION
-         if ( d_task == NB_DTASKS + 39 ) DISPLAY_DATA( 57,26,0,FMT_RA,0,ra.pos_cor,l_ra_pos_cor2);    // CORRECTED STAR POSITION
+         if ( d_task == NB_DTASKS + 69 ) DISPLAY_DATA( 22,26,0,FMT_NS,0,dec.pos_cor,l_dec_pos_cor);   // CORRECTED STAR POSITION
+         if ( d_task == NB_DTASKS + 70 ) DISPLAY_DATA( 39,26,0,FMT_EW,0,ra.pos_cor,l_ra_pos_cor1);    // CORRECTED STAR POSITION
+         if ( d_task == NB_DTASKS + 71 ) DISPLAY_DATA( 57,26,0,FMT_RA,0,ra.pos_cor,l_ra_pos_cor2);    // CORRECTED STAR POSITION
 
-         if ( d_task == NB_DTASKS + 40 ) DISPLAY_DATA( 22,27,0,FMT_NS,0,dec.pos_hw,l_dec_pos_hw);     // TELESCOPE POSITION
-         if ( d_task == NB_DTASKS + 41 ) DISPLAY_DATA( 39,27,0,FMT_EW,0,ra.pos_hw,l_ra_pos_hw1);      // TELESCOPE POSITION
-         if ( d_task == NB_DTASKS + 42 ) DISPLAY_DATA( 57,27,0,FMT_RA,0,ra.pos_hw,l_ra_pos_hw2);      // TELESCOPE POSITION
+         if ( d_task == NB_DTASKS + 72 ) DISPLAY_DATA( 22,27,0,FMT_NS,0,dec.pos_hw,l_dec_pos_hw);     // TELESCOPE POSITION
+         if ( d_task == NB_DTASKS + 73 ) DISPLAY_DATA( 39,27,0,FMT_EW,0,ra.pos_hw,l_ra_pos_hw1);      // TELESCOPE POSITION
+         if ( d_task == NB_DTASKS + 74 ) DISPLAY_DATA( 57,27,0,FMT_RA,0,ra.pos_hw,l_ra_pos_hw2);      // TELESCOPE POSITION
 
-         stmp = (short)rs232_rx_buf;
-         if ( d_task == NB_DTASKS + 43 ) DISPLAY_DATA( 14,41,0,FMT_STR,0,stmp,tmp);
+         if ( d_task == NB_DTASKS + 75 ) 
+            {
+            tmp = stmp = (short)rs232_rx_buf;
+            if ( rs232_rx_idx != l_rs232_rx_idx) tmp=0;   // force an update of the command line
+            DISPLAY_DATA( 14,44,0,FMT_STR,0,stmp,tmp);
+            l_rs232_rx_idx = rs232_rx_idx;
+            }
 
-         if ( d_task == NB_DTASKS + 44 ) DISPLAY_DATA( 22,28,pgm_stars_name + cur_star*STAR_NAME_LEN ,FMT_NO_VAL,0,stmp,tmp);
+         if ( d_task == NB_DTASKS + 76 ) DISPLAY_DATA( 22,28,pgm_stars_name + cur_star*STAR_NAME_LEN ,FMT_NO_VAL,0,cur_star,l_cur_star);
 
          ltmp = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);  tmp=0;
-         if ( d_task == NB_DTASKS + 45 ) DISPLAY_DATA( 22,29,0,FMT_NS,0,ltmp,tmp);      // NEAREAST STAR POSITION
+         if ( d_task == NB_DTASKS + 77 ) DISPLAY_DATA( 22,29,0,FMT_NS,0,ltmp,tmp);      // NEAREAST STAR POSITION
          ltmp = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);  tmp=0;
-         if ( d_task == NB_DTASKS + 46 ) DISPLAY_DATA( 39,29,0,FMT_EW,0,ltmp,tmp);      // NEAREAST STAR POSITION
+         if ( d_task == NB_DTASKS + 78 ) DISPLAY_DATA( 39,29,0,FMT_EW,0,ltmp,tmp);      // NEAREAST STAR POSITION
                                                               tmp=0;
-         if ( d_task == NB_DTASKS + 47 ) DISPLAY_DATA( 57,29,0,FMT_RA,0,ltmp,tmp);      // NEAREAST STAR POSITION
+         if ( d_task == NB_DTASKS + 79 ) DISPLAY_DATA( 57,29,0,FMT_RA,0,ltmp,tmp);      // NEAREAST STAR POSITION
 
 
-         if ( d_task == NB_DTASKS + 48 ) { first = 0 ; d_task = NB_DTASKS; }
+         if ( d_task == NB_DTASKS + 80 ) { first = 0 ; d_task = NB_DTASKS; }
          else                            Next = rs232_tx_buf[rs232_tx_idx++];
          }
       }
@@ -964,16 +993,13 @@ ISR(TIMER0_OVF_vect)     // AP0C0 ... process RS232 events
 unsigned long histo;
 d_TIMER0++;
  
-if ( AP0_DISPLAY==1 )
-   {
-   TIMSK0 = 0;     // timer0 interrupt disable (prevent re-entrant)
-   
-   sei();
-   display_next();
-   
-   while ( TCNT1*100UL > F_CPU_K*9UL ) ; // if SP0 is about to start, wait... I dont want to be interruped in the next iterations  -> while(TCNT1 > 90% of target)
-   TCNT0 = 0;                            // Make sure I'm not called in the next iterations by my own AP0 interrupt
-   }
+TIMSK0 = 0;     // timer0 interrupt disable (prevent re-entrant)
+
+sei();
+display_next();
+
+while ( TCNT1*100UL > F_CPU_K*9UL ) ; // if SP0 is about to start, wait... I dont want to be interruped in the next iterations  -> while(TCNT1 > 90% of target)
+TCNT0 = 0;                            // Make sure I'm not called in the next iterations by my own AP0 interrupt
 
 if ( histo_sp0 == 0 ) // if we are not monitoring SP0
    {  
@@ -984,7 +1010,7 @@ if ( histo_sp0 == 0 ) // if we are not monitoring SP0
    histogram[histo]++;
    }
 
-if ( AP0_DISPLAY==1 ) TIMSK0 = 1;     // timer0 interrupt enable
+TIMSK0 = 1;     // timer0 interrupt enable
 }
 
 ISR(TIMER1_COMPB_vect)   // Clear the Step outputs
@@ -1190,7 +1216,6 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
    if ( (ra.state == 0) && (dec.state == 0)) moving=0;
    else                                      moving=1;  // we are still moving 
    if ( moving ) goto_cmd=0;                            // command received
-   
    }
 
 // This section terminates the interrupt routine and will help identify how much CPU time we use in the real-time interrupt
@@ -1237,18 +1262,21 @@ void init_disp(void)
 //   TCCR2B  = 0x02;           // Clock divider set to 8 , this will cause a Motor driver PWM at 10KHz
 //   TCCR2A  = 0xF3;           // Forced to 0xF3 by the get_ms() routines
 
-   TIMSK1 |= 1 << OCIE1B;    // timer1 interrupt when Output Compare B Match
-   TIMSK1 |= 1 <<  TOIE1;    // timer1 interrupt when Overflow                    ///////////////// SP0C0
-   TCCR1A  = 0xA3;           // FAST PWM, Clear OC1A/OC1B on counter match, SET on BOTTOM
-   TCCR1B  = 0x19;           // Clock divider set to 1 , FAST PWM, TOP = OCR1A
-   OCR1A   = F_CPU_K/10;     // Clock divider set to 1, so F_CPU_K/10 is CLK / 1000 / 10 thus, every 10000 there will be an interrupt : 10Khz
-   OCR1B   = F_CPU_K/40;     // By default, set the PWM to 25%
+TIMSK1 |= 1 << OCIE1B;    // timer1 interrupt when Output Compare B Match
+TIMSK1 |= 1 <<  TOIE1;    // timer1 interrupt when Overflow                    ///////////////// SP0C0
+TCCR1A  = 0xA3;           // FAST PWM, Clear OC1A/OC1B on counter match, SET on BOTTOM
+TCCR1B  = 0x19;           // Clock divider set to 1 , FAST PWM, TOP = OCR1A
+OCR1A   = F_CPU_K/10;     // Clock divider set to 1, so F_CPU_K/10 is CLK / 1000 / 10 thus, every 10000 there will be an interrupt : 10Khz
+OCR1B   = 1500      ;     // By default, set the PWM to 75%    3*F_CPU_K/40 = 1500
 
-   TIMSK0 |= 1 << TOIE0;     // timer0 interrupt when overvlow                    ///////////////// APOCO
+if ( AP0_DISPLAY == 1 )      // because only one interrupt can be active on the A328P, to have AP0 requires a few tricks, I seem to get a lot of bizzare issued when AP0 is active
+   {                         // so I disactivate it with AP0_DISPLAY == 0    ... I will debug this later
+   TIMSK0 |= 1 << TOIE0;     // timer0 interrupt when overvlow                 ///////////////// APOC0
    TCCR0A  = 0x03;           // FAST PWM, OC0A/OC0B pins, not driven
    TCCR0B  = 0x0A;           // WGM=111 Clock divider set to 8 , this creates a PMW wave at 40Khz
-   OCR0A   = F_CPU_K/(10*8); // Clock divider set to 1, so F_CPU_K/10/8 is CLK / 1000 / 10 thus, every 10000 there will be an interrupt : 10Khz
-   OCR0B   = F_CPU_K/(40*8); // By default, set the PWM to 25%
+   OCR0A   = F_CPU_K/(10*8); // F_CPU_K/(10*8);     Clock divider set to 8, so F_CPU_K/10/8 is CLK / 1000 / 10 thus, every 10000 there will be an interrupt : 10Khz
+   OCR0B   = F_CPU_K/(20*8); // By default, set the PWM to 50%
+   }
 }
 
 extern void __bss_end;
@@ -1385,6 +1413,10 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.19  2011/12/15 05:39:46  pmichel
+Working with 2 axis
+using 6/16 of cputime in standby and 8/16 when moving
+
 Revision 1.18  2011/12/14 04:18:49  pmichel
 Started some cleanup,
 tested and still working...
