@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/16 04:56:26 $
-$Id: telescope.c,v 1.20 2011/12/16 04:56:26 pmichel Exp pmichel $
+$Date: 2011/12/16 05:35:32 $
+$Id: telescope.c,v 1.21 2011/12/16 05:35:32 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.20 $
+$Revision: 1.21 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -265,6 +265,7 @@ long l_ra_pos1,l_ra_pos2,l_dec_pos,l_ra_pos_hw,l_ra_pos_hw1,l_ra_pos_hw2,l_dec_p
 long l_ra_pos_cor1,l_ra_pos_cor2,l_dec_pos_cor;
 long g_goto_state;
 long g_ra_pos_part1;
+long l_star_ra1,l_star_ra2,l_star_dec;
 
 volatile char moving=0;
 volatile char motor_disable=1;       // Stepper motor Disable
@@ -742,6 +743,17 @@ if ( rs232_rx_idx==1 )  // check if it's a single key command
       rs232_rx_buf[0] = 0;
       rs232_rx_idx=0;
       }
+   else if ( rs232_rx_buf[0] == '*')
+      {
+      if ( ! ( moving || goto_cmd ) ) 
+         {
+         ra.pos_target  = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);
+         dec.pos_target = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);
+         goto_cmd = 1;
+         rs232_rx_buf[0] = 0;
+         rs232_rx_idx=0;
+         }
+      }
    else if ( rs232_rx_buf[0] == '[' || rs232_rx_buf[0] == '[')
       {
       }
@@ -978,11 +990,11 @@ else // print field data
          if ( d_task == NB_DTASKS + 76 ) DISPLAY_DATA( 22,28,pgm_stars_name + cur_star*STAR_NAME_LEN ,FMT_NO_VAL,0,cur_star,l_cur_star);
 
          ltmp = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);  tmp=0;
-         if ( d_task == NB_DTASKS + 77 ) DISPLAY_DATA( 22,29,0,FMT_NS,0,ltmp,tmp);      // NEAREAST STAR POSITION
+         if ( d_task == NB_DTASKS + 77 ) DISPLAY_DATA( 22,29,0,FMT_NS,0,ltmp,l_star_dec);      // NEAREAST STAR POSITION
          ltmp = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);  tmp=0;
-         if ( d_task == NB_DTASKS + 78 ) DISPLAY_DATA( 39,29,0,FMT_EW,0,ltmp,tmp);      // NEAREAST STAR POSITION
+         if ( d_task == NB_DTASKS + 78 ) DISPLAY_DATA( 39,29,0,FMT_EW,0,ltmp,l_star_ra1);      // NEAREAST STAR POSITION
                                                               tmp=0;
-         if ( d_task == NB_DTASKS + 79 ) DISPLAY_DATA( 57,29,0,FMT_RA,0,ltmp,tmp);      // NEAREAST STAR POSITION
+         if ( d_task == NB_DTASKS + 79 ) DISPLAY_DATA( 57,29,0,FMT_RA,0,ltmp,l_star_ra2);      // NEAREAST STAR POSITION
 
 
          if ( d_task == NB_DTASKS + 80 ) { first = 0 ; d_task = NB_DTASKS; }
@@ -1453,6 +1465,10 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.21  2011/12/16 05:35:32  pmichel
+Waow, that was fast,
+I now can process < and > to select different stars from the catalog
+
 Revision 1.20  2011/12/16 04:56:26  pmichel
 Added 16 mode debug
 
