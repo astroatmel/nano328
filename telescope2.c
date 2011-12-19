@@ -1,12 +1,15 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/16 05:35:32 $
-$Id: telescope.c,v 1.21 2011/12/16 05:35:32 pmichel Exp pmichel $
+$Date: 2011/12/16 05:50:52 $
+$Id: telescope.c,v 1.22 2011/12/16 05:50:52 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.21 $
+$Revision: 1.22 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
+- Process SLEW modes / new states 
+- add modes: SLEWING / GOTO / TRACKING
+- add a command that displays at the console : time, position, star name (corrected star position)
 - add a panic button that stops a movement (without the need to reset and loose everything)
 - add a way to change the direction of movement, when going to far positions, the tube might start to turn the wring way (shortedt path)
 - process RETURN as command complete
@@ -46,10 +49,16 @@ TODO:
 #define DI_REMOTE        IO_D7
 #define DO_DISABLE       IO_D4
 
-#define DO_RA_DIR        IO_C3  // 0x11   17
-#define DO_RA_STEP       IO_C2  // 0x10   16
-#define DO_DEC_DIR       IO_C1  // 0x0F   15
-#define DO_DEC_STEP      IO_C0  // 0x0E   14
+#define DO_DEC_DIR       IO_C3  // 0x11   17
+#define DO_DEC_STEP      IO_C2  // 0x10   16
+#define DO_RA_DIR        IO_C1  // 0x0F   15
+#define DO_RA_STEP       IO_C0  // 0x0E   14
+
+#define FAST_RA_STEP     0x01
+#define FAST_RA_DIR      0x02
+#define FAST_DEC_STEP    0x04
+#define FAST_DEC_DIR     0x08
+
 
 char fast_portc=0;
 // Use all pins of PORTB for fast outputs  ... B0 B1 cant be used, and B4 B5 causes problem at download time
@@ -150,8 +159,8 @@ typedef struct   // those values are required per axis to be able to execute got
    long  last_high_speed;  // units: ticks per iteration 
    char  accel;            // units: nanostep per iteration per iteration
    char  accel_seq;        // no units (it's the sequence counter)
-// char  goto_cmd;         // no units (it's to tell the function to start a goto command)
    char  state;            // no units                     
+   char  spd_index;        // no units (requested slew speed)
    unsigned char  next;             // no units (should there be a step at the next iteration ? )                    
    unsigned char  direction;        // no units (which direction ? )                    
    } AXIS;
@@ -159,6 +168,8 @@ typedef struct   // those values are required per axis to be able to execute got
 AXIS ra;
 AXIS dec;
 
+#define NB_SPEEDS 13
+PROGMEM const long speed_index[NB_SPEEDS] = {0,1,2,5,10,20,50,100,200,500,1000,2000,MAX_SPEED};
 
 enum 
    {
@@ -185,10 +196,10 @@ PROGMEM const char pololu[]={"\
            PB1  < 04   IO/PWM             21 >  M2A\012\015\
 10Khz Out  PB2  < 05   IO/PWM     AI/IO   20 >  PC5 (ADC5/SCL)\012\015\
            PB4  < 06   IO         AI/IO   19 >  PC4 (ADC4/SDA)\012\015\
-           PB5  < 07   IO         AI/IO   18 >  PC3 (ADC3) RA_DIR\012\015\
-DI RX232   PD0  < 08   IO         AI/IO   17 >  PC2 (ADC2) RA_STEP\012\015\
-DO TX232   PD1  < 09   IO         AI/IO   16 >  PC1 (ADC1) DEC_DIR\012\015\
-           PD2  < 10   IO         AI/IO   15 >  PC0 (ADC0) DEC_STEP\012\015\
+           PB5  < 07   IO         AI/IO   18 >  PC3 (ADC3) DEC DIR\012\015\
+DI RX232   PD0  < 08   IO         AI/IO   17 >  PC2 (ADC2) DEC STEP\012\015\
+DO TX232   PD1  < 09   IO         AI/IO   16 >  PC1 (ADC1) RA DIR\012\015\
+           PD2  < 10   IO         AI/IO   15 >  PC0 (ADC0) RA STEP\012\015\
 DISABLE    PD4  < 11   IO         AI      14 >      (ADC6) BATTERY MONITOR\012\015\
 IR REMOTE  PD7  < 12   IO                 13 >  PC6 (RESET)\012\015\
                 ------------------------------\012\015\
@@ -234,6 +245,7 @@ PROGMEM const char pgm_stars_name[]   =  // format: Constellation:Star Name , th
                      "Lyra:Vega             \0"\
                      "Gynus:Deneb           \0"\
                      "Gynus:Sadr            \0"\
+                     "Origin: 0,0           \0"\
                      "\0"\
                     };
 PROGMEM const unsigned long pgm_stars_pos[] =    // Note, the positions below must match the above star names
@@ -244,6 +256,7 @@ PROGMEM const unsigned long pgm_stars_pos[] =    // Note, the positions below mu
                       (18*TICKS_P_HOUR+36*TICKS_P_MIN+56.3*TICKS_P_SEC), ( 38*TICKS_P_DEG+47*TICKS_P_DEG_MIN+ 3  *TICKS_P_DEG_SEC),     // Lyra:Vega
                       (20*TICKS_P_HOUR+41*TICKS_P_MIN+25.9*TICKS_P_SEC), ( 45*TICKS_P_DEG+16*TICKS_P_DEG_MIN+49  *TICKS_P_DEG_SEC),     // Gynus:Deneb
                       (20*TICKS_P_HOUR+22*TICKS_P_MIN+13.7*TICKS_P_SEC), ( 40*TICKS_P_DEG+15*TICKS_P_DEG_MIN+24  *TICKS_P_DEG_SEC),     // Gynus:Sadr
+                      0,0,   // origin
                       0,0 // last one
                     };
 
@@ -266,10 +279,14 @@ long l_ra_pos_cor1,l_ra_pos_cor2,l_dec_pos_cor;
 long g_goto_state;
 long g_ra_pos_part1;
 long l_star_ra1,l_star_ra2,l_star_dec;
+long l_ra_speed,l_dec_speed;
+char l_ra_state,l_dec_state;
 
 volatile char moving=0;
 volatile char motor_disable=1;       // Stepper motor Disable
 volatile char goto_cmd=0;            // 1 = goto goto_ra_pos
+volatile char slew_cmd=0;            //     slew position
+volatile char stop_cmd=0;            // Stop any movement or slew
 
 
 /////////////////////////////////////////// RS232 INPUTS ///////////////////////////////////////////////////////////
@@ -305,9 +322,9 @@ unsigned short console_idx=0;                    // when 0, we are not currently
 //28|       CATALOG STAR: BETLEGEUSE       / ORION         
 //29|   CATALOG STAR POS: (N)-90 59'59.0"  (W)-179 59'59.0"  23h59m59.000s   
 //30|   IR CODE RECEIVED: DECODED STRING                                                                                       
-//31|   IR CODE RECEIVED: 12345678 12345678 / 1234              GOTO STATE:
-//32| PREV CODE RECEIVED: 12345678 12345678                          ACCEL:
-//33| PREV PREV RECEIVED: 12345678 12345678                          SPEED:  
+//31|   IR CODE RECEIVED: 12345678 12345678 / 1234                RA SPEED:                RA STATE:  
+//32| PREV CODE RECEIVED: 12345678 12345678                      DEC SPEED:               DEC STATE:  
+//33| PREV PREV RECEIVED: 12345678 12345678                                              
 //34|    BATTERY VOLTAGE: 12.0V
 //35|          HISTOGRAM: 1234 1234 1234 1234 1234 1234 1234 1234  1234 1234 1234 1234 1234 1234 1234 1234            <-- once one reaches 65535, values are latched and printed 
 //36|              DEBUG: 12345678  12345678  12345678  12345678   12345678  12345678  12345678  12345678                                               
@@ -335,8 +352,8 @@ PROGMEM const char display_main[]={"\012\015\
        CATALOG STAR: \012\015\
    CATALOG STAR POS: \012\015\
    IR CODE RECEIVED: \012\015\
-   IR CODE RECEIVED: \012\015\
- PREV CODE RECEIVED: \012\015\
+   IR CODE RECEIVED:                                         RA SPEED:                RA STATE:\012\015\
+ PREV CODE RECEIVED:                                        DEC SPEED:               DEC STATE:\012\015\
  PREV PREV RECEIVED: \012\015\
     BATTERY VOLTAGE: \012\015\
       SP0 HISTOGRAM: \012\015\
@@ -435,6 +452,7 @@ else
       buf[iii] = val%10 + '0';
       }
    if ( nnn ) buf[0] = '-';
+   else       buf[0] = '+';
    }
 buf[digit] = 0;
 return &buf[digit];
@@ -696,6 +714,10 @@ else if ( fmt == FMT_RA )  // Right Assention    23h59m59.000s
       if(console_go==0) {display_data((char*)console_buf,0,20,pgm_display_bug_ra,prob,FMT_HEX,8);  console_go = 1;}
       }
    }
+else if ( fmt == FMT_DEC )  // Decimal value
+   {
+   pxxd(&str[iii],value,size); // that was easy !
+   }
 else if ( fmt == FMT_STR )  // String
    {
    char *ppp = ((char*)svalue);
@@ -757,11 +779,11 @@ if ( rs232_rx_idx==1 )  // check if it's a single key command
    else if ( rs232_rx_buf[0] == '[' || rs232_rx_buf[0] == '[')
       {
       }
-   else if ( rs232_rx_buf[0] == '4' || rs232_rx_buf[0] == '6' || rs232_rx_buf[0] == '8' || rs232_rx_buf[6] == '2' )
+   else if ( rs232_rx_buf[0] == '2' || rs232_rx_buf[0] == '4' || rs232_rx_buf[0] == '5' || rs232_rx_buf[0] == '6' || rs232_rx_buf[0] == '8')
       {
-      }
-   else if ( rs232_rx_buf[0] == '5')
-      {
+      slew_cmd = rs232_rx_buf[0] - '0';
+      rs232_rx_buf[0] = 0;
+      rs232_rx_idx=0;
       }
    }
    
@@ -996,8 +1018,12 @@ else // print field data
                                                               tmp=0;
          if ( d_task == NB_DTASKS + 79 ) DISPLAY_DATA( 57,29,0,FMT_RA,0,ltmp,l_star_ra2);      // NEAREAST STAR POSITION
 
+         if ( d_task == NB_DTASKS + 80 ) DISPLAY_DATA( 72,31,0,FMT_DEC,6,ra.speed,l_ra_speed);   // 
+         if ( d_task == NB_DTASKS + 81 ) DISPLAY_DATA( 72,32,0,FMT_DEC,6,dec.speed,l_dec_speed); // 
+         if ( d_task == NB_DTASKS + 82 ) DISPLAY_DATA( 97,31,0,FMT_DEC,3,ra.state,l_ra_state);   // 
+         if ( d_task == NB_DTASKS + 83 ) DISPLAY_DATA( 97,32,0,FMT_DEC,3,dec.state,l_dec_state); // 
 
-         if ( d_task == NB_DTASKS + 80 ) { first = 0 ; d_task = NB_DTASKS; }
+         if ( d_task == NB_DTASKS + 84 ) { first = 0 ; d_task = NB_DTASKS; }
          else                            Next = rs232_tx_buf[rs232_tx_idx++];
          }
       }
@@ -1081,15 +1107,15 @@ if ( temp >= TICKS_P_STEP )
    //FAST_SET_RA_DIR(0);
    ra.direction=0x00;
    ADD_VALUE_TO_POS(-TICKS_P_STEP,ra.pos_hw);
-   ra.next=0x04;
+   ra.next=FAST_RA_STEP;
    }
 else if ( -temp >= TICKS_P_STEP )
    {
    // too long to complete !!set_digital_output(DO_RA_DIR,1); // go forward
    //FAST_SET_RA_DIR(1);
-   ra.direction=0x08;
+   ra.direction=FAST_RA_DIR;
    ADD_VALUE_TO_POS(TICKS_P_STEP,ra.pos_hw);
-   ra.next=0x04;
+   ra.next=FAST_RA_STEP;
    }
 else { ra.next=0; }
 
@@ -1100,15 +1126,15 @@ if ( temp >= (2*TICKS_P_STEP) )      // The DEC axis has 2 times less teeths
    //FAST_SET_DEC_DIR(0);
    dec.direction=0x00;
    ADD_VALUE_TO_POS(-(2*TICKS_P_STEP),dec.pos_hw);
-   dec.next=0x01;
+   dec.next=FAST_DEC_STEP;
    }
 else if ( -temp >= (2*TICKS_P_STEP) )
    {
    // too long to complete !!set_digital_output(DO_DEC_DIR,1); // go forward
    //FAST_SET_DEC_DIR(1);
-   dec.direction=0x02;
+   dec.direction=FAST_DEC_DIR;
    ADD_VALUE_TO_POS( (2*TICKS_P_STEP),dec.pos_hw);
-   dec.next=0x01;
+   dec.next=FAST_DEC_STEP;
    }
 else { dec.next=0; }
 
@@ -1120,9 +1146,16 @@ short process_goto(AXIS *axis,char ra_axis)
 {
 long temp_abs;
 
-if      ( axis->state == 0 ) // idle
+if ( stop_cmd )
+   {
+   if ( axis->state == 2  || axis->state == 3) axis->state=4;  // accel or cruise  -> decel
+   if ( axis->state == 6  || axis->state == 7) axis->state = axis->speed = axis->accel = 0;         // we are done
+   }
+
+if      ( axis->state == 0 ) // idle ready to receive a command
    {
    if ( goto_cmd ) axis->state++; // new goto command
+   if ( slew_cmd ) axis->state = 10;  // new slew command , change to slew mode until stop_cmd
    }
 else if ( axis->state == 1 ) // setup the goto
    {
@@ -1173,8 +1206,6 @@ else if ( axis->state == 4 )  // set deceleration
 else if ( axis->state == 5 )  // deceleration
    {
    if ( axis->last_high_speed * axis->speed < 0 ) axis->state = 6;
-//   if ( axis->accel > 0 && axis->speed > 0 ) axis->state = 6;
-//   if ( axis->accel < 0 && axis->speed < 0 ) axis->state = 6;
    }
 else if ( axis->state == 6 )  // done, since the math is far from perfect, we often are not at the exact spot
    {
@@ -1192,6 +1223,25 @@ else if ( axis->state == 7 )  // done, since the math is far from perfect, we of
    axis->pos   = axis->pos_target;                      // we are very close, set the position exactly at the target position
    axis->state = axis->speed = axis->accel = 0;         // we are done
    }
+else if ( axis->state == 10 )  // Slewing
+   {
+   if ( slew_cmd != 0 )
+      {
+      if ( ra_axis ) 
+         {
+         if ( slew_cmd == 6 ) axis->spd_index++;       // Right - East
+         if ( slew_cmd == 4 ) axis->spd_index--;       // Left - West
+         }
+      else
+         {
+         if ( slew_cmd == 8 ) axis->spd_index++;       // Up - North
+         if ( slew_cmd == 2 ) axis->spd_index--;       // Down - South
+         }
+      if    ( slew_cmd == 5 ) axis->spd_index = 0;     // all Stop
+      if ( axis->spd_index >=  NB_SPEEDS ) axis->spd_index =  (NB_SPEEDS-1);
+      if ( axis->spd_index <= -NB_SPEEDS ) axis->spd_index = -(NB_SPEEDS-1);
+      }
+   }
 
 g_goto_state = axis->state; // set the global goto state
 g_ra_pos_part1 = axis->pos_part1;
@@ -1201,11 +1251,32 @@ axis->accel_seq++;
 if ( axis->accel_seq > ACCEL_PERIOD )
    {
    axis->accel_seq = 0;
-   axis->speed += axis->accel;
-   if (  axis->speed > MAX_SPEED && axis->accel > 0 ) axis->accel =  0;
-   if (  axis->speed > MAX_SPEED )                    axis->speed =  MAX_SPEED;
-   if ( -axis->speed > MAX_SPEED && axis->accel < 0 ) axis->accel =  0;
-   if ( -axis->speed > MAX_SPEED )                    axis->speed = -MAX_SPEED;
+   if ( axis->state >=10 )     // Slewing
+      {
+      long spd_req;
+      if ( axis->spd_index < 0 ) spd_req = -pgm_read_dword(&speed_index[(short)-axis->spd_index]);   // negative speed request
+      else                       spd_req =  pgm_read_dword(&speed_index[(short) axis->spd_index]);   // positive speed request
+      
+      if      ( axis->speed < spd_req ) // need to go positive speed...
+         {
+         if ( axis->speed +10 < spd_req ) axis->speed += 10;      // too fast
+         else                             axis->speed  = spd_req;
+         }
+      else if ( axis->speed > spd_req ) // need to go negative speed...
+         {
+         if ( axis->speed -10 > spd_req ) axis->speed -= 10;   // too slow
+         else                             axis->speed  = spd_req;
+         }
+      if ( axis->speed == 0 ) axis->state=0;        // stopped
+      }
+   else if ( axis->state >=1 ) // goto
+      {
+      axis->speed += axis->accel;
+      if (  axis->speed > MAX_SPEED && axis->accel > 0 ) axis->accel =  0;
+      if (  axis->speed > MAX_SPEED )                    axis->speed =  MAX_SPEED;
+      if ( -axis->speed > MAX_SPEED && axis->accel < 0 ) axis->accel =  0;
+      if ( -axis->speed > MAX_SPEED )                    axis->speed = -MAX_SPEED;
+      }
    }
 ADD_VALUE_TO_POS(axis->speed,axis->pos);
 
@@ -1249,6 +1320,9 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
    
    ///////////// Process goto
 
+   if ( (ra.state == 0) && (dec.state == 0)) moving=0;
+   else                                      moving=1;  // we are still moving 
+
    process_goto(&ra ,1); // 1 : specify that this is the RA axis     >> 2/16
    process_goto(&dec,0); // 0 : this is the DEC axis
 //   if ( d_TIMER1 & 1 ) process_goto(&ra ,1); // 1 : specify that this is the RA axis     >> 2/16
@@ -1265,10 +1339,18 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
    
    d_debug[3 ]=ra.state;
    d_debug[11]=dec.state;
+
+   d_debug[0x10]=ra.next | dec.next | ra.direction | dec.direction;
+   d_debug[0x18]=goto_cmd;
    
-   if ( (ra.state == 0) && (dec.state == 0)) moving=0;
-   else                                      moving=1;  // we are still moving 
-   if ( moving ) goto_cmd=0;                            // command received
+   d_debug[0x11]=ra.spd_index;
+   d_debug[0x19]=dec.spd_index;
+   
+   d_debug[0x12]=ra.direction;
+   d_debug[0x1A]=dec.direction;
+   
+   if ( moving ) slew_cmd=goto_cmd=0;                   // command received
+   
    }
 
 // This section terminates the interrupt routine and will help identify how much CPU time we use in the real-time interrupt
@@ -1400,6 +1482,7 @@ seconds = ssec = 0;
 motor_disable = 0;   // Stepper motor enabled...
 set_digital_output(DO_DISABLE  ,motor_disable);   
 
+#ifdef ASFAS 
 d_debug[14]=0x4444;
 wait(5,SEC);
 
@@ -1429,7 +1512,7 @@ goto_cmd = 1;
 while ( moving || goto_cmd ) display_next_bg();  // wait for the reposition to be complete
 wait(5,SEC);
 
-
+#endif
 d_debug[14]=0x9999;
 // go the other way around
 ra.pos_target  = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);
@@ -1465,6 +1548,9 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.22  2011/12/16 05:50:52  pmichel
+Now I can go to the selected star using *
+
 Revision 1.21  2011/12/16 05:35:32  pmichel
 Waow, that was fast,
 I now can process < and > to select different stars from the catalog
