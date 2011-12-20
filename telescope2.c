@@ -1,13 +1,14 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/16 05:50:52 $
-$Id: telescope.c,v 1.22 2011/12/16 05:50:52 pmichel Exp pmichel $
+$Date: 2011/12/19 04:10:22 $
+$Id: telescope.c,v 1.23 2011/12/19 04:10:22 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.22 $
+$Revision: 1.23 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
-- Process SLEW modes / new states 
+- Code to toggle motor on/off :  M
+- Code to reset histogram     :  H
 - add modes: SLEWING / GOTO / TRACKING
 - add a command that displays at the console : time, position, star name (corrected star position)
 - add a panic button that stops a movement (without the need to reset and loose everything)
@@ -46,7 +47,7 @@ TODO:
 #define AI_BATTERY       ADC6C
 
 #define DO_10KHZ         IO_B2
-#define DI_REMOTE        IO_D7
+#define DI_REMOTE        IO_D2
 #define DO_DISABLE       IO_D4
 
 #define DO_DEC_DIR       IO_C3  // 0x11   17
@@ -194,14 +195,14 @@ PROGMEM const char pololu[]={"\
            M1A  < 02                      23 >  GND\012\015\
            PB0  < 03   IO/CLK/TIMER       22 >  M2BN\012\015\
            PB1  < 04   IO/PWM             21 >  M2A\012\015\
-10Khz Out  PB2  < 05   IO/PWM     AI/IO   20 >  PC5 (ADC5/SCL)\012\015\
+DO 10Khz   PB2  < 05   IO/PWM     AI/IO   20 >  PC5 (ADC5/SCL)\012\015\
            PB4  < 06   IO         AI/IO   19 >  PC4 (ADC4/SDA)\012\015\
-           PB5  < 07   IO         AI/IO   18 >  PC3 (ADC3) DEC DIR\012\015\
-DI RX232   PD0  < 08   IO         AI/IO   17 >  PC2 (ADC2) DEC STEP\012\015\
-DO TX232   PD1  < 09   IO         AI/IO   16 >  PC1 (ADC1) RA DIR\012\015\
-           PD2  < 10   IO         AI/IO   15 >  PC0 (ADC0) RA STEP\012\015\
-DISABLE    PD4  < 11   IO         AI      14 >      (ADC6) BATTERY MONITOR\012\015\
-IR REMOTE  PD7  < 12   IO                 13 >  PC6 (RESET)\012\015\
+           PB5  < 07   IO         AI/IO   18 >  PC3 (ADC3) DO  DEC DIR\012\015\
+DI RX232   PD0  < 08   IO         AI/IO   17 >  PC2 (ADC2) DO  DEC STEP\012\015\
+DO TX232   PD1  < 09   IO         AI/IO   16 >  PC1 (ADC1) DO  RA DIR\012\015\
+IR REMOTE  PD2  < 10   IO         AI/IO   15 >  PC0 (ADC0) DO  RA STEP\012\015\
+DO DISABLE PD4  < 11   IO         AI      14 >      (ADC6) AIP BATTERY MONITOR\012\015\
+           PD7  < 12   IO                 13 >  PC6 (RESET)                      * PD7 cant be used as DIP !\012\015\
                 ------------------------------\012\015\
 \012\015\
 RS232 Commands:\012\015\
@@ -1292,10 +1293,53 @@ return axis->state;
 }
 
 
+//  IR CODE:
+//  The code is in the delay between "1"
+//  __-----__-__-_-_-__-__-__-   
+//  At 10 Khz sampling with the Proscan remote, with an average of 3 iteration 
+//  The Signal stays at 1 for 3~4 iterations ; only the start bit is longer than 3~4 iterations
+//  Then goes to 0 for either 0x0B~0x0C : Logic 0    or either 0x15~0x16 : Logic 1
+//  The  Start bit is a "1" for ~ 0x2A then a "0" for !0x2A
+//  The code with Proscan is about 25 bits of information
+
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 10 KHz
 {
+static char IR0,IR1,IR2,IR,l_IR,code_started=0,count_bit;
 unsigned long histo;
 static short earth_comp=0;
+static short count_0;
+static long loc_ir_code;
+
+IR2  = IR1;
+IR1  = IR0;
+IR0  = is_digital_input_high(DI_REMOTE);
+IR   = IR0 & IR1 & IR2;
+if ( code_started!=0 || IR!=0 )
+   {
+   code_started = 1;
+   if ( ! IR ) count_0++;   // count the 0 time
+   if ( IR != l_IR ) 
+      {
+      l_IR = IR;
+      if ( IR )
+         {
+         loc_ir_code = loc_ir_code<<1;   
+         if ( count_0 > 0x10 ) loc_ir_code|=1;   // set the "1" bit 
+//         if ( count_bit<15 ) histogram[(short)count_bit] = count_0;
+         count_0 = 0;
+         }
+      else count_bit++;
+      }
+   if ( count_0 > 0x40 || count_bit==0x1A) // code over
+      {
+      d_debug[0x10]=loc_ir_code;
+      d_debug[0x11]=count_bit;
+      d_debug[0x12]++;
+      count_0 = code_started = count_bit = loc_ir_code = 0;
+      }
+   }
+   
+
 
 // this takes a lot of time . . . .: ssec = (ssec+1)%10000;   
 ssec++; if ( ssec == 10000 ) ssec = 0;
@@ -1320,35 +1364,35 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
    
    ///////////// Process goto
 
-   if ( (ra.state == 0) && (dec.state == 0)) moving=0;
-   else                                      moving=1;  // we are still moving 
-
    process_goto(&ra ,1); // 1 : specify that this is the RA axis     >> 2/16
    process_goto(&dec,0); // 0 : this is the DEC axis
 //   if ( d_TIMER1 & 1 ) process_goto(&ra ,1); // 1 : specify that this is the RA axis     >> 2/16
 //   else                process_goto(&dec,0); // 0 : this is the DEC axis
  
-   d_debug[0 ]=ra.pos_initial;
-   d_debug[8 ]=dec.pos_initial;
+//   d_debug[0 ]=ra.pos_initial;
+//   d_debug[8 ]=dec.pos_initial;
+//   
+//   d_debug[1 ]=ra.pos_target;
+//   d_debug[9 ]=dec.pos_target;
+//   
+//   d_debug[2 ]=ra.pos_delta;
+//   d_debug[10]=dec.pos_delta;
+//   
+//   d_debug[3 ]=ra.state;
+//   d_debug[11]=dec.state;
+//
+//   d_debug[0x10]=ra.next | dec.next | ra.direction | dec.direction;
+//   d_debug[0x18]=goto_cmd;
+//   
+//   d_debug[0x11]=ra.spd_index;
+//   d_debug[0x19]=dec.spd_index;
+//   
+//   d_debug[0x12]=ra.direction;
+//   d_debug[0x1A]=dec.direction;
    
-   d_debug[1 ]=ra.pos_target;
-   d_debug[9 ]=dec.pos_target;
-   
-   d_debug[2 ]=ra.pos_delta;
-   d_debug[10]=dec.pos_delta;
-   
-   d_debug[3 ]=ra.state;
-   d_debug[11]=dec.state;
+   if ( (ra.state == 0) && (dec.state == 0)) moving=0;
+   else                                      moving=1;  // we are still moving 
 
-   d_debug[0x10]=ra.next | dec.next | ra.direction | dec.direction;
-   d_debug[0x18]=goto_cmd;
-   
-   d_debug[0x11]=ra.spd_index;
-   d_debug[0x19]=dec.spd_index;
-   
-   d_debug[0x12]=ra.direction;
-   d_debug[0x1A]=dec.direction;
-   
    if ( moving ) slew_cmd=goto_cmd=0;                   // command received
    
    }
@@ -1455,6 +1499,7 @@ set_digital_output(DO_RA_STEP  ,PULL_UP_ENABLED);
 set_digital_output(DO_DEC_STEP ,PULL_UP_ENABLED);    
 set_digital_output(DO_DEC_STEP ,PULL_UP_ENABLED);    
 set_digital_output(DO_10KHZ    ,PULL_UP_ENABLED);    // Set 10 Khz pwm output of OC1B (from TIMER 1) used to control the steps
+set_digital_input (DI_REMOTE   ,PULL_UP_ENABLED);
 //DDRB = 0xFF; // All pins of port B as output
 
 set_analog_mode(MODE_8_BIT);                         // 8-bit analog-to-digital conversions
@@ -1548,6 +1593,9 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.23  2011/12/19 04:10:22  pmichel
+Slew speed is complete and running well
+
 Revision 1.22  2011/12/16 05:50:52  pmichel
 Now I can go to the selected star using *
 
