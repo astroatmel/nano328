@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/19 04:10:22 $
-$Id: telescope.c,v 1.23 2011/12/19 04:10:22 pmichel Exp pmichel $
+$Date: 2011/12/20 05:21:55 $
+$Id: telescope.c,v 1.24 2011/12/20 05:21:55 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.23 $
+$Revision: 1.24 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -290,6 +290,9 @@ volatile char slew_cmd=0;            //     slew position
 volatile char stop_cmd=0;            // Stop any movement or slew
 
 
+/////////////////////////////////////////// RMOTE INPUTS ///////////////////////////////////////////////////////////
+long ir_code,l_ir_code;
+short ir_count,l_ir_count;
 /////////////////////////////////////////// RS232 INPUTS ///////////////////////////////////////////////////////////
 #define RS232_RX_BUF 32
 unsigned char rs232_rx_buf[RS232_RX_BUF] = {0};
@@ -748,14 +751,47 @@ void display_next_bg(void)
 d_debug[12]++;
 if ( AP0_DISPLAY == 0 ) display_next();  // if not printing from AP0, then print here
 
-///// Process Keyboard and IR commands
+///// Process IR commands
+if ( l_ir_count != ir_count)
+   {
+   long code = ir_code;
+   l_ir_count = ir_count; // tell SP0 that he can go on
+   if      ( code == 0x01D592A6 ) slew_cmd = 8; // North
+   else if ( code == 0x01D582A7 ) slew_cmd = 2; // South
+   else if ( code == 0x01D562A9 ) slew_cmd = 4; // East
+   else if ( code == 0x01D572A8 ) slew_cmd = 6; // West
+   else if ( code == 0x01DF420B ) slew_cmd = 5; // Stop
+   else if ( code == 0x01C2E3D1 || code == 0x01C2F3D0 )   //   <   >
+      {
+      if ( code == 0x01C2E3D1 ) cur_star--;
+      if ( code == 0x01C2F3D0 ) cur_star++;
+      if ( 0 == pgm_read_byte(pgm_stars_name + cur_star*STAR_NAME_LEN) ) cur_star=0; // we reached the last star
+      if ( cur_star<0 )
+         {
+         short iii;
+         for(iii=0;pgm_read_byte(pgm_stars_name + iii*STAR_NAME_LEN);iii++ );  // search the last star
+         cur_star = iii-1;
+         }
+      }
+   else if ( code == 0x01D272D8 ) // GOTO
+      {
+      if ( ! ( moving || goto_cmd ) ) 
+         {
+         ra.pos_target  = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);
+         dec.pos_target = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);
+         goto_cmd = 1;
+         }
+      }
+    
+   }
+///// Process Keyboard commands
 
 if ( rs232_rx_idx==1 )  // check if it's a single key command
    {
    if( rs232_rx_buf[0] == '<' || rs232_rx_buf[0] == '>')
       {
-      if ( rs232_rx_buf[0] == '>') cur_star++; 
       if ( rs232_rx_buf[0] == '<') cur_star--; 
+      if ( rs232_rx_buf[0] == '>') cur_star++; 
       if ( 0 == pgm_read_byte(pgm_stars_name + cur_star*STAR_NAME_LEN) ) cur_star=0; // we reached the last star
       if ( cur_star<0 )
          {
@@ -1332,9 +1368,15 @@ if ( code_started!=0 || IR!=0 )
       }
    if ( count_0 > 0x40 || count_bit==0x1A) // code over
       {
-      d_debug[0x10]=loc_ir_code;
-      d_debug[0x11]=count_bit;
-      d_debug[0x12]++;
+      //d_debug[0x10]=loc_ir_code;
+      //d_debug[0x11]=count_bit;
+      //d_debug[0x12]++;
+      if ( ir_count == l_ir_count )  // wait for bg to process the code
+         {
+         l_ir_code = ir_code;
+         ir_code   = loc_ir_code;
+         ir_count++;
+         }
       count_0 = code_started = count_bit = loc_ir_code = 0;
       }
    }
@@ -1593,6 +1635,11 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.24  2011/12/20 05:21:55  pmichel
+Prettymuch completed Proscan IR decoding
+not exactly as per Levolor.c
+but works
+
 Revision 1.23  2011/12/19 04:10:22  pmichel
 Slew speed is complete and running well
 
