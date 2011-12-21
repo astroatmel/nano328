@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/20 05:21:55 $
-$Id: telescope.c,v 1.24 2011/12/20 05:21:55 pmichel Exp pmichel $
+$Date: 2011/12/21 05:35:10 $
+$Id: telescope.c,v 1.25 2011/12/21 05:35:10 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.24 $
+$Revision: 1.25 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -1406,6 +1406,9 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
    
    ///////////// Process goto
 
+   if ( (ra.state == 0) && (dec.state == 0)) moving=0;
+   else                                      moving=1;  // we are still moving 
+
    process_goto(&ra ,1); // 1 : specify that this is the RA axis     >> 2/16
    process_goto(&dec,0); // 0 : this is the DEC axis
 //   if ( d_TIMER1 & 1 ) process_goto(&ra ,1); // 1 : specify that this is the RA axis     >> 2/16
@@ -1432,9 +1435,6 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
 //   d_debug[0x12]=ra.direction;
 //   d_debug[0x1A]=dec.direction;
    
-   if ( (ra.state == 0) && (dec.state == 0)) moving=0;
-   else                                      moving=1;  // we are still moving 
-
    if ( moving ) slew_cmd=goto_cmd=0;                   // command received
    
    }
@@ -1635,6 +1635,10 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.25  2011/12/21 05:35:10  pmichel
+Version with IR decoded, but slews
+dont work anymore !
+
 Revision 1.24  2011/12/20 05:21:55  pmichel
 Prettymuch completed Proscan IR decoding
 not exactly as per Levolor.c
