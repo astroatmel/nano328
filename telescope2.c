@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/21 05:49:47 $
-$Id: telescope.c,v 1.26 2011/12/21 05:49:47 pmichel Exp pmichel $
+$Date: 2011/12/23 00:01:33 $
+$Id: telescope.c,v 1.27 2011/12/23 00:01:33 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.26 $
+$Revision: 1.27 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -215,6 +215,8 @@ RS232 Commands:\012\015\
       *  Go to current star\012\015\
       +  Save current position to slot X\012\015\
     G    Go to position specified by the next characters\012\015\
+    !    To redraw screen\012\015\
+  (   )  Start / Stop earth tracking\012\015\
 \012\015\
 "};
 
@@ -241,17 +243,17 @@ PROGMEM const char dip328p[]={"\
 short cur_star=2,l_cur_star;   // currently selected star
 PROGMEM const char pgm_stars_name[]   =  // format: Constellation:Star Name , the s/w will use the first 2 letters to tell when we reach the next constellation
                     {
-                     "Orion:Betelgeuse (Red)\0"\
-                     "Orion:Rigel (Blue)    \0"\
-                     "Pisces:19psc          \0"\
-                     "Lyra:Vega             \0"\
-                     "Gynus:Deneb           \0"\
-                     "Gynus:Sadr            \0"\
-                     "Origin: 0,0           \0"\
-                     "Q1 RA+,DEC+           \0"\
-                     "Q2 RA-,DEC+           \0"\
-                     "Q3 RA+,DEC-           \0"\
-                     "Q4 RA-,DEC-           \0"\
+                     "Orion:Betelgeuse (Red)\0"     /*  0   */  \
+                     "Orion:Rigel (Blue)    \0"     /*  1   */  \
+                     "Pisces:19psc          \0"     /*  2   */  \
+                     "Lyra:Vega             \0"     /*  3   */  \
+                     "Gynus:Deneb           \0"     /*  4   */  \
+                     "Gynus:Sadr            \0"     /*  5   */  \
+                     "Origin: 0,0           \0"     /*  6   */  \
+                     "Q1 RA+,DEC+           \0"     /*  7   */  \
+                     "Q2 RA-,DEC+           \0"     /*  8   */  \
+                     "Q3 RA+,DEC-           \0"     /*  9   */  \
+                     "Q4 RA-,DEC-           \0"     /*  10  */  \
                      "\0"\
                     };
 PROGMEM const unsigned long pgm_stars_pos[] =    // Note, the positions below must match the above star names
@@ -295,6 +297,7 @@ volatile char motor_disable=1;       // Stepper motor Disable
 volatile char goto_cmd=0;            // 1 = goto goto_ra_pos
 volatile char slew_cmd=0;            //     slew position
 volatile char stop_cmd=0;            // Stop any movement or slew
+volatile char earth_tracking=0;      // Stop earth tracking
 
 
 /////////////////////////////////////////// RMOTE INPUTS ///////////////////////////////////////////////////////////
@@ -714,6 +717,16 @@ else if ( fmt == FMT_ASC )  // ASCII
    }
 }
 
+void goto_pos(short pos)
+{
+if ( ! ( moving || goto_cmd ) )
+   {
+   ra.pos_target  = pgm_read_dword(&pgm_stars_pos[pos*2+0]);
+   dec.pos_target = pgm_read_dword(&pgm_stars_pos[pos*2+1]);
+   goto_cmd = 1;
+   }
+}
+
 void display_next(void);
 void display_next_bg(void) 
 {
@@ -725,12 +738,20 @@ if ( l_ir_count != ir_count)
    {
    long code = ir_code;
    l_ir_count = ir_count; // tell SP0 that he can go on
-   if      ( code == 0x01D592A6 ) slew_cmd = 8; // North
-   else if ( code == 0x01D582A7 ) slew_cmd = 2; // South
-   else if ( code == 0x01D562A9 ) slew_cmd = 4; // East
-   else if ( code == 0x01D572A8 ) slew_cmd = 6; // West
-   else if ( code == 0x01DF420B ) slew_cmd = 5; // Stop
-   else if ( code == 0x01D062F9 ) redraw   = 1;  // redraw everything
+   if      ( code == 0x01D592A6 ) slew_cmd = 8;       // North
+   else if ( code == 0x01D582A7 ) slew_cmd = 2;       // South
+   else if ( code == 0x01D562A9 ) slew_cmd = 4;       // East
+   else if ( code == 0x01D572A8 ) slew_cmd = 6;       // West
+   else if ( code == 0x01DF420B ) slew_cmd = 5;       // Stop
+   else if ( code == 0x01D062F9 ) redraw   = 1;       // redraw everything
+   else if ( code == 0x01D0A2F5 ) earth_tracking=0;   // Stop tracking
+   else if ( code == 0x01D0B2F4 ) earth_tracking=1;   // Start tracking
+   else if ( code == 0x01D302CF ) goto_pos(6+0);      //  0
+   else if ( code == 0x01D312CE ) goto_pos(6+1);      //  1
+   else if ( code == 0x01D322CD ) goto_pos(6+2);      //  2
+   else if ( code == 0x01D332CC ) goto_pos(6+3);      //  3
+   else if ( code == 0x01D342CB ) goto_pos(6+4);      //  4
+   else if ( code == 0x01D272D8 ) goto_pos(cur_star); // GOTO
    else if ( code == 0x01C2E3D1 || code == 0x01C2F3D0 )   //   <   >
       {
       if ( code == 0x01C2E3D1 ) cur_star--;
@@ -741,15 +762,6 @@ if ( l_ir_count != ir_count)
          short iii;
          for(iii=0;pgm_read_byte(pgm_stars_name + iii*STAR_NAME_LEN);iii++ );  // search the last star
          cur_star = iii-1;
-         }
-      }
-   else if ( code == 0x01D272D8 ) // GOTO
-      {
-      if ( ! ( moving || goto_cmd ) ) 
-         {
-         ra.pos_target  = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);
-         dec.pos_target = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);
-         goto_cmd = 1;
          }
       }
     
@@ -786,6 +798,13 @@ else if ( rs232_rx_idx==1 )  // check if it's a single key command
       }
    else if ( rs232_rx_buf[0] == '[' || rs232_rx_buf[0] == '[')
       {
+      }
+   else if ( rs232_rx_buf[0] == '(' || rs232_rx_buf[0] == ')')
+      {
+      if ( rs232_rx_buf[0] == '(' ) earth_tracking=1;
+      else                          earth_tracking=0;
+      rs232_rx_buf[0] = 0;
+      rs232_rx_idx=0;
       }
    else if ( rs232_rx_buf[0] == '!')
       {
@@ -1421,11 +1440,13 @@ unsigned long histo;
 static short earth_comp=0;
 static short count_0;
 static long loc_ir_code;
+static unsigned short ir_timeout=0;  // limit the inputs to 4 per seconds
 
 IR2  = IR1;
 IR1  = IR0;
 IR0  = is_digital_input_high(DI_REMOTE);
 IR   = IR0 & IR1 & IR2;
+if ( ir_timeout ) ir_timeout--;
 if ( code_started!=0 || IR!=0 )
    {
    code_started = 1;
@@ -1443,12 +1464,13 @@ if ( code_started!=0 || IR!=0 )
       }
    if ( count_0 > 0x40 || count_bit==0x1A) // code over
       {
-      if ( ir_count == l_ir_count )  // wait for bg to process the code
+      if ( ir_count == l_ir_count && ir_timeout==0 )  // wait for bg to process the code
          {
          l_ir_code = ir_code;
          ir_code   = loc_ir_code;
          ir_count++;
          d_debug[0x1F]=ir_code;
+         ir_timeout = 2500;      // 1/4 seconds
          }
       count_0 = code_started = count_bit = loc_ir_code = 0;
       }
@@ -1475,7 +1497,7 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
    ///////////// Process earth compensation
    // this takes a lot of time . . . .:earth_comp = (earth_comp+1)%EARTH_COMP;
    earth_comp++ ; if ( earth_comp == EARTH_COMP ) earth_comp = 0;
-   if ( earth_comp == 0 ) ADD_VALUE_TO_POS(TICKS_P_STEP,ra.pos_earth);    // Correct for the Earth's rotation
+   if ( earth_comp == 0 && earth_tracking !=0 ) ADD_VALUE_TO_POS(TICKS_P_STEP,ra.pos_earth);    // Correct for the Earth's rotation
    
    ///////////// Process goto
 
@@ -1710,6 +1732,10 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.27  2011/12/23 00:01:33  pmichel
+Fixed the goto and the deadzone
+Slew works well
+
 Revision 1.26  2011/12/21 05:49:47  pmichel
 Ok found bug,
 Not sure why this version works
