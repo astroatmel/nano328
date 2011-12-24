@@ -1,36 +1,26 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/23 00:01:33 $
-$Id: telescope.c,v 1.27 2011/12/23 00:01:33 pmichel Exp pmichel $
+$Date: 2011/12/23 05:49:58 $
+$Id: telescope.c,v 1.28 2011/12/23 05:49:58 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.27 $
+$Revision: 1.28 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
+- Add main stars from directory
 - Code to toggle motor on/off :  M
 - Code to reset histogram     :  H
-- add modes: SLEWING / GOTO / TRACKING
 - add a command that displays at the console : time, position, star name (corrected star position)
 - add a panic button that stops a movement (without the need to reset and loose everything)
 - add a way to change the direction of movement, when going to far positions, the tube might start to turn the wring way (shortedt path)
 - process RETURN as command complete
 - decode modes:  GOTO / MOVEMENT / DIRCTORY
-- decode command directory_mode       [SEARCH]              (DIRECTORY MODE : search in the star catalog)
-- decode command next_star            [CH  +-]              (DIRECTORY MODE) 
-- decode command go_star              [PLAY]                (DIRECTORY MODE : go to the selected star) 
 - decode command set_star             [RECORD]              (DIRECTORY MODE : the current H/W position is the corrected position for the active star) 
-- decode command accel_mode           [SPEED + use arrows]  (MOVEMENT MODE : slew position)
-- decode command stop                 [OK]                  (MOVEMENT MODE : slew to a stop)
-- decode command next_star            [VOL +-]              (MOVEMENT MODE : slew to the next start)
-- decode command next_constellation   [CH  +-]              (MOVEMENT MODE : slew to the next start in the next constellation) 
 - decode command set_pos              [RECORD + Number]     (MOVEMENT MODE : the current H/W position is stored in memory to go back after) 
-- decode command go_mode              [GO BACK]             (GOTO MODE : enter manual coordinate)
 - decode command go_ra                [VOL+- + numbers]     (GOTO MODE : manual goto ex: CH+ 0130 means : North 1 deg 30 minutes 00.00 sec)
 - decode command go_dec               [CH+- + numbers]      (GOTO MODE)
-- decode IR
 - display command on LCD
 - do banding in SP0 to handle both axis and not burn too much CPU time, tried quickly and it doesn't work first shot
-
 
 */
 #define AP0_DISPLAY 0    // ca plante asse souvent si j'essaye de rouller avec AP)
@@ -254,21 +244,31 @@ PROGMEM const char pgm_stars_name[]   =  // format: Constellation:Star Name , th
                      "Q2 RA-,DEC+           \0"     /*  8   */  \
                      "Q3 RA+,DEC-           \0"     /*  9   */  \
                      "Q4 RA-,DEC-           \0"     /*  10  */  \
+                     "Orion:Saiph           \0"     /*  11  */  \
+                     "Orion:Bellatrix       \0"     /*  12  */  \
+                     "Orion-B:Alnitak       \0"     /*  13  */  \
+                     "Orion-B:Mintaka       \0"     /*  14  */  \
+                     "Orion-B:Alnilam       \0"     /*  15  */  \
                      "\0"\
                     };
 PROGMEM const unsigned long pgm_stars_pos[] =    // Note, the positions below must match the above star names
                     {                  //   RA                                                DEC
-                      ( 5*TICKS_P_HOUR+55*TICKS_P_MIN+10.3*TICKS_P_SEC), (  7*TICKS_P_DEG+24*TICKS_P_DEG_MIN+25  *TICKS_P_DEG_SEC),     // Orion:Betelgeuse (Red)
-                      ( 5*TICKS_P_HOUR+14*TICKS_P_MIN+32.3*TICKS_P_SEC), (  8*TICKS_P_DEG+12*TICKS_P_DEG_MIN+ 6  *TICKS_P_DEG_SEC),     // Orion:Rigel (Blue)
-                      (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // Pisces:19psc
-                      (18*TICKS_P_HOUR+36*TICKS_P_MIN+56.3*TICKS_P_SEC), ( 38*TICKS_P_DEG+47*TICKS_P_DEG_MIN+ 3  *TICKS_P_DEG_SEC),     // Lyra:Vega
-                      (20*TICKS_P_HOUR+41*TICKS_P_MIN+25.9*TICKS_P_SEC), ( 45*TICKS_P_DEG+16*TICKS_P_DEG_MIN+49  *TICKS_P_DEG_SEC),     // Gynus:Deneb
-                      (20*TICKS_P_HOUR+22*TICKS_P_MIN+13.7*TICKS_P_SEC), ( 40*TICKS_P_DEG+15*TICKS_P_DEG_MIN+24  *TICKS_P_DEG_SEC),     // Gynus:Sadr
+                      ( 5*TICKS_P_HOUR+55*TICKS_P_MIN+10.3*TICKS_P_SEC), (  7*TICKS_P_DEG+24*TICKS_P_DEG_MIN+25  *TICKS_P_DEG_SEC),     // Orion:Betelgeuse (Red)  5h55m10.3  +7;24'25.0
+                      ( 5*TICKS_P_HOUR+14*TICKS_P_MIN+32.3*TICKS_P_SEC), (351*TICKS_P_DEG+47*TICKS_P_DEG_MIN+54.0*TICKS_P_DEG_SEC),     // Orion:Rigel (Blue)      5h14m32.3  -8;12'06.0
+                      (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // Pisces:19psc           23h46m23.5s  3;29'12.0
+                      (18*TICKS_P_HOUR+36*TICKS_P_MIN+56.3*TICKS_P_SEC), ( 38*TICKS_P_DEG+47*TICKS_P_DEG_MIN+ 3  *TICKS_P_DEG_SEC),     // Lyra:Vega              18h36m56.3 +38;47'03.0
+                      (20*TICKS_P_HOUR+41*TICKS_P_MIN+25.9*TICKS_P_SEC), ( 45*TICKS_P_DEG+16*TICKS_P_DEG_MIN+49  *TICKS_P_DEG_SEC),     // Gynus:Deneb            20h41m25.9 +45;16'49.0
+                      (20*TICKS_P_HOUR+22*TICKS_P_MIN+13.7*TICKS_P_SEC), ( 40*TICKS_P_DEG+15*TICKS_P_DEG_MIN+24  *TICKS_P_DEG_SEC),     // Gynus:Sadr             20h22m13.7 +40;15'24.0
                       0,0,   // origin
-                      ( 1*TICKS_P_HOUR+16*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // Pisces:19psc
-                      (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // Pisces:19psc
-                      ( 1*TICKS_P_HOUR+16*TICKS_P_MIN+23.5*TICKS_P_SEC), (353*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // Pisces:19psc
-                      (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (353*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // Pisces:19psc
+                      ( 1*TICKS_P_HOUR+16*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // Inhouse test point Q1
+                      (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // Inhouse test point Q2
+                      ( 1*TICKS_P_HOUR+16*TICKS_P_MIN+23.5*TICKS_P_SEC), (353*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // Inhouse test point Q3
+                      (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (353*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // Inhouse test point Q4
+                      ( 5*TICKS_P_HOUR+47*TICKS_P_MIN+45.4*TICKS_P_SEC), (350*TICKS_P_DEG+19*TICKS_P_DEG_MIN+49  *TICKS_P_DEG_SEC),     // Orion: Saiph     7h47m45.4s -9;40;11.0
+                      ( 5*TICKS_P_HOUR+25*TICKS_P_MIN+ 7.9*TICKS_P_SEC), (  6*TICKS_P_DEG+20*TICKS_P_DEG_MIN+59.0*TICKS_P_DEG_SEC),     // Orion: Bellatrix 5h25m7.9s   6;20;59.0
+                      ( 5*TICKS_P_HOUR+40*TICKS_P_MIN+45.5*TICKS_P_SEC), (358*TICKS_P_DEG+3 *TICKS_P_DEG_MIN+27.0*TICKS_P_DEG_SEC),     // Orion: Alnitak   5h40m45.5  -1;56;33.0
+                      ( 5*TICKS_P_HOUR+32*TICKS_P_MIN+ 0.4*TICKS_P_SEC), (359*TICKS_P_DEG+42*TICKS_P_DEG_MIN+ 3.0*TICKS_P_DEG_SEC),     // Orion: Mintaka   5h32m0.4   -0;17.57.0
+                      ( 5*TICKS_P_HOUR+36*TICKS_P_MIN+ 12 *TICKS_P_SEC), (358*TICKS_P_DEG+48*TICKS_P_DEG_MIN+ 0.0*TICKS_P_DEG_SEC),     // Orion: Alnilam   5h36m12s   -1;12;00.00
                       0,0 // last one
                     };
 
@@ -1258,6 +1258,7 @@ else if ( axis->state == 1 ) // setup the goto
 
    axis->state++;
    if ( axis->pos_delta == 0 ) axis->state=6; // No movement required
+   if ( axis->accel < 0 )      axis->pos_delta -= TICKS_P_MIN; // Always go 1 minute downtime for mechanical friction issue
 
 if ( ra_axis )
 {
@@ -1732,6 +1733,9 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.28  2011/12/23 05:49:58  pmichel
+Reduced to 4 codes per seconds that the remote can send
+
 Revision 1.27  2011/12/23 00:01:33  pmichel
 Fixed the goto and the deadzone
 Slew works well
