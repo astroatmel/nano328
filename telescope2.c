@@ -1,12 +1,14 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/23 05:49:58 $
-$Id: telescope.c,v 1.28 2011/12/23 05:49:58 pmichel Exp pmichel $
+$Date: 2011/12/24 04:47:36 $
+$Id: telescope.c,v 1.29 2011/12/24 04:47:36 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.28 $
+$Revision: 1.29 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
+- > Detect interrupt mayham where the histogram reads values all over the place
+-> remove the falling edge interrupt, instead do everything in the same handler....to aviod skipping steps
 - Add main stars from directory
 - Code to toggle motor on/off :  M
 - Code to reset histogram     :  H
@@ -106,16 +108,17 @@ char fast_portc=0;
 ///       = 9600 * 9 (seconds)              200 Steps = 9 Seconds = 3 degrees (RA axis)     
 ///       = 9600 * 200 steps                  1 Step  = 0.045 Sec
 ///
-#define DEAD_BAND        (147767296)                        // 147767296     // 0x08CEC000  // This is 0x100000000 - TICKS_P_DAY = 147767296
-#define TICKS_P_STEP     (6*360)                            // 2160          //             // 2160 which is easy to sub divide without fractions
+#define DEAD_BAND        (147767296)                        //  147767296    // 0x08CEC000  // This is 0x100000000 - TICKS_P_DAY = 147767296
+#define TICKS_P_STEP     (6*360)                            //       2160    //             // 2160 which is easy to sub divide without fractions
 #define TICKS_P_DAY      (9600UL*200UL*TICKS_P_STEP      )  // 4147200000    // 0xF7314000  // One day = 360deg = 9600*200 micro steps
-#define TICKS_P_DEG      (9600UL*200UL*TICKS_P_STEP/360UL)  // 11520000      //             // One day = 360deg = 9600*200 steps
+#define TICKS_P_DEG      (9600UL*200UL*TICKS_P_STEP/360UL)  //   11520000    //             // One day = 360deg = 9600*200 steps
 #define TICKS_P_180_DEG  (9600UL*200UL*TICKS_P_STEP/2UL  )  // 2073600000    // 0x7B98A000  // One day = 360deg = 9600*200 micro steps
-#define TICKS_P_DEG_MIN  (TICKS_P_DEG/60UL)                 // 192000        //             // 
-#define TICKS_P_DEG_SEC  (TICKS_P_DEG/3600UL)               // 3200          //             // 
-#define TICKS_P_HOUR     (9600UL*200UL*TICKS_P_STEP/24UL)   // 172800000     //             // 
-#define TICKS_P_MIN      (TICKS_P_HOUR/60UL)                // 2880000       //             // 
-#define TICKS_P_SEC      (TICKS_P_HOUR/3600UL)              // 48000         //             // 
+#define TICKS_P_45_DEG   (9600UL*25UL*TICKS_P_STEP       )  //  518400000    // 0x1EE62800  //
+#define TICKS_P_DEG_MIN  (TICKS_P_DEG/60UL)                 //     192000    //             // 
+#define TICKS_P_DEG_SEC  (TICKS_P_DEG/3600UL)               //       3200    //             // 
+#define TICKS_P_HOUR     (9600UL*200UL*TICKS_P_STEP/24UL)   //  172800000    //             // 
+#define TICKS_P_MIN      (TICKS_P_HOUR/60UL)                //    2880000    //             // 
+#define TICKS_P_SEC      (TICKS_P_HOUR/3600UL)              //      48000    //             // 
 
 #define MAX_SPEED        (TICKS_P_STEP-TICKS_P_STEP/EARTH_COMP-2)
 
@@ -180,6 +183,8 @@ enum
    };
 
 PROGMEM const char NLNL[]="\012\015";
+#ifdef POLOLU
+// this is 1K if slash:
 PROGMEM const char pololu[]={"\
                 ------------------------------\012\015\
            M1B  < 01                      24 >  VCC\012\015\
@@ -210,6 +215,8 @@ RS232 Commands:\012\015\
 \012\015\
 "};
 
+#else
+// this is 1K if slash:
 PROGMEM const char dip328p[]={"\
                             -----------\012\015\
  (PCINT14/RESET)      PC6  < 01     15 > PC5 (ADC5/SCL/PCINT13)\012\015\
@@ -228,6 +235,7 @@ PROGMEM const char dip328p[]={"\
  (PCINT0/CLKO/ICP1)   PB0  < 14     28 > PB1 (OC1A/PCINT1)\012\015\
                             -----------\012\015\
 "};
+#endif
 
 #define STAR_NAME_LEN 23
 short cur_star=2,l_cur_star;   // currently selected star
@@ -299,6 +307,138 @@ volatile char slew_cmd=0;            //     slew position
 volatile char stop_cmd=0;            // Stop any movement or slew
 volatile char earth_tracking=0;      // Stop earth tracking
 
+
+////////////////////////////////////////////// SIN COS /////////////////////////////////////////////////////////////   (uses 3K if flash)
+
+// mult two fixed point values
+// a = 0xMMMMLLLL = 0xMMMM0000 + 0x0000LLLL (a positive)   = 0xMMMM0000 + 0xFFFFLLLL (a negative) 
+// 
+long fp_mult(long a, long b)
+{
+long tah,tal;
+long tbh,tbl;
+long sum; 
+
+tah = a >> 16;         // temp a high part  (sign extend)
+tal = a & 0x0000FFFF;  // temp a low part
+tbh = b >> 16;         // temp a high part  (sign extend)
+tbl = b & 0x0000FFFF;  // temp a low part
+
+sum = tah * tbh * 2;  // both high parts        // the *2 is because .1b * .1b = 0.01b  but 4000 * 4000 = 1000 0000 but we want 0x 2000 0000 (0.01b)
+sum += (tah * tbl + 0x8000) >> 15;              // the 0x8000 is for rounding up, but probably needs to be different for negative numbers
+sum += (tbh * tal + 0x8000) >> 15;
+
+return sum;
+}
+
+// Fixed point representation of the first factorials 1/n!
+#define FAC_2 ((long)0x40000000) // 1/2!  = 1/2     
+#define FAC_3 ((long)0x15555555) // 1/3!  = 1/6
+#define FAC_4 ((long)0x05555555) // 1/4!  = 1/24   
+#define FAC_5 ((long)0x01111111) // 1/5!  = 1/120
+#define FAC_6 ((long)0x002D82D8) // 1/6!  = 1/720  
+#define FAC_7 ((long)0x00068068) // 1/7!  = 1/5040
+#define FAC_8 ((long)0x0000D00D) // 1/8!  = 1/40320 
+#define FAC_9 ((long)0x0000171E) // 1/9!  = 1/362880
+#define FAC_A ((long)0x00000250) // 1/10! = 1/3628800
+
+// this function receives an angle in radian (fixed point)
+// the angle must be between -PI/4 and PI/4   (-45 to 45)
+// and if COS is true,  then the function returns the COS(angle)
+// and if COS is false, then the function returns the SIN(angle)
+// the returned value is in fixed point aswell
+//
+long fp_sin_low(long fp_45_e1,char COS)  
+{
+long   fp_45_e2, fp_45_e3, fp_45_e4, fp_45_e5, fp_45_e6, fp_45_e7, fp_45_e8, fp_45_e9, fp_45_eA;
+long   fp_23,fp_45,fp_67,fp_89,fp_AB;  // combining them to save stack space
+long   ret_val;
+
+
+fp_45_e2 = fp_mult(fp_45_e1,fp_45_e1);  // x^2
+fp_45_e3 = fp_mult(fp_45_e2,fp_45_e1);  // x^3
+fp_45_e4 = fp_mult(fp_45_e2,fp_45_e2);  // x^4
+fp_45_e5 = fp_mult(fp_45_e3,fp_45_e2);  // x^5
+fp_45_e6 = fp_mult(fp_45_e3,fp_45_e3);  // x^6
+fp_45_e7 = fp_mult(fp_45_e4,fp_45_e3);  // x^7
+fp_45_e8 = fp_mult(fp_45_e4,fp_45_e4);  // x^8
+fp_45_e9 = fp_mult(fp_45_e5,fp_45_e4);  // x^9
+fp_45_eA = fp_mult(fp_45_e5,fp_45_e5);  // x^A
+
+if (  COS ) fp_23 = fp_mult(fp_45_e2,FAC_2);  // cos  x^2/2!
+else        fp_23 = fp_mult(fp_45_e3,FAC_3);  // sin  x^3/3!
+if (  COS ) fp_45 = fp_mult(fp_45_e4,FAC_4);  // cos  x^4/4!
+else        fp_45 = fp_mult(fp_45_e5,FAC_5);  // sin  x^5/5! 
+if (  COS ) fp_67 = fp_mult(fp_45_e6,FAC_6);  // cos  x^6/6!
+else        fp_67 = fp_mult(fp_45_e7,FAC_7);  // sin  x^7/7!
+if (  COS ) fp_89 = fp_mult(fp_45_e8,FAC_8);  // cos  x^8/8!
+else        fp_89 = fp_mult(fp_45_e9,FAC_9);  // sin  x^9/9!
+if (  COS ) fp_AB = fp_mult(fp_45_eA,FAC_A);  // cos  x^10/10!
+else        fp_AB = 0x00000000;
+
+// TAYLOR: cos(x) = 1 - x^2/2! + x^4/4! - x^6/6! + x^8/8! - x^10/10!
+// TAYLOR: sin(x) = x^1/1! - x^3/3! + x^5/5! - x^7/7! + x^9/9!
+
+if ( COS ) ret_val  = 0x7FFFFFFF;  // 1.0
+else       ret_val  = fp_45_e1;
+
+ret_val -= fp_23;
+ret_val += fp_45;
+ret_val -= fp_67;
+ret_val += fp_89;
+ret_val -= fp_AB;
+
+return ret_val;
+}
+
+// receives a positive angle, units: TICKS  (telescope position 000 to 360 deg )
+// and returns the sinus of that angle
+// since the fp_sin_low function only works with angles below +=45 deg
+// I have to split a full sinus cycle in sections of 45 degrees and use sin() or cos()
+// 
+// usage:
+// long ccc = fp_cos(tick);
+// long sss = fp_sin(tick);
+
+long fp_sin(unsigned long tick_angle)
+{
+long rad;
+if      ( tick_angle > TICKS_P_45_DEG * 7 ) tick_angle = tick_angle - 8*TICKS_P_45_DEG;   // then use  sin(x)
+else if ( tick_angle > TICKS_P_45_DEG * 5 ) tick_angle = tick_angle - 6*TICKS_P_45_DEG;   // then use -cos(x)
+else if ( tick_angle > TICKS_P_45_DEG * 3 ) tick_angle = tick_angle - 4*TICKS_P_45_DEG;   // then use -sin(x)
+else if ( tick_angle > TICKS_P_45_DEG * 1 ) tick_angle = tick_angle - 2*TICKS_P_45_DEG;   // then use  cos(x)
+else                                        tick_angle = tick_angle - 0*TICKS_P_45_DEG;   // then use  sin(x)
+
+tick_angle = tick_angle << 2 ; // multiply by 4 because the factor is 3.253529539    -> TICKS * 3.253529539 = RADIANS in fixed point
+                              // 3.25 exceeds the floating point range which is 1.0, so we multiply by 4 then by 0.813382384 (which is 3.253529539/4.0)
+rad = fp_mult(tick_angle,(long)0x681CE9FB);
+
+if      ( tick_angle > TICKS_P_45_DEG * 7 ) return  fp_sin_low(rad,0);                    // then  sin(x)
+else if ( tick_angle > TICKS_P_45_DEG * 5 ) return -fp_sin_low(rad,1);                    // then -cos(x)
+else if ( tick_angle > TICKS_P_45_DEG * 3 ) return -fp_sin_low(rad,0);                    // then -sin(x)
+else if ( tick_angle > TICKS_P_45_DEG * 1 ) return  fp_sin_low(rad,1);                    // then  cos(x)
+else                                        return  fp_sin_low(rad,0);                    // then  sin(x)
+}  
+
+long fp_cos(unsigned long tick_angle)
+{
+long rad;
+if      ( tick_angle > TICKS_P_45_DEG * 7 ) tick_angle = tick_angle - 8*TICKS_P_45_DEG;   // then use  cos(x)
+else if ( tick_angle > TICKS_P_45_DEG * 5 ) tick_angle = tick_angle - 6*TICKS_P_45_DEG;   // then use  sin(x)
+else if ( tick_angle > TICKS_P_45_DEG * 3 ) tick_angle = tick_angle - 4*TICKS_P_45_DEG;   // then use -cos(x)
+else if ( tick_angle > TICKS_P_45_DEG * 1 ) tick_angle = tick_angle - 2*TICKS_P_45_DEG;   // then use -sin(x)
+else                                        tick_angle = tick_angle - 0*TICKS_P_45_DEG;   // then use  cos(x)
+
+tick_angle = tick_angle << 2 ; // multiply by 4 because the factor is 3.253529539    -> TICKS * 3.253529539 = RADIANS in fixed point
+                              // 3.25 exceeds the floating point range which is 1.0, so we multiply by 4 then by 0.813382384 (which is 3.253529539/4.0)
+rad = fp_mult(tick_angle,(long)0x681CE9FB);
+
+if      ( tick_angle > TICKS_P_45_DEG * 7 ) return  fp_sin_low(rad,1);                    // then  cos(x)
+else if ( tick_angle > TICKS_P_45_DEG * 5 ) return  fp_sin_low(rad,0);                    // then  sin(x)
+else if ( tick_angle > TICKS_P_45_DEG * 3 ) return -fp_sin_low(rad,1);                    // then -cos(x)
+else if ( tick_angle > TICKS_P_45_DEG * 1 ) return -fp_sin_low(rad,0);                    // then -sin(x)
+else                                        return  fp_sin_low(rad,1);                    // then  cos(x)
+}  
 
 /////////////////////////////////////////// RMOTE INPUTS ///////////////////////////////////////////////////////////
 long ir_code,l_ir_code,ll_ir_code,ll_l_ir_code;
@@ -859,10 +999,12 @@ unsigned char CCC;
 long ltmp,tmp=0;
 short stmp=0;
 
+d_debug[0x03]=ra.pos;
+d_debug[0x04]=fp_sin(ra.pos);
 d_debug[0x05]=ra.pos;
 d_debug[0x06]=ra.pos_dem;
-d_debug[0x0D]=goto_cmd + 0x100*moving;
 d_debug[0x07]=dec.state;
+d_debug[0x0D]=goto_cmd + 0x100*moving;
 d_debug[0x0F]=ra.state;
 if ( redraw ) 
    {
@@ -1260,27 +1402,27 @@ else if ( axis->state == 1 ) // setup the goto
    if ( axis->pos_delta == 0 ) axis->state=6; // No movement required
    if ( axis->accel < 0 )      axis->pos_delta -= TICKS_P_MIN; // Always go 1 minute downtime for mechanical friction issue
 
-if ( ra_axis )
-{
-d_debug[0x10]=tt;
-d_debug[0x11]=axis->pos_target;
-d_debug[0x12]=axis->pos_delta;
-d_debug[0x13]=axis->accel;
-}
-else
-{
-d_debug[0x18]=tt;
-d_debug[0x19]=axis->pos_target;
-d_debug[0x1A]=axis->pos_delta;
-d_debug[0x1B]=axis->accel;
-}
+// if ( ra_axis )
+// {
+// d_debug[0x10]=tt;
+// d_debug[0x11]=axis->pos_target;
+// d_debug[0x12]=axis->pos_delta;
+// d_debug[0x13]=axis->accel;
+// }
+// else
+// {
+// d_debug[0x18]=tt;
+// d_debug[0x19]=axis->pos_target;
+// d_debug[0x1A]=axis->pos_delta;
+// d_debug[0x1B]=axis->accel;
+// }
    }
 else if ( axis->state == 2 )  // detect max speed, or halway point
    {
    axis->pos_part1 = axis->pos_displ;
 
-if ( ra_axis ) d_debug[0x14]=2*axis->pos_displ;
-else           d_debug[0x1C]=2*axis->pos_displ;
+// if ( ra_axis ) d_debug[0x14]=2*axis->pos_displ;
+// else           d_debug[0x1C]=2*axis->pos_displ;
 
    if ( axis->pos_delta > 0 ) // going forward
       {
@@ -1305,9 +1447,9 @@ else           d_debug[0x1C]=2*axis->pos_displ;
       }
    else axis->last_high_speed = axis->speed;
 
-if ( ra_axis ) d_debug[0x15]=axis->state;
-else           d_debug[0x1D]=axis->state;
-
+// if ( ra_axis ) d_debug[0x15]=axis->state;
+// else           d_debug[0x1D]=axis->state;
+   if ( slew_cmd ) axis->state = 20; // decelerate - emergency stop
    }
 else if ( axis->state == 3 )  // cruise speed
    {
@@ -1327,6 +1469,7 @@ else if ( axis->state == 3 )  // cruise speed
          axis->accel_seq = 0;  // reset the sequence 
          }
       }
+   if ( slew_cmd ) axis->state = 20; // decelerate - emergency stop
    }
 else if ( axis->state == 4 )  // set deceleration
    {
@@ -1354,6 +1497,14 @@ else if ( axis->state == 6 )  // done, since the math is far from perfect, we of
 else if ( axis->state == 7 )  // done, since the math is far from perfect, we often are not at the exact spod
    {
    axis->pos   = axis->pos_target;                      // we are very close, set the position exactly at the target position
+   axis->state = axis->speed = axis->accel = 0;         // we are done
+   }
+else if ( axis->state == 20 )  // emergency deceleration
+   {
+   if ( axis->last_high_speed * axis->speed < 0 ) axis->state++;
+   }
+else if ( axis->state == 21)  // done, since the math is far from perfect, we often are not at the exact spod
+   {
    axis->state = axis->speed = axis->accel = 0;         // we are done
    }
 
@@ -1507,17 +1658,17 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
 //   if ( d_TIMER1 & 1 ) process_goto(&ra ,1); // 1 : specify that this is the RA axis     >> 2/16
 //   else                process_goto(&dec,0); // 0 : this is the DEC axis
  
-   d_debug[0x00]=ra.accel;
-   d_debug[0x08]=dec.accel;
+//   d_debug[0x00]=ra.accel;
+//   d_debug[0x08]=dec.accel;
    
-   d_debug[0x01]=ra.speed;
-   d_debug[0x09]=dec.speed;
+//   d_debug[0x01]=ra.speed;
+//   d_debug[0x09]=dec.speed;
 //   
 //   d_debug[0x02]=ra.pos_delta;
 //   d_debug[0x0A]=dec.pos_delta;
 //   
-   d_debug[0x03 ]=ra.state;
-   d_debug[0x0B]=dec.state;
+//   d_debug[0x03 ]=ra.state;
+//   d_debug[0x0B]=dec.state;
 //
 //   d_debug[0x10]=ra.next | dec.next | ra.direction | dec.direction;
 //   d_debug[0x18]=goto_cmd;
@@ -1528,8 +1679,8 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
    if ( (ra.state == 0) && (dec.state == 0)) moving=0;
    else                                      moving=1;  // we are still moving 
 
-   d_debug[0x12]=moving;
-   d_debug[0x1A]=moving;
+//   d_debug[0x12]=moving;
+//   d_debug[0x1A]=moving;
 
    if ( moving ) slew_cmd=goto_cmd=0;                   // command received
    
@@ -1654,6 +1805,7 @@ while (console_go) display_next_bg(); /* wait for ready */ display_data((char*)c
 #endif
 
 while (console_go) display_next_bg(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_free_mem,d_ram,FMT_HEX,8);  console_go = 1;
+while (console_go) display_next_bg(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_free_mem,d_ram,FMT_HEX,8);  console_go = 1;
 while (console_go) display_next_bg();
 wait(1,SEC);
 
@@ -1733,6 +1885,9 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.29  2011/12/24 04:47:36  pmichel
+Added code that reduces mechanical friction problem
+
 Revision 1.28  2011/12/23 05:49:58  pmichel
 Reduced to 4 codes per seconds that the remote can send
 
