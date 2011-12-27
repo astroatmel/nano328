@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/25 03:43:03 $
-$Id: telescope.c,v 1.30 2011/12/25 03:43:03 pmichel Exp pmichel $
+$Date: 2011/12/27 21:57:11 $
+$Id: telescope.c,v 1.31 2011/12/27 21:57:11 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.30 $
+$Revision: 1.31 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -406,14 +406,14 @@ return ret_val;
 long fp_sin(unsigned long tick_angle)
 {
 long rad,tick;
-if      ( tick_angle > TICKS_P_45_DEG * 7 ) tick_angle = tick_angle - 8*TICKS_P_45_DEG;   // then use  sin(x)
-else if ( tick_angle > TICKS_P_45_DEG * 5 ) tick_angle = tick_angle - 6*TICKS_P_45_DEG;   // then use -cos(x)
-else if ( tick_angle > TICKS_P_45_DEG * 3 ) tick_angle = tick_angle - 4*TICKS_P_45_DEG;   // then use -sin(x)
-else if ( tick_angle > TICKS_P_45_DEG * 1 ) tick_angle = tick_angle - 2*TICKS_P_45_DEG;   // then use  cos(x)
-else                                        tick_angle = tick_angle - 0*TICKS_P_45_DEG;   // then use  sin(x)
+if      ( tick_angle > TICKS_P_45_DEG * 7 ) tick = tick_angle - 8*TICKS_P_45_DEG;   // then use  sin(x)
+else if ( tick_angle > TICKS_P_45_DEG * 5 ) tick = tick_angle - 6*TICKS_P_45_DEG;   // then use -cos(x)
+else if ( tick_angle > TICKS_P_45_DEG * 3 ) tick = tick_angle - 4*TICKS_P_45_DEG;   // then use -sin(x)
+else if ( tick_angle > TICKS_P_45_DEG * 1 ) tick = tick_angle - 2*TICKS_P_45_DEG;   // then use  cos(x)
+else                                        tick = tick_angle - 0*TICKS_P_45_DEG;   // then use  sin(x)
 
-tick = tick_angle << 2 ; // multiply by 4 because the factor is 3.253529539    -> TICKS * 3.253529539 = RADIANS in fixed point
-                        // 3.25 exceeds the floating point range which is 1.0, so we multiply by 4 then by 0.813382384 (which is 3.253529539/4.0)
+tick = tick << 2 ; // multiply by 4 because the factor is 3.253529539    -> TICKS * 3.253529539 = RADIANS in fixed point
+                  // 3.25 exceeds the floating point range which is 1.0, so we multiply by 4 then by 0.813382384 (which is 3.253529539/4.0)
 rad = fp_mult(tick,(long)0x681CE9FB);
 
 if      ( tick_angle > TICKS_P_45_DEG * 7 ) return  fp_sin_low(rad,0);                    // then  sin(x)
@@ -426,14 +426,14 @@ else                                        return  fp_sin_low(rad,0);          
 long fp_cos(unsigned long tick_angle)
 {
 long rad,tick;
-if      ( tick_angle > TICKS_P_45_DEG * 7 ) tick_angle = tick_angle - 8*TICKS_P_45_DEG;   // then use  cos(x)
-else if ( tick_angle > TICKS_P_45_DEG * 5 ) tick_angle = tick_angle - 6*TICKS_P_45_DEG;   // then use  sin(x)
-else if ( tick_angle > TICKS_P_45_DEG * 3 ) tick_angle = tick_angle - 4*TICKS_P_45_DEG;   // then use -cos(x)
-else if ( tick_angle > TICKS_P_45_DEG * 1 ) tick_angle = tick_angle - 2*TICKS_P_45_DEG;   // then use -sin(x)
-else                                        tick_angle = tick_angle - 0*TICKS_P_45_DEG;   // then use  cos(x)
+if      ( tick_angle > TICKS_P_45_DEG * 7 ) tick = tick_angle - 8*TICKS_P_45_DEG;   // then use  cos(x)
+else if ( tick_angle > TICKS_P_45_DEG * 5 ) tick = tick_angle - 6*TICKS_P_45_DEG;   // then use  sin(x)
+else if ( tick_angle > TICKS_P_45_DEG * 3 ) tick = tick_angle - 4*TICKS_P_45_DEG;   // then use -cos(x)
+else if ( tick_angle > TICKS_P_45_DEG * 1 ) tick = tick_angle - 2*TICKS_P_45_DEG;   // then use -sin(x)
+else                                        tick = tick_angle - 0*TICKS_P_45_DEG;   // then use  cos(x)
 
-tick = tick_angle << 2 ; // multiply by 4 because the factor is 3.253529539    -> TICKS * 3.253529539 = RADIANS in fixed point
-                        // 3.25 exceeds the floating point range which is 1.0, so we multiply by 4 then by 0.813382384 (which is 3.253529539/4.0)
+tick = tick << 2 ; // multiply by 4 because the factor is 3.253529539    -> TICKS * 3.253529539 = RADIANS in fixed point
+                  // 3.25 exceeds the floating point range which is 1.0, so we multiply by 4 then by 0.813382384 (which is 3.253529539/4.0)
 rad = fp_mult(tick,(long)0x681CE9FB);
 
 if      ( tick_angle > TICKS_P_45_DEG * 7 ) return  fp_sin_low(rad,1);                    // then  cos(x)
@@ -1888,6 +1888,10 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.31  2011/12/27 21:57:11  pmichel
+important fix for sin() cos() functions
+fg
+
 Revision 1.30  2011/12/25 03:43:03  pmichel
 Version with sin/cos !!!
 thats seems to work very well
