@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/24 04:47:36 $
-$Id: telescope.c,v 1.29 2011/12/24 04:47:36 pmichel Exp pmichel $
+$Date: 2011/12/25 03:43:03 $
+$Id: telescope.c,v 1.30 2011/12/25 03:43:03 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.29 $
+$Revision: 1.30 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -257,8 +257,10 @@ PROGMEM const char pgm_stars_name[]   =  // format: Constellation:Star Name , th
                      "Orion-B:Alnitak       \0"     /*  13  */  \
                      "Orion-B:Mintaka       \0"     /*  14  */  \
                      "Orion-B:Alnilam       \0"     /*  15  */  \
+                     "Pignon Maison         \0"     /*  15  */  \
                      "\0"\
                     };
+// pignon: -83°58'30.6"  (E) 075°03'39.1"  05h00m14.61s
 PROGMEM const unsigned long pgm_stars_pos[] =    // Note, the positions below must match the above star names
                     {                  //   RA                                                DEC
                       ( 5*TICKS_P_HOUR+55*TICKS_P_MIN+10.3*TICKS_P_SEC), (  7*TICKS_P_DEG+24*TICKS_P_DEG_MIN+25  *TICKS_P_DEG_SEC),     // Orion:Betelgeuse (Red)  5h55m10.3  +7;24'25.0
@@ -277,6 +279,7 @@ PROGMEM const unsigned long pgm_stars_pos[] =    // Note, the positions below mu
                       ( 5*TICKS_P_HOUR+40*TICKS_P_MIN+45.5*TICKS_P_SEC), (358*TICKS_P_DEG+3 *TICKS_P_DEG_MIN+27.0*TICKS_P_DEG_SEC),     // Orion: Alnitak   5h40m45.5  -1;56;33.0
                       ( 5*TICKS_P_HOUR+32*TICKS_P_MIN+ 0.4*TICKS_P_SEC), (359*TICKS_P_DEG+42*TICKS_P_DEG_MIN+ 3.0*TICKS_P_DEG_SEC),     // Orion: Mintaka   5h32m0.4   -0;17.57.0
                       ( 5*TICKS_P_HOUR+36*TICKS_P_MIN+ 12 *TICKS_P_SEC), (358*TICKS_P_DEG+48*TICKS_P_DEG_MIN+ 0.0*TICKS_P_DEG_SEC),     // Orion: Alnilam   5h36m12s   -1;12;00.00
+                      ( 5*TICKS_P_HOUR+ 0*TICKS_P_MIN+14.6*TICKS_P_SEC), (276*TICKS_P_DEG+ 1*TICKS_P_DEG_MIN+29.4*TICKS_P_DEG_SEC),     // Orion: Alnilam   5h36m12s   -1;12;00.00
                       0,0 // last one
                     };
 
@@ -402,16 +405,16 @@ return ret_val;
 
 long fp_sin(unsigned long tick_angle)
 {
-long rad;
+long rad,tick;
 if      ( tick_angle > TICKS_P_45_DEG * 7 ) tick_angle = tick_angle - 8*TICKS_P_45_DEG;   // then use  sin(x)
 else if ( tick_angle > TICKS_P_45_DEG * 5 ) tick_angle = tick_angle - 6*TICKS_P_45_DEG;   // then use -cos(x)
 else if ( tick_angle > TICKS_P_45_DEG * 3 ) tick_angle = tick_angle - 4*TICKS_P_45_DEG;   // then use -sin(x)
 else if ( tick_angle > TICKS_P_45_DEG * 1 ) tick_angle = tick_angle - 2*TICKS_P_45_DEG;   // then use  cos(x)
 else                                        tick_angle = tick_angle - 0*TICKS_P_45_DEG;   // then use  sin(x)
 
-tick_angle = tick_angle << 2 ; // multiply by 4 because the factor is 3.253529539    -> TICKS * 3.253529539 = RADIANS in fixed point
-                              // 3.25 exceeds the floating point range which is 1.0, so we multiply by 4 then by 0.813382384 (which is 3.253529539/4.0)
-rad = fp_mult(tick_angle,(long)0x681CE9FB);
+tick = tick_angle << 2 ; // multiply by 4 because the factor is 3.253529539    -> TICKS * 3.253529539 = RADIANS in fixed point
+                        // 3.25 exceeds the floating point range which is 1.0, so we multiply by 4 then by 0.813382384 (which is 3.253529539/4.0)
+rad = fp_mult(tick,(long)0x681CE9FB);
 
 if      ( tick_angle > TICKS_P_45_DEG * 7 ) return  fp_sin_low(rad,0);                    // then  sin(x)
 else if ( tick_angle > TICKS_P_45_DEG * 5 ) return -fp_sin_low(rad,1);                    // then -cos(x)
@@ -422,16 +425,16 @@ else                                        return  fp_sin_low(rad,0);          
 
 long fp_cos(unsigned long tick_angle)
 {
-long rad;
+long rad,tick;
 if      ( tick_angle > TICKS_P_45_DEG * 7 ) tick_angle = tick_angle - 8*TICKS_P_45_DEG;   // then use  cos(x)
 else if ( tick_angle > TICKS_P_45_DEG * 5 ) tick_angle = tick_angle - 6*TICKS_P_45_DEG;   // then use  sin(x)
 else if ( tick_angle > TICKS_P_45_DEG * 3 ) tick_angle = tick_angle - 4*TICKS_P_45_DEG;   // then use -cos(x)
 else if ( tick_angle > TICKS_P_45_DEG * 1 ) tick_angle = tick_angle - 2*TICKS_P_45_DEG;   // then use -sin(x)
 else                                        tick_angle = tick_angle - 0*TICKS_P_45_DEG;   // then use  cos(x)
 
-tick_angle = tick_angle << 2 ; // multiply by 4 because the factor is 3.253529539    -> TICKS * 3.253529539 = RADIANS in fixed point
-                              // 3.25 exceeds the floating point range which is 1.0, so we multiply by 4 then by 0.813382384 (which is 3.253529539/4.0)
-rad = fp_mult(tick_angle,(long)0x681CE9FB);
+tick = tick_angle << 2 ; // multiply by 4 because the factor is 3.253529539    -> TICKS * 3.253529539 = RADIANS in fixed point
+                        // 3.25 exceeds the floating point range which is 1.0, so we multiply by 4 then by 0.813382384 (which is 3.253529539/4.0)
+rad = fp_mult(tick,(long)0x681CE9FB);
 
 if      ( tick_angle > TICKS_P_45_DEG * 7 ) return  fp_sin_low(rad,1);                    // then  cos(x)
 else if ( tick_angle > TICKS_P_45_DEG * 5 ) return  fp_sin_low(rad,0);                    // then  sin(x)
@@ -1885,6 +1888,13 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.30  2011/12/25 03:43:03  pmichel
+Version with sin/cos !!!
+thats seems to work very well
+unfortunately
+it also seems that I wont have enough flash rom
+to put all the code for polar correction
+
 Revision 1.29  2011/12/24 04:47:36  pmichel
 Added code that reduces mechanical friction problem
 
