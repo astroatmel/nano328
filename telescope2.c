@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/27 22:20:57 $
-$Id: telescope.c,v 1.32 2011/12/27 22:20:57 pmichel Exp pmichel $
+$Date: 2011/12/28 19:35:55 $
+$Id: telescope.c,v 1.33 2011/12/28 19:35:55 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.32 $
+$Revision: 1.33 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -140,47 +140,32 @@ if ( (unsigned long)(POS) >= TICKS_P_DAY )   /* we are in the dead band */  \
 
 typedef struct   // those values are required per axis to be able to execute goto commands
    {             // I use a structure so that both DEC and RA axis can use the exact same routines
+   long  pos;              // units: ticks (this is the current sky position)
+   long  pos_cor;          // units: ticks (corrected demmanded position using polar error)
+   long  pos_hw;           // units: ticks (current position of the tube, this value should be the same as the corrected position) 
+   long  speed;            // units: ticks per iteration
+   long  state;            // no units                     
    long  pos_initial;      // units: ticks
    long  pos_target;       // units: ticks
    long  pos_delta;        // units: ticks (it's the required displacement: pos_target-pos_initial)
    long  pos_displ;        // units: ticks (it's the displacement count)
-   long  pos;              // units: ticks (this is the current sky position)
    long  pos_dem;          // units: ticks (demanded position = sky position + Earth compensation)
-   long  pos_cor;          // units: ticks (corrected demmanded position using polar error)
-   long  pos_hw;           // units: ticks (current position of the tube, this value should be the same as the corrected position) 
    long  pos_earth;        // units: ticks (it's the calculation of the ticks caused by the earth's rotation)
    long  pos_part1;        // units: ticks (it's ths total amount of displacement during acceleration)
-   long  speed;            // units: ticks per iteration
    long  last_high_speed;  // units: ticks per iteration 
    char  accel;            // units: nanostep per iteration per iteration
    char  accel_seq;        // no units (it's the sequence counter)
-   char  state;            // no units                     
    char  spd_index;        // no units (requested slew speed)
    unsigned char  next;             // no units (should there be a step at the next iteration ? )                    
    unsigned char  direction;        // no units (which direction ? )                    
    } AXIS;
 
-AXIS ra;
-AXIS dec;
+AXIS *ra;   // points in the display array dd_v
+AXIS *dec;  // points in the display array dd_v
 
 #define NB_SPEEDS 13
 PROGMEM const long speed_index[NB_SPEEDS] = {0,1,2,5,10,20,50,100,200,500,1000,2000,MAX_SPEED};
 
-enum 
-   {
-   FMT_NO_VAL,
-   FMT_HEX,
-   FMT_DEC,   
-   FMT_HMS,   
-   FMT_NS,   
-   FMT_EW,   
-   FMT_RA,   
-   PGM_POLOLU,
-   PGM_DIPA328P, 
-   PGM_STR, 
-   FMT_STR, 
-   FMT_ASC
-   };
 
 PROGMEM const char NLNL[]="\012\015";
 #ifdef POLOLU
@@ -293,9 +278,7 @@ volatile unsigned long d_USART_RX;
 volatile unsigned long d_USART_TX;
 unsigned long d_now;
 short ssec=0;
-long seconds=0,l_seconds;
-volatile long d_debug[32], l_debug[32];
-unsigned short histogram[16],l_histogram[16],histo_sp0=1; // place to store histogram of 10Khz interrupt routine
+unsigned short histo_sp0=1; // place to store histogram of 10Khz interrupt routine
 
 long l_ra_pos1,l_ra_pos2,l_dec_pos,l_ra_pos_hw,l_ra_pos_hw1,l_ra_pos_hw2,l_dec_pos_hw;
 long l_ra_pos_cor1,l_ra_pos_cor2,l_dec_pos_cor;
@@ -310,6 +293,7 @@ volatile char slew_cmd=0;            //     slew position
 volatile char stop_cmd=0;            // Stop any movement or slew
 volatile char earth_tracking=0;      // Stop earth tracking
 
+void display_data(char *str,short xxx,short yyy,const char *pgm_str,unsigned long value,char fmt,char size);
 
 ////////////////////////////////////////////// SIN COS /////////////////////////////////////////////////////////////   (uses 3K if flash)
 
@@ -444,8 +428,9 @@ else                                        return  fp_sin_low(rad,1);          
 }  
 
 /////////////////////////////////////////// RMOTE INPUTS ///////////////////////////////////////////////////////////
-long ir_code,l_ir_code,ll_ir_code,ll_l_ir_code;
-short ir_count,l_ir_count,ll_ir_count;
+// long ir_code,l_ir_code,ll_ir_code,ll_l_ir_code;
+// short ir_count,l_ir_count,ll_ir_count;
+short l_ir_count;
 /////////////////////////////////////////// RS232 INPUTS ///////////////////////////////////////////////////////////
 #define RS232_RX_BUF 32
 unsigned char rs232_rx_buf[RS232_RX_BUF] = {0};
@@ -525,11 +510,109 @@ ________________________________________________________________________________
     IR-PLUS> \012\015\
  RS232-PLUS> \012\015\
 "};
+
+////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////// TABLE THAT DEFINES WHAT,WHERE and HOW TO PRINT ///////////////////
+//
+// to accelerate the s/w and reduce code size, I here make it more complicated !
+// all values are all long, they are all in the _v and _p arrays
+// the _p table is the previous value of _v
+// in some cases, it's going to use a but more ram and a bit more flash
+// but over all, the code will run faster and use less ram
+// I will stop to use the if then else, and instead use a home made jump table
+//
+// I did a check-in before this change, the .HEX size was: 81451 bytes (28K)  free ram was: 0x044D
+//              after the optimization, the .HEX size is : 57061 bytes (20K)  free ram is:  0x0311
+
+// enum
+#define   FMT_NO_VAL    0x00
+#define   FMT_HEX       0x10
+#define   FMT_DEC       0x20
+#define   FMT_HMS       0x30
+#define   FMT_NS        0x40
+#define   FMT_EW        0x50
+#define   FMT_RA        0x60
+#define   FMT_STR       0x70
+#define   FMT_ASC       0x80
+#define   PGM_POLOLU    0x90
+#define   PGM_DIPA328P  0xA0
+#define   PGM_STR       0xB0
+
+#define   DD_FIELDS     0x60
+volatile long dd_v[DD_FIELDS]; 
+volatile long dd_p[DD_FIELDS];
+//#############################>> the first are fucked because of NB_DTASKS NB_DTASKS NB_DTASKS NB_DTASKS NB_DTASKS
+//                                             0    1    2    3    4    5    6    7    8    9    A    B    C    D    E    F
+PROGMEM const unsigned char dd_x[DD_FIELDS]={ 22 , 32 , 42 , 52 , 64 , 74 , 84 , 94 , 22 , 32 , 42 , 52 , 64 , 74 , 84 , 94     // 0x00: DEBUG  0->15
+                                            , 22 , 32 , 42 , 52 , 64 , 74 , 84 , 94 , 22 , 32 , 42 , 52 , 64 , 74 , 84 , 94     // 0x10: DEBUG 16->31
+                                            , 22 , 27 , 32 , 37 , 42 , 47 , 52 , 57 , 64 , 69 , 74 , 79 , 84 , 89 , 94 , 99     // 0x20: Histogram 0->15
+                                            , 39 , 39 , 39 , 72 , 97 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x30: RA structure values  [pos, pos_cor,pos_hw, speed, state
+                                            , 22 , 22 , 22 , 72 , 97 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x40: DEC structure values [pos, pos_cor,pos_hw, speed, state
+                                            , 57 , 57 , 57 , 35 , 22 , 39 , 57 , 31 , 22 , 22 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds, start pos dec,ra,ra
+                                            };
+PROGMEM const unsigned char dd_y[DD_FIELDS]={ 36 , 36 , 36 , 36 , 36 , 36 , 36 , 36 , 37 , 37 , 37 , 37 , 37 , 37 , 37 , 37     // 0x00: DEBUG  0->15
+                                            , 38 , 38 , 38 , 38 , 38 , 38 , 38 , 38 , 39 , 39 , 39 , 39 , 39 , 39 , 39 , 39     // 0x10: DEBUG 16->31
+                                            , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35     // 0x20: Histogram 0->15
+                                            , 25 , 26 , 27 , 31 , 31 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x30: RA structure values   [pos, pos_cor,pos_hw, speed, state
+                                            , 25 , 26 , 27 , 32 , 32 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x40: DEC structure values  [pos, pos_cor,pos_hw, speed, state
+                                            , 25 , 26 , 27 , 22 , 29 , 29 , 29 , 31 , 31 , 32 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
+                                            };
+PROGMEM const unsigned char dd_f[DD_FIELDS]={0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18    // 0x00: DEBUG  0->15      all HEX 8 bytes
+                                            ,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18    // 0x10: DEBUG 16->31      all HEX 8 bytes
+                                            ,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14    // 0x20: Histogram 0->15   all HEX 4 bytes
+                                            ,0x50,0x50,0x50,0x26,0x23,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x30: RA structure values
+                                            ,0x40,0x40,0x40,0x26,0x23,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x40: DEC structure values
+                                            ,0x60,0x60,0x60,0x38,0x40,0x50,0x60,0x14,0x18,0x18,0x00,0x00,0x00,0x00,0x00,0x00    // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
+                                            };  
+// define the Start of each variable in the array
+#define DDS_DEBUG         0x00
+#define DDS_HISTO         0x20
+#define DDS_RA            0x30   // ra  = (struct AXIS*)dd_v[DDS_RA];
+#define DDS_DEC           0x40   // dec = (struct AXIS*)dd_v[DDS_DEC];
+#define DDS_RA_POS2       0x50 
+#define DDS_RA_POS2_COR   0x51 
+#define DDS_RA_POS2_HW    0x52 
+#define DDS_SECONDS       0x53 
+#define DDS_STAR_DEC_POS  0x54 
+#define DDS_STAR_RA_POS   0x55 
+#define DDS_STAR_RA_POS2  0x56 
+#define DDS_IR_COUNT      0x57  // dd_v[DDS_IR_COUNT]
+#define DDS_IR_CODE       0x58  // dd_v[DDS_IR_CODE]
+#define DDS_IR_L_CODE     0x59  // dd_v[DDS_IR_L_CODE]
+
+unsigned char dd_go(unsigned char task,char first)
+{
+if ( dd_p[task] != dd_v[task] || first)
+   {
+   short XXX = pgm_read_byte(&dd_x[task]);
+   short YYY = pgm_read_byte(&dd_y[task]);
+   short FMT = pgm_read_byte(&dd_f[task]);
+
+   if ( (XXX == 0) && (YYY == 0) ) return 0; // found nothing to display
+
+   display_data((char*)rs232_tx_buf,XXX,YYY,0,dd_v[task],FMT&0xF0,FMT&0x0F);
+   dd_p[task] = dd_v[task];
+   return 1;
+   }
+
+// a bit inneficient, but here for now
+dd_v[DDS_RA_POS2]     = ra->pos;
+dd_v[DDS_RA_POS2_COR] = ra->pos_cor;
+dd_v[DDS_RA_POS2_HW]  = ra->pos_hw;
+
+dd_v[DDS_STAR_DEC_POS] = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);
+dd_v[DDS_STAR_RA_POS]  = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);
+dd_v[DDS_STAR_RA_POS2] = dd_v[DDS_STAR_RA_POS];
+
+return 0; // found nothing to display
+}
+
+
+////////////////////////////////////////// DISPLAY SECTION //////////////////////////////////////////
 // PRINT FORMATS:
 // LAT : (N)-90 59'59.00"
 // LON : (W)-179 59'59.00"
 // RA  : 23h59m59.000s
-////////////////////////////////////////// DISPLAY SECTION //////////////////////////////////////////
 
 void pc(char ccc);
 void ps(char *ssz);
@@ -864,8 +947,8 @@ void goto_pos(short pos)
 {
 if ( ! ( moving || goto_cmd ) )
    {
-   ra.pos_target  = pgm_read_dword(&pgm_stars_pos[pos*2+0]);
-   dec.pos_target = pgm_read_dword(&pgm_stars_pos[pos*2+1]);
+   ra->pos_target  = pgm_read_dword(&pgm_stars_pos[pos*2+0]);
+   dec->pos_target = pgm_read_dword(&pgm_stars_pos[pos*2+1]);
    goto_cmd = 1;
    }
 }
@@ -873,14 +956,14 @@ if ( ! ( moving || goto_cmd ) )
 void display_next(void);
 void display_next_bg(void) 
 {
-d_debug[0x0C]++;
+dd_v[DDS_DEBUG + 0x0C]++;
 if ( AP0_DISPLAY == 0 ) display_next();  // if not printing from AP0, then print here
 
 ///// Process IR commands
-if ( l_ir_count != ir_count)
+if ( l_ir_count != dd_v[DDS_IR_COUNT])
    {
-   long code = ir_code;
-   l_ir_count = ir_count; // tell SP0 that he can go on
+   long code = dd_v[DDS_IR_CODE];
+   l_ir_count = dd_v[DDS_IR_COUNT]; // tell SP0 that he can go on
    if      ( code == 0x01D592A6 ) slew_cmd = 8;       // North
    else if ( code == 0x01D582A7 ) slew_cmd = 2;       // South
    else if ( code == 0x01D562A9 ) slew_cmd = 4;       // East
@@ -932,8 +1015,8 @@ else if ( rs232_rx_idx==1 )  // check if it's a single key command
       {
       if ( ! ( moving || goto_cmd ) ) 
          {
-         ra.pos_target  = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);
-         dec.pos_target = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);
+         ra->pos_target  = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);
+         dec->pos_target = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);
          goto_cmd = 1;
          rs232_rx_buf[0] = 0;
          rs232_rx_idx=0;
@@ -999,16 +1082,15 @@ static unsigned char  console_special_started=0;
 static unsigned short d_idx=0;
 unsigned char Next=0;
 unsigned char CCC;
-long ltmp,tmp=0;
-short stmp=0;
 
-d_debug[0x03]=ra.pos;
-d_debug[0x04]=fp_sin(ra.pos);
-d_debug[0x05]=ra.pos;
-d_debug[0x06]=ra.pos_dem;
-d_debug[0x07]=dec.state;
-d_debug[0x0D]=goto_cmd + 0x100*moving;
-d_debug[0x0F]=ra.state;
+dd_v[DDS_DEBUG + 0x03]=ra->pos;
+dd_v[DDS_DEBUG + 0x04]=fp_sin(ra->pos);
+dd_v[DDS_DEBUG + 0x05]=ra->pos;
+dd_v[DDS_DEBUG + 0x06]=ra->pos_dem;
+dd_v[DDS_DEBUG + 0x07]=dec->state;
+dd_v[DDS_DEBUG + 0x0D]=goto_cmd + 0x100*moving;
+dd_v[DDS_DEBUG + 0x0F]=ra->state;
+
 if ( redraw ) 
    {
    first = 1;
@@ -1104,111 +1186,113 @@ else // print field data
             return;
             }
    
-         #define DISPLAY_DATA(XXX,YYY,XPGM_STR,FMT,SIZE,VALUE,L_VALUE)            \
-         {                                                                       \
-         if ( L_VALUE != VALUE || first)                                         \
-            {                                                                    \
-            display_data((char*)rs232_tx_buf,XXX,YYY,XPGM_STR,VALUE,FMT,SIZE);    \
-            L_VALUE = VALUE;                                                     \
-            }                                                                    \
-         else d_task ++;                                                         \
-         }
-    
-         d_task ++ ;
-// This list of IF() takes 30K in the flash
-         if ( d_task == NB_DTASKS + 1  ) DISPLAY_DATA( 22,36,0,FMT_HEX,8,d_debug[0x00],l_debug[0x00]);
-         if ( d_task == NB_DTASKS + 2  ) DISPLAY_DATA( 32,36,0,FMT_HEX,8,d_debug[0x01],l_debug[0x01]);
-         if ( d_task == NB_DTASKS + 3  ) DISPLAY_DATA( 42,36,0,FMT_HEX,8,d_debug[0x02],l_debug[0x02]);
-         if ( d_task == NB_DTASKS + 4  ) DISPLAY_DATA( 52,36,0,FMT_HEX,8,d_debug[0x03],l_debug[0x03]);
-         if ( d_task == NB_DTASKS + 5  ) DISPLAY_DATA( 64,36,0,FMT_HEX,8,d_debug[0x04],l_debug[0x04]);
-         if ( d_task == NB_DTASKS + 6  ) DISPLAY_DATA( 74,36,0,FMT_HEX,8,d_debug[0x05],l_debug[0x05]);
-         if ( d_task == NB_DTASKS + 7  ) DISPLAY_DATA( 84,36,0,FMT_HEX,8,d_debug[0x06],l_debug[0x06]);
-         if ( d_task == NB_DTASKS + 8  ) DISPLAY_DATA( 94,36,0,FMT_HEX,8,d_debug[0x07],l_debug[0x07]);
-         if ( d_task == NB_DTASKS + 9  ) DISPLAY_DATA( 22,37,0,FMT_HEX,8,d_debug[0x08],l_debug[0x08]);
-         if ( d_task == NB_DTASKS + 10 ) DISPLAY_DATA( 32,37,0,FMT_HEX,8,d_debug[0x09],l_debug[0x09]);
-         if ( d_task == NB_DTASKS + 11 ) DISPLAY_DATA( 42,37,0,FMT_HEX,8,d_debug[0x0A],l_debug[0x0A]);
-         if ( d_task == NB_DTASKS + 12 ) DISPLAY_DATA( 52,37,0,FMT_HEX,8,d_debug[0x0B],l_debug[0x0B]);
-         if ( d_task == NB_DTASKS + 13 ) DISPLAY_DATA( 64,37,0,FMT_HEX,8,d_debug[0x0C],l_debug[0x0C]);
-         if ( d_task == NB_DTASKS + 14 ) DISPLAY_DATA( 74,37,0,FMT_HEX,8,d_debug[0x0D],l_debug[0x0D]);
-         if ( d_task == NB_DTASKS + 15 ) DISPLAY_DATA( 84,37,0,FMT_HEX,8,d_debug[0x0E],l_debug[0x0E]);
-         if ( d_task == NB_DTASKS + 16 ) DISPLAY_DATA( 94,37,0,FMT_HEX,8,d_debug[0x0F],l_debug[0x0F]);
-
-         if ( d_task == NB_DTASKS + 17 ) DISPLAY_DATA( 22,35,0,FMT_HEX,4,histogram[0x00],l_histogram[0x00]);
-         if ( d_task == NB_DTASKS + 18 ) DISPLAY_DATA( 27,35,0,FMT_HEX,4,histogram[0x01],l_histogram[0x01]);
-         if ( d_task == NB_DTASKS + 19 ) DISPLAY_DATA( 32,35,0,FMT_HEX,4,histogram[0x02],l_histogram[0x02]);
-         if ( d_task == NB_DTASKS + 20 ) DISPLAY_DATA( 37,35,0,FMT_HEX,4,histogram[0x03],l_histogram[0x03]);
-         if ( d_task == NB_DTASKS + 21 ) DISPLAY_DATA( 42,35,0,FMT_HEX,4,histogram[0x04],l_histogram[0x04]);
-         if ( d_task == NB_DTASKS + 22 ) DISPLAY_DATA( 47,35,0,FMT_HEX,4,histogram[0x05],l_histogram[0x05]);
-         if ( d_task == NB_DTASKS + 23 ) DISPLAY_DATA( 52,35,0,FMT_HEX,4,histogram[0x06],l_histogram[0x06]);
-         if ( d_task == NB_DTASKS + 24 ) DISPLAY_DATA( 57,35,0,FMT_HEX,4,histogram[0x07],l_histogram[0x07]);
-         if ( d_task == NB_DTASKS + 25 ) DISPLAY_DATA( 64,35,0,FMT_HEX,4,histogram[0x08],l_histogram[0x08]);
-         if ( d_task == NB_DTASKS + 26 ) DISPLAY_DATA( 69,35,0,FMT_HEX,4,histogram[0x09],l_histogram[0x09]);
-         if ( d_task == NB_DTASKS + 27 ) DISPLAY_DATA( 74,35,0,FMT_HEX,4,histogram[0x0A],l_histogram[0x0A]);
-         if ( d_task == NB_DTASKS + 28 ) DISPLAY_DATA( 79,35,0,FMT_HEX,4,histogram[0x0B],l_histogram[0x0B]);
-         if ( d_task == NB_DTASKS + 29 ) DISPLAY_DATA( 84,35,0,FMT_HEX,4,histogram[0x0C],l_histogram[0x0C]);
-         if ( d_task == NB_DTASKS + 30 ) DISPLAY_DATA( 89,35,0,FMT_HEX,4,histogram[0x0D],l_histogram[0x0D]);
-         if ( d_task == NB_DTASKS + 31 ) DISPLAY_DATA( 94,35,0,FMT_HEX,4,histogram[0x0E],l_histogram[0x0E]);
-         if ( d_task == NB_DTASKS + 32 ) DISPLAY_DATA( 99,35,0,FMT_HEX,4,histogram[0x0F],l_histogram[0x0F]);
-
-         if ( d_task == NB_DTASKS + 33 ) DISPLAY_DATA( 22,38,0,FMT_HEX,8,d_debug[0x10],l_debug[0x10]);
-         if ( d_task == NB_DTASKS + 34 ) DISPLAY_DATA( 32,38,0,FMT_HEX,8,d_debug[0x11],l_debug[0x11]);
-         if ( d_task == NB_DTASKS + 35 ) DISPLAY_DATA( 42,38,0,FMT_HEX,8,d_debug[0x12],l_debug[0x12]);
-         if ( d_task == NB_DTASKS + 36 ) DISPLAY_DATA( 52,38,0,FMT_HEX,8,d_debug[0x13],l_debug[0x13]);
-         if ( d_task == NB_DTASKS + 37 ) DISPLAY_DATA( 64,38,0,FMT_HEX,8,d_debug[0x14],l_debug[0x14]);
-         if ( d_task == NB_DTASKS + 38 ) DISPLAY_DATA( 74,38,0,FMT_HEX,8,d_debug[0x15],l_debug[0x15]);
-         if ( d_task == NB_DTASKS + 39 ) DISPLAY_DATA( 84,38,0,FMT_HEX,8,d_debug[0x16],l_debug[0x16]);
-         if ( d_task == NB_DTASKS + 40 ) DISPLAY_DATA( 94,38,0,FMT_HEX,8,d_debug[0x17],l_debug[0x17]);
-         if ( d_task == NB_DTASKS + 41 ) DISPLAY_DATA( 22,39,0,FMT_HEX,8,d_debug[0x18],l_debug[0x18]);
-         if ( d_task == NB_DTASKS + 42 ) DISPLAY_DATA( 32,39,0,FMT_HEX,8,d_debug[0x19],l_debug[0x19]);
-         if ( d_task == NB_DTASKS + 43 ) DISPLAY_DATA( 42,39,0,FMT_HEX,8,d_debug[0x1A],l_debug[0x1A]);
-         if ( d_task == NB_DTASKS + 44 ) DISPLAY_DATA( 52,39,0,FMT_HEX,8,d_debug[0x1B],l_debug[0x1B]);
-         if ( d_task == NB_DTASKS + 45 ) DISPLAY_DATA( 64,39,0,FMT_HEX,8,d_debug[0x1C],l_debug[0x1C]);
-         if ( d_task == NB_DTASKS + 46 ) DISPLAY_DATA( 74,39,0,FMT_HEX,8,d_debug[0x1D],l_debug[0x1D]);
-         if ( d_task == NB_DTASKS + 47 ) DISPLAY_DATA( 84,39,0,FMT_HEX,8,d_debug[0x1E],l_debug[0x1E]);
-         if ( d_task == NB_DTASKS + 48 ) DISPLAY_DATA( 94,39,0,FMT_HEX,8,d_debug[0x1F],l_debug[0x1F]);
-
-         if ( d_task == NB_DTASKS + 65 ) DISPLAY_DATA( 35,22,0,FMT_HMS,8,seconds,l_seconds);
-
-         if ( d_task == NB_DTASKS + 66 ) DISPLAY_DATA( 22,25,0,FMT_NS,0,dec.pos,l_dec_pos);           // SKY POSITION
-         if ( d_task == NB_DTASKS + 67 ) DISPLAY_DATA( 39,25,0,FMT_EW,0,ra.pos,l_ra_pos1);            // SKY POSITION
-         if ( d_task == NB_DTASKS + 68 ) DISPLAY_DATA( 57,25,0,FMT_RA,0,ra.pos,l_ra_pos2);            // SKY POSITION
-
-         if ( d_task == NB_DTASKS + 69 ) DISPLAY_DATA( 22,26,0,FMT_NS,0,dec.pos_cor,l_dec_pos_cor);   // CORRECTED STAR POSITION
-         if ( d_task == NB_DTASKS + 70 ) DISPLAY_DATA( 39,26,0,FMT_EW,0,ra.pos_cor,l_ra_pos_cor1);    // CORRECTED STAR POSITION
-         if ( d_task == NB_DTASKS + 71 ) DISPLAY_DATA( 57,26,0,FMT_RA,0,ra.pos_cor,l_ra_pos_cor2);    // CORRECTED STAR POSITION
-
-         if ( d_task == NB_DTASKS + 72 ) DISPLAY_DATA( 22,27,0,FMT_NS,0,dec.pos_hw,l_dec_pos_hw);     // TELESCOPE POSITION
-         if ( d_task == NB_DTASKS + 73 ) DISPLAY_DATA( 39,27,0,FMT_EW,0,ra.pos_hw,l_ra_pos_hw1);      // TELESCOPE POSITION
-         if ( d_task == NB_DTASKS + 74 ) DISPLAY_DATA( 57,27,0,FMT_RA,0,ra.pos_hw,l_ra_pos_hw2);      // TELESCOPE POSITION
-
-         if ( d_task == NB_DTASKS + 75 ) 
-            {
-            tmp = stmp = (short)rs232_rx_buf;
-            if ( rs232_rx_idx != l_rs232_rx_idx) tmp=0;   // force an update of the command line
-            DISPLAY_DATA( 14,44,0,FMT_STR,0,stmp,tmp);
-            l_rs232_rx_idx = rs232_rx_idx;
+         if ( dd_go(d_task-NB_DTASKS,first) )
+            {  // something to display was found, rs232_tx_buf has something
+            Next = rs232_tx_buf[rs232_tx_idx++];
             }
+         d_task++;
 
-         if ( d_task == NB_DTASKS + 76 ) DISPLAY_DATA( 22,28,pgm_stars_name + cur_star*STAR_NAME_LEN ,FMT_NO_VAL,0,cur_star,l_cur_star);
+         if ( d_task >= DD_FIELDS + NB_DTASKS) { first = 0 ; d_task = NB_DTASKS; }
+//         else                                    Next = rs232_tx_buf[rs232_tx_idx++];
 
-         ltmp = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);  tmp=0;
-         if ( d_task == NB_DTASKS + 77 ) DISPLAY_DATA( 22,29,0,FMT_NS,0,ltmp,l_star_dec);      // NEAREAST STAR POSITION
-         ltmp = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);  tmp=0;
-         if ( d_task == NB_DTASKS + 78 ) DISPLAY_DATA( 39,29,0,FMT_EW,0,ltmp,l_star_ra1);      // NEAREAST STAR POSITION
-                                                              tmp=0;
-         if ( d_task == NB_DTASKS + 79 ) DISPLAY_DATA( 57,29,0,FMT_RA,0,ltmp,l_star_ra2);      // NEAREAST STAR POSITION
+         //d_task = dd_go(d_task,first) ;
 
-         if ( d_task == NB_DTASKS + 80 ) DISPLAY_DATA( 72,31,0,FMT_DEC,6,ra.speed,l_ra_speed);   // 
-         if ( d_task == NB_DTASKS + 81 ) DISPLAY_DATA( 72,32,0,FMT_DEC,6,dec.speed,l_dec_speed); // 
-         if ( d_task == NB_DTASKS + 82 ) DISPLAY_DATA( 97,31,0,FMT_DEC,3,ra.state,l_ra_state);   // 
-         if ( d_task == NB_DTASKS + 83 ) DISPLAY_DATA( 97,32,0,FMT_DEC,3,dec.state,l_dec_state); // 
 
-         if ( d_task == NB_DTASKS + 84 ) DISPLAY_DATA( 22,31,0,FMT_HEX,8,ir_code,ll_ir_code); // 
-         if ( d_task == NB_DTASKS + 85 ) DISPLAY_DATA( 22,32,0,FMT_HEX,8,l_ir_code,ll_l_ir_code); // 
-         if ( d_task == NB_DTASKS + 86 ) DISPLAY_DATA( 31,31,0,FMT_HEX,4,ir_count,ll_ir_count); // 
 
-         if ( d_task == NB_DTASKS + 87 ) { first = 0 ; d_task = NB_DTASKS; }
-         else                            Next = rs232_tx_buf[rs232_tx_idx++];
+// This list of IF() takes 30K in the flash
+//         if ( d_task == NB_DTASKS + 1  ) DISPLAY_DATA( 22,36,0,FMT_HEX,8,d_debug[0x00],l_debug[0x00]);
+//         if ( d_task == NB_DTASKS + 2  ) DISPLAY_DATA( 32,36,0,FMT_HEX,8,d_debug[0x01],l_debug[0x01]);
+//         if ( d_task == NB_DTASKS + 3  ) DISPLAY_DATA( 42,36,0,FMT_HEX,8,d_debug[0x02],l_debug[0x02]);
+//         if ( d_task == NB_DTASKS + 4  ) DISPLAY_DATA( 52,36,0,FMT_HEX,8,d_debug[0x03],l_debug[0x03]);
+//         if ( d_task == NB_DTASKS + 5  ) DISPLAY_DATA( 64,36,0,FMT_HEX,8,d_debug[0x04],l_debug[0x04]);
+//         if ( d_task == NB_DTASKS + 6  ) DISPLAY_DATA( 74,36,0,FMT_HEX,8,d_debug[0x05],l_debug[0x05]);
+//         if ( d_task == NB_DTASKS + 7  ) DISPLAY_DATA( 84,36,0,FMT_HEX,8,d_debug[0x06],l_debug[0x06]);
+//         if ( d_task == NB_DTASKS + 8  ) DISPLAY_DATA( 94,36,0,FMT_HEX,8,d_debug[0x07],l_debug[0x07]);
+//         if ( d_task == NB_DTASKS + 9  ) DISPLAY_DATA( 22,37,0,FMT_HEX,8,d_debug[0x08],l_debug[0x08]);
+//         if ( d_task == NB_DTASKS + 10 ) DISPLAY_DATA( 32,37,0,FMT_HEX,8,d_debug[0x09],l_debug[0x09]);
+//         if ( d_task == NB_DTASKS + 11 ) DISPLAY_DATA( 42,37,0,FMT_HEX,8,d_debug[0x0A],l_debug[0x0A]);
+//         if ( d_task == NB_DTASKS + 12 ) DISPLAY_DATA( 52,37,0,FMT_HEX,8,d_debug[0x0B],l_debug[0x0B]);
+//         if ( d_task == NB_DTASKS + 13 ) DISPLAY_DATA( 64,37,0,FMT_HEX,8,d_debug[0x0C],l_debug[0x0C]);
+//         if ( d_task == NB_DTASKS + 14 ) DISPLAY_DATA( 74,37,0,FMT_HEX,8,d_debug[0x0D],l_debug[0x0D]);
+//         if ( d_task == NB_DTASKS + 15 ) DISPLAY_DATA( 84,37,0,FMT_HEX,8,d_debug[0x0E],l_debug[0x0E]);
+//         if ( d_task == NB_DTASKS + 16 ) DISPLAY_DATA( 94,37,0,FMT_HEX,8,d_debug[0x0F],l_debug[0x0F]);
+//
+//         if ( d_task == NB_DTASKS + 17 ) DISPLAY_DATA( 22,35,0,FMT_HEX,4,histogram[0x00],l_histogram[0x00]);
+//         if ( d_task == NB_DTASKS + 18 ) DISPLAY_DATA( 27,35,0,FMT_HEX,4,histogram[0x01],l_histogram[0x01]);
+//         if ( d_task == NB_DTASKS + 19 ) DISPLAY_DATA( 32,35,0,FMT_HEX,4,histogram[0x02],l_histogram[0x02]);
+//         if ( d_task == NB_DTASKS + 20 ) DISPLAY_DATA( 37,35,0,FMT_HEX,4,histogram[0x03],l_histogram[0x03]);
+//         if ( d_task == NB_DTASKS + 21 ) DISPLAY_DATA( 42,35,0,FMT_HEX,4,histogram[0x04],l_histogram[0x04]);
+//         if ( d_task == NB_DTASKS + 22 ) DISPLAY_DATA( 47,35,0,FMT_HEX,4,histogram[0x05],l_histogram[0x05]);
+//         if ( d_task == NB_DTASKS + 23 ) DISPLAY_DATA( 52,35,0,FMT_HEX,4,histogram[0x06],l_histogram[0x06]);
+//         if ( d_task == NB_DTASKS + 24 ) DISPLAY_DATA( 57,35,0,FMT_HEX,4,histogram[0x07],l_histogram[0x07]);
+//         if ( d_task == NB_DTASKS + 25 ) DISPLAY_DATA( 64,35,0,FMT_HEX,4,histogram[0x08],l_histogram[0x08]);
+//         if ( d_task == NB_DTASKS + 26 ) DISPLAY_DATA( 69,35,0,FMT_HEX,4,histogram[0x09],l_histogram[0x09]);
+//         if ( d_task == NB_DTASKS + 27 ) DISPLAY_DATA( 74,35,0,FMT_HEX,4,histogram[0x0A],l_histogram[0x0A]);
+//         if ( d_task == NB_DTASKS + 28 ) DISPLAY_DATA( 79,35,0,FMT_HEX,4,histogram[0x0B],l_histogram[0x0B]);
+//         if ( d_task == NB_DTASKS + 29 ) DISPLAY_DATA( 84,35,0,FMT_HEX,4,histogram[0x0C],l_histogram[0x0C]);
+//         if ( d_task == NB_DTASKS + 30 ) DISPLAY_DATA( 89,35,0,FMT_HEX,4,histogram[0x0D],l_histogram[0x0D]);
+//         if ( d_task == NB_DTASKS + 31 ) DISPLAY_DATA( 94,35,0,FMT_HEX,4,histogram[0x0E],l_histogram[0x0E]);
+//         if ( d_task == NB_DTASKS + 32 ) DISPLAY_DATA( 99,35,0,FMT_HEX,4,histogram[0x0F],l_histogram[0x0F]);
+//
+//         if ( d_task == NB_DTASKS + 33 ) DISPLAY_DATA( 22,38,0,FMT_HEX,8,d_debug[0x10],l_debug[0x10]);
+//         if ( d_task == NB_DTASKS + 34 ) DISPLAY_DATA( 32,38,0,FMT_HEX,8,d_debug[0x11],l_debug[0x11]);
+//         if ( d_task == NB_DTASKS + 35 ) DISPLAY_DATA( 42,38,0,FMT_HEX,8,d_debug[0x12],l_debug[0x12]);
+//         if ( d_task == NB_DTASKS + 36 ) DISPLAY_DATA( 52,38,0,FMT_HEX,8,d_debug[0x13],l_debug[0x13]);
+//         if ( d_task == NB_DTASKS + 37 ) DISPLAY_DATA( 64,38,0,FMT_HEX,8,d_debug[0x14],l_debug[0x14]);
+//         if ( d_task == NB_DTASKS + 38 ) DISPLAY_DATA( 74,38,0,FMT_HEX,8,d_debug[0x15],l_debug[0x15]);
+//         if ( d_task == NB_DTASKS + 39 ) DISPLAY_DATA( 84,38,0,FMT_HEX,8,d_debug[0x16],l_debug[0x16]);
+//         if ( d_task == NB_DTASKS + 40 ) DISPLAY_DATA( 94,38,0,FMT_HEX,8,d_debug[0x17],l_debug[0x17]);
+//         if ( d_task == NB_DTASKS + 41 ) DISPLAY_DATA( 22,39,0,FMT_HEX,8,d_debug[0x18],l_debug[0x18]);
+//         if ( d_task == NB_DTASKS + 42 ) DISPLAY_DATA( 32,39,0,FMT_HEX,8,d_debug[0x19],l_debug[0x19]);
+//         if ( d_task == NB_DTASKS + 43 ) DISPLAY_DATA( 42,39,0,FMT_HEX,8,d_debug[0x1A],l_debug[0x1A]);
+//         if ( d_task == NB_DTASKS + 44 ) DISPLAY_DATA( 52,39,0,FMT_HEX,8,d_debug[0x1B],l_debug[0x1B]);
+//         if ( d_task == NB_DTASKS + 45 ) DISPLAY_DATA( 64,39,0,FMT_HEX,8,d_debug[0x1C],l_debug[0x1C]);
+//         if ( d_task == NB_DTASKS + 46 ) DISPLAY_DATA( 74,39,0,FMT_HEX,8,d_debug[0x1D],l_debug[0x1D]);
+//         if ( d_task == NB_DTASKS + 47 ) DISPLAY_DATA( 84,39,0,FMT_HEX,8,d_debug[0x1E],l_debug[0x1E]);
+//         if ( d_task == NB_DTASKS + 48 ) DISPLAY_DATA( 94,39,0,FMT_HEX,8,d_debug[0x1F],l_debug[0x1F]);
+
+//         if ( d_task == NB_DTASKS + 65 ) DISPLAY_DATA( 35,22,0,FMT_HMS,8,seconds,l_seconds);
+
+//         if ( d_task == NB_DTASKS + 66 ) DISPLAY_DATA( 22,25,0,FMT_NS,0,dec->pos,l_dec_pos);           // SKY POSITION
+//         if ( d_task == NB_DTASKS + 67 ) DISPLAY_DATA( 39,25,0,FMT_EW,0,ra->pos,l_ra_pos1);            // SKY POSITION
+//         if ( d_task == NB_DTASKS + 68 ) DISPLAY_DATA( 57,25,0,FMT_RA,0,ra->pos,l_ra_pos2);            // SKY POSITION
+//
+//         if ( d_task == NB_DTASKS + 69 ) DISPLAY_DATA( 22,26,0,FMT_NS,0,dec->pos_cor,l_dec_pos_cor);   // CORRECTED STAR POSITION
+//         if ( d_task == NB_DTASKS + 70 ) DISPLAY_DATA( 39,26,0,FMT_EW,0,ra->pos_cor,l_ra_pos_cor1);    // CORRECTED STAR POSITION
+//         if ( d_task == NB_DTASKS + 71 ) DISPLAY_DATA( 57,26,0,FMT_RA,0,ra->pos_cor,l_ra_pos_cor2);    // CORRECTED STAR POSITION
+//
+//         if ( d_task == NB_DTASKS + 72 ) DISPLAY_DATA( 22,27,0,FMT_NS,0,dec->pos_hw,l_dec_pos_hw);     // TELESCOPE POSITION
+//         if ( d_task == NB_DTASKS + 73 ) DISPLAY_DATA( 39,27,0,FMT_EW,0,ra->pos_hw,l_ra_pos_hw1);      // TELESCOPE POSITION
+//         if ( d_task == NB_DTASKS + 74 ) DISPLAY_DATA( 57,27,0,FMT_RA,0,ra->pos_hw,l_ra_pos_hw2);      // TELESCOPE POSITION
+
+//////////         if ( d_task == NB_DTASKS + 75 ) 
+//////////            {
+//////////            tmp = stmp = (short)rs232_rx_buf;
+//////////            if ( rs232_rx_idx != l_rs232_rx_idx) tmp=0;   // force an update of the command line
+//////////            DISPLAY_DATA( 14,44,0,FMT_STR,0,stmp,tmp);
+//////////            l_rs232_rx_idx = rs232_rx_idx;
+//////////            }
+//////////
+//////////         if ( d_task == NB_DTASKS + 76 ) DISPLAY_DATA( 22,28,pgm_stars_name + cur_star*STAR_NAME_LEN ,FMT_NO_VAL,0,cur_star,l_cur_star);
+// 
+//          ltmp = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);  tmp=0;
+//          if ( d_task == NB_DTASKS + 77 ) DISPLAY_DATA( 22,29,0,FMT_NS,0,ltmp,l_star_dec);      // NEAREAST STAR POSITION
+//          ltmp = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);  tmp=0;
+//          if ( d_task == NB_DTASKS + 78 ) DISPLAY_DATA( 39,29,0,FMT_EW,0,ltmp,l_star_ra1);      // NEAREAST STAR POSITION
+//                                                               tmp=0;
+//          if ( d_task == NB_DTASKS + 79 ) DISPLAY_DATA( 57,29,0,FMT_RA,0,ltmp,l_star_ra2);      // NEAREAST STAR POSITION
+// 
+//          if ( d_task == NB_DTASKS + 80 ) DISPLAY_DATA( 72,31,0,FMT_DEC,6,ra->speed,l_ra_speed);   // 
+//          if ( d_task == NB_DTASKS + 81 ) DISPLAY_DATA( 72,32,0,FMT_DEC,6,dec->speed,l_dec_speed); // 
+//          if ( d_task == NB_DTASKS + 82 ) DISPLAY_DATA( 97,31,0,FMT_DEC,3,ra->state,l_ra_state);   // 
+//          if ( d_task == NB_DTASKS + 83 ) DISPLAY_DATA( 97,32,0,FMT_DEC,3,dec->state,l_dec_state); // 
+// 
+//          if ( d_task == NB_DTASKS + 84 ) DISPLAY_DATA( 22,31,0,FMT_HEX,8,ir_code,ll_ir_code); // 
+//          if ( d_task == NB_DTASKS + 85 ) DISPLAY_DATA( 22,32,0,FMT_HEX,8,l_ir_code,ll_l_ir_code); // 
+//          if ( d_task == NB_DTASKS + 86 ) DISPLAY_DATA( 31,31,0,FMT_HEX,4,ir_count,ll_ir_count); // 
+
+//////////         if ( d_task == NB_DTASKS + 87 ) { first = 0 ; d_task = NB_DTASKS; }
+//////////         else                            Next = rs232_tx_buf[rs232_tx_idx++];
          }
       }
    } 
@@ -1270,7 +1354,7 @@ if ( histo_sp0 == 0 ) // if we are not monitoring SP0
    histo *= 15 * 10 * 8;  // TCNT0 counts from 0 to F_CPU_K/10/8 (see OCR0A) 
    histo /= F_CPU_K;      // TCNT0 counts from 0 to F_CPU_K/10/8 (see OCR0A) 
    if ( histo > 15 ) histo=15;
-   histogram[histo]++;
+   dd_v[DDS_HISTO + histo]++;
    }
 
 TIMSK0 = 1;     // timer0 interrupt enable
@@ -1284,48 +1368,48 @@ long temp;
 //FAST_SET_RA_STEP(0);
 //FAST_SET_DEC_STEP(0);
 
-temp = ra.pos_hw-ra.pos_cor;
+temp = ra->pos_hw-ra->pos_cor;
 if ( temp >= TICKS_P_STEP )
    {
    // too long to complete !!set_digital_output(DO_RA_DIR,0); // go backward
    //FAST_SET_RA_DIR(0);
-   ra.direction=0x00;
-   ADD_VALUE_TO_POS(-TICKS_P_STEP,ra.pos_hw);
-   ra.next=FAST_RA_STEP;
+   ra->direction=0x00;
+   ADD_VALUE_TO_POS(-TICKS_P_STEP,ra->pos_hw);
+   ra->next=FAST_RA_STEP;
    }
 else if ( -temp >= TICKS_P_STEP )
    {
    // too long to complete !!set_digital_output(DO_RA_DIR,1); // go forward
    //FAST_SET_RA_DIR(1);
-   ra.direction=FAST_RA_DIR;
-   ADD_VALUE_TO_POS(TICKS_P_STEP,ra.pos_hw);
-   ra.next=FAST_RA_STEP;
+   ra->direction=FAST_RA_DIR;
+   ADD_VALUE_TO_POS(TICKS_P_STEP,ra->pos_hw);
+   ra->next=FAST_RA_STEP;
    }
-else { ra.next=0; }
+else { ra->next=0; }
 
-temp = dec.pos_hw-dec.pos_cor;
+temp = dec->pos_hw-dec->pos_cor;
 if ( temp >= (2*TICKS_P_STEP) )      // The DEC axis has 2 times less teeths 
    {
    // too long to complete !!set_digital_output(DO_DEC_DIR,0); // go backward
    //FAST_SET_DEC_DIR(0);
-   dec.direction=0x00;
-   ADD_VALUE_TO_POS(-(2*TICKS_P_STEP),dec.pos_hw);
-   dec.next=FAST_DEC_STEP;
+   dec->direction=0x00;
+   ADD_VALUE_TO_POS(-(2*TICKS_P_STEP),dec->pos_hw);
+   dec->next=FAST_DEC_STEP;
    }
 else if ( -temp >= (2*TICKS_P_STEP) )
    {
    // too long to complete !!set_digital_output(DO_DEC_DIR,1); // go forward
    //FAST_SET_DEC_DIR(1);
-   dec.direction=FAST_DEC_DIR;
-   ADD_VALUE_TO_POS( (2*TICKS_P_STEP),dec.pos_hw);
-   dec.next=FAST_DEC_STEP;
+   dec->direction=FAST_DEC_DIR;
+   ADD_VALUE_TO_POS( (2*TICKS_P_STEP),dec->pos_hw);
+   dec->next=FAST_DEC_STEP;
    }
-else { dec.next=0; }
+else { dec->next=0; }
 
-d_debug[0x02]=ra.direction;
-d_debug[0x0A]=dec.direction;
+dd_v[DDS_DEBUG + 0x02]=ra->direction;
+dd_v[DDS_DEBUG + 0x0A]=dec->direction;
 
-PORTC = ra.direction | dec.direction;    // I do this to optimize execution time
+PORTC = ra->direction | dec->direction;    // I do this to optimize execution time
 
 }
 
@@ -1401,25 +1485,25 @@ else if ( axis->state == 1 ) // setup the goto
 
 // if ( ra_axis )
 // {
-// d_debug[0x10]=tt;
-// d_debug[0x11]=axis->pos_target;
-// d_debug[0x12]=axis->pos_delta;
-// d_debug[0x13]=axis->accel;
+// dd_v[DDS_DEBUG + 0x10]=tt;
+// dd_v[DDS_DEBUG + 0x11]=axis->pos_target;
+// dd_v[DDS_DEBUG + 0x12]=axis->pos_delta;
+// dd_v[DDS_DEBUG + 0x13]=axis->accel;
 // }
 // else
 // {
-// d_debug[0x18]=tt;
-// d_debug[0x19]=axis->pos_target;
-// d_debug[0x1A]=axis->pos_delta;
-// d_debug[0x1B]=axis->accel;
+// dd_v[DDS_DEBUG + 0x18]=tt;
+// dd_v[DDS_DEBUG + 0x19]=axis->pos_target;
+// dd_v[DDS_DEBUG + 0x1A]=axis->pos_delta;
+// dd_v[DDS_DEBUG + 0x1B]=axis->accel;
 // }
    }
 else if ( axis->state == 2 )  // detect max speed, or halway point
    {
    axis->pos_part1 = axis->pos_displ;
 
-// if ( ra_axis ) d_debug[0x14]=2*axis->pos_displ;
-// else           d_debug[0x1C]=2*axis->pos_displ;
+// if ( ra_axis ) dd_v[DDS_DEBUG + 0x14]=2*axis->pos_displ;
+// else           dd_v[DDS_DEBUG + 0x1C]=2*axis->pos_displ;
 
    if ( axis->pos_delta > 0 ) // going forward
       {
@@ -1444,8 +1528,8 @@ else if ( axis->state == 2 )  // detect max speed, or halway point
       }
    else axis->last_high_speed = axis->speed;
 
-// if ( ra_axis ) d_debug[0x15]=axis->state;
-// else           d_debug[0x1D]=axis->state;
+// if ( ra_axis ) dd_v[DDS_DEBUG + 0x15]=axis->state;
+// else           dd_v[DDS_DEBUG + 0x1D]=axis->state;
    if ( slew_cmd ) axis->state = 20; // decelerate - emergency stop
    }
 else if ( axis->state == 3 )  // cruise speed
@@ -1566,8 +1650,8 @@ if ( ra_axis ) ADD_VALUE_TO_POS(axis->pos_earth,axis->pos_dem);   // add the ear
 
 axis->pos_cor = axis->pos_dem;
 
-//ra.pos_dem = ra.pos_earth + ra.pos;
-//ra.pos_cor = ra.pos_dem;  // for now, no correction
+//ra->pos_dem = ra->pos_earth + ra->pos;
+//ra->pos_cor = ra->pos_dem;  // for now, no correction
 
 return axis->state;
 }
@@ -1613,12 +1697,12 @@ if ( code_started!=0 || IR!=0 )
       }
    if ( count_0 > 0x40 || count_bit==0x1A) // code over
       {
-      if ( ir_count == l_ir_count && ir_timeout==0 )  // wait for bg to process the code
+      if ( dd_v[DDS_IR_COUNT] == l_ir_count && ir_timeout==0 )  // wait for bg to process the code
          {
-         l_ir_code = ir_code;
-         ir_code   = loc_ir_code;
-         ir_count++;
-         d_debug[0x1F]=ir_code;
+         dd_v[DDS_IR_L_CODE] = dd_v[DDS_IR_CODE];
+         dd_v[DDS_IR_CODE]   = loc_ir_code;
+         dd_v[DDS_IR_COUNT]++;
+         dd_v[DDS_DEBUG + 0x1F]=dd_v[DDS_IR_CODE];
          ir_timeout = 2500;      // 1/4 seconds
          }
       count_0 = code_started = count_bit = loc_ir_code = 0;
@@ -1629,55 +1713,55 @@ if ( code_started!=0 || IR!=0 )
 
 // this takes a lot of time . . . .: ssec = (ssec+1)%10000;   
 ssec++; if ( ssec == 10000 ) ssec = 0;
-if ( ssec == 0) seconds++;
+if ( ssec == 0) dd_v[DDS_SECONDS]++;
 
 d_TIMER1++;             // counts time in 0.1 ms
 if ( ! motor_disable )    //////////////////// motor disabled ///////////
    {
-// These takes too long to complete !!!  set_digital_output(DO_RA_STEP ,ra.next);     // eventually, I should use my routines...flush polopu...
-// These takes too long to complete !!!  set_digital_output(DO_DEC_STEP,dec.next);    // eventually, I should use my routines...flush polopu...
-//   FAST_SET_RA_STEP(ra.next);    //   >
-//   FAST_SET_DEC_STEP(dec.next);  //   > 1/16
-//   if ( ra.next )  fast_portc |= (1<<DO_RA_STEP);
-//   if ( dec.next ) fast_portc |= (1<<DO_DEC_STEP);
-//   PORTC = ra.next | dec.next;
-   PORTC = ra.next | dec.next | ra.direction | dec.direction;    // I do this to optimize execution time
+// These takes too long to complete !!!  set_digital_output(DO_RA_STEP ,ra->next);     // eventually, I should use my routines...flush polopu...
+// These takes too long to complete !!!  set_digital_output(DO_DEC_STEP,dec->next);    // eventually, I should use my routines...flush polopu...
+//   FAST_SET_RA_STEP(ra->next);    //   >
+//   FAST_SET_DEC_STEP(dec->next);  //   > 1/16
+//   if ( ra->next )  fast_portc |= (1<<DO_RA_STEP);
+//   if ( dec->next ) fast_portc |= (1<<DO_DEC_STEP);
+//   PORTC = ra->next | dec->next;
+   PORTC = ra->next | dec->next | ra->direction | dec->direction;    // I do this to optimize execution time
  
    ///////////// Process earth compensation
    // this takes a lot of time . . . .:earth_comp = (earth_comp+1)%EARTH_COMP;
    earth_comp++ ; if ( earth_comp == EARTH_COMP ) earth_comp = 0;
-   if ( earth_comp == 0 && earth_tracking !=0 ) ADD_VALUE_TO_POS(TICKS_P_STEP,ra.pos_earth);    // Correct for the Earth's rotation
+   if ( earth_comp == 0 && earth_tracking !=0 ) ADD_VALUE_TO_POS(TICKS_P_STEP,ra->pos_earth);    // Correct for the Earth's rotation
    
    ///////////// Process goto
 
-   process_goto(&ra ,1); // 1 : specify that this is the RA axis     >> 2/16
-   process_goto(&dec,0); // 0 : this is the DEC axis
+   process_goto(ra ,1); // 1 : specify that this is the RA axis     >> 2/16
+   process_goto(dec,0); // 0 : this is the DEC axis
 //   if ( d_TIMER1 & 1 ) process_goto(&ra ,1); // 1 : specify that this is the RA axis     >> 2/16
 //   else                process_goto(&dec,0); // 0 : this is the DEC axis
  
-//   d_debug[0x00]=ra.accel;
-//   d_debug[0x08]=dec.accel;
+//   dd_v[DDS_DEBUG + 0x00]=ra->accel;
+//   dd_v[DDS_DEBUG + 0x08]=dec->accel;
    
-//   d_debug[0x01]=ra.speed;
-//   d_debug[0x09]=dec.speed;
+//   dd_v[DDS_DEBUG + 0x01]=ra->speed;
+//   dd_v[DDS_DEBUG + 0x09]=dec->speed;
 //   
-//   d_debug[0x02]=ra.pos_delta;
-//   d_debug[0x0A]=dec.pos_delta;
+//   dd_v[DDS_DEBUG + 0x02]=ra->pos_delta;
+//   dd_v[DDS_DEBUG + 0x0A]=dec->pos_delta;
 //   
-//   d_debug[0x03 ]=ra.state;
-//   d_debug[0x0B]=dec.state;
+//   dd_v[DDS_DEBUG + 0x03]=ra->state;
+//   dd_v[DDS_DEBUG + 0x0B]=dec->state;
 //
-//   d_debug[0x10]=ra.next | dec.next | ra.direction | dec.direction;
-//   d_debug[0x18]=goto_cmd;
+//   dd_v[DDS_DEBUG + 0x10]=ra->next | dec->next | ra->direction | dec->direction;
+//   dd_v[DDS_DEBUG + 0x18]=goto_cmd;
 //   
-//   d_debug[0x11]=ra.spd_index;
-//   d_debug[0x19]=dec.spd_index;
+//   dd_v[DDS_DEBUG + 0x11]=ra->spd_index;
+//   dd_v[DDS_DEBUG + 0x19]=dec->spd_index;
 //   
-   if ( (ra.state == 0) && (dec.state == 0)) moving=0;
-   else                                      moving=1;  // we are still moving 
+   if ( (ra->state == 0) && (dec->state == 0)) moving=0;
+   else                                        moving=1;  // we are still moving 
 
-//   d_debug[0x12]=moving;
-//   d_debug[0x1A]=moving;
+//   dd_v[DDS_DEBUG + 0x12]=moving;
+//   dd_v[DDS_DEBUG + 0x1A]=moving;
 
    if ( moving ) slew_cmd=goto_cmd=0;                   // command received
    
@@ -1690,7 +1774,7 @@ if ( histo_sp0 == 1 ) // if we are not monitoring SP0
    histo *= 15 * 10;  // TCNT1 counts from 0 to F_CPU_K/10 (see OCR1A) 
    histo /= F_CPU_K;  // TCNT1 counts from 0 to F_CPU_K/10 (see OCR1A) 
    if ( histo > 15 ) histo=15;
-   histogram[histo]++;
+   dd_v[DDS_HISTO + histo]++;
    }
 }
 
@@ -1706,7 +1790,7 @@ d_USART_TX++;
 
 // - used by timer routines - ISR(TIMER2_OVF_vect)
 // - used by timer routines - {
-// - used by timer routines - d_debug[0x03]++;
+// - used by timer routines - dd_v[DDS_DEBUG + 0x03]++;
 // - used by timer routines - }
 
 void init_rs232(void)
@@ -1772,6 +1856,9 @@ int main_telescope(void)
 {
 long iii;
 ///////////////////////////////// Init /////////////////////////////////////////
+ra  = (AXIS*)&dd_v[DDS_RA];   // init pointers
+dec = (AXIS*)&dd_v[DDS_DEC];  // init pointers
+
 init_rs232();
 init_disp();
 
@@ -1804,54 +1891,57 @@ while (console_go) display_next_bg(); /* wait for ready */ display_data((char*)c
 while (console_go) display_next_bg(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_free_mem,d_ram,FMT_HEX,8);  console_go = 1;
 while (console_go) display_next_bg(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_free_mem,d_ram,FMT_HEX,8);  console_go = 1;
 while (console_go) display_next_bg();
+
+for ( iii=0 ; iii<31 ; iii++ ) dd_v[DDS_DEBUG + iii] = iii * 0x100;
+
 wait(1,SEC);
 
-d_debug[0x0E]=0x3333;
+dd_v[DDS_DEBUG + 0x0E]=0x3333;
 wait(2,SEC);
 
 d_now   = d_TIMER1;
-for(iii=0;iii<16;iii++) histogram[iii]=0;
-seconds = ssec = 0;
+for(iii=0;iii<16;iii++) dd_v[DDS_HISTO + iii]=0;
+dd_v[DDS_SECONDS] = ssec = 0;
 motor_disable = 0;   // Stepper motor enabled...
 set_digital_output(DO_DISABLE  ,motor_disable);   
 
 #ifdef ASFAS 
-   d_debug[0x0E]=0x4444;
+   dd_v[DDS_DEBUG + 0x0E]=0x4444;
    wait(5,SEC);
    
-   d_debug[0x0E]=0x5555;
-   //ra.pos_target = TICKS_P_STEP * 200UL * 5UL * 16UL * 10UL; // thats 30 degrees , thats 10 turns, thats 357920000 , thats 0x15556D00     got:1555605F
-   ra.pos_target = TICKS_P_STEP * 200UL * 5UL * 16UL * 3UL; 
-   dec.pos_target = 0;
+   dd_v[DDS_DEBUG + 0x0E]=0x5555;
+   //ra->pos_target = TICKS_P_STEP * 200UL * 5UL * 16UL * 10UL; // thats 30 degrees , thats 10 turns, thats 357920000 , thats 0x15556D00     got:1555605F
+   ra->pos_target = TICKS_P_STEP * 200UL * 5UL * 16UL * 3UL; 
+   dec->pos_target = 0;
    goto_cmd = 1;  
-   d_debug[0x0E]=0x6666;
+   dd_v[DDS_DEBUG + 0x0E]=0x6666;
    while ( moving || goto_cmd ) display_next_bg();  // wait for the reposition to be complete
    wait(5,SEC);
    
    
-   d_debug[0x0E]=0x7777;
+   dd_v[DDS_DEBUG + 0x0E]=0x7777;
    // go the other way around
-   ra.pos_target = TICKS_P_STEP * 200UL * 5UL * 16UL * 2UL;
-   dec.pos_target = 0;
+   ra->pos_target = TICKS_P_STEP * 200UL * 5UL * 16UL * 2UL;
+   dec->pos_target = 0;
    goto_cmd = 1;  
    while ( moving || goto_cmd ) display_next_bg();  // wait for the reposition to be complete
    wait(5,SEC);
    
-   d_debug[0x0E]=0x8888;
+   dd_v[DDS_DEBUG + 0x0E]=0x8888;
    // go the other way around
-   ra.pos_target = TICKS_P_DAY -TICKS_P_STEP * 200UL * 5UL * 16UL * 3UL;
-   dec.pos_target = 0;
+   ra->pos_target = TICKS_P_DAY -TICKS_P_STEP * 200UL * 5UL * 16UL * 3UL;
+   dec->pos_target = 0;
    goto_cmd = 1;  
    while ( moving || goto_cmd ) display_next_bg();  // wait for the reposition to be complete
    wait(5,SEC);
    
 #endif
-d_debug[0x0E]=0x9999;
+dd_v[DDS_DEBUG + 0x0E]=0x9999;
 // go the other way around
-//ra.pos_target  = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);
-//dec.pos_target = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);
-//d_debug[0x10]=ra.pos_target;
-//d_debug[0x18]=dec.pos_target;
+//ra->pos_target  = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);
+//dec->pos_target = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);
+//dd_v[DDS_DEBUG + 0x10]=ra->pos_target;
+//dd_v[DDS_DEBUG + 0x18]=dec->pos_target;
 //goto_cmd = 1;  
 //while ( moving || goto_cmd ) display_next_bg();  // wait for the reposition to be complete
 wait(5,SEC);
@@ -1859,10 +1949,10 @@ wait(5,SEC);
 
 while (1 )
    {
-   d_debug[0x0E]=0xAAAA;
+   dd_v[DDS_DEBUG + 0x0E]=0xAAAA;
    d_now   = d_TIMER1;
    wait(1,SEC);
-   d_debug[0x0E]=0xBBBB;
+   dd_v[DDS_DEBUG + 0x0E]=0xBBBB;
    d_now   = d_TIMER1;
    wait(1,SEC);
    }
@@ -1882,6 +1972,9 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.33  2011/12/28 19:35:55  pmichel
+This is before I start to manually optimize for speed
+
 Revision 1.32  2011/12/27 22:20:57  pmichel
 Yet another big error fixed
 
