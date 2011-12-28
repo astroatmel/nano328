@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/28 19:35:55 $
-$Id: telescope.c,v 1.33 2011/12/28 19:35:55 pmichel Exp pmichel $
+$Date: 2011/12/28 22:30:03 $
+$Id: telescope.c,v 1.34 2011/12/28 22:30:03 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.33 $
+$Revision: 1.34 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -138,6 +138,7 @@ if ( (unsigned long)(POS) >= TICKS_P_DAY )   /* we are in the dead band */  \
 // A microstep is 1/16th of a step and is managed by the stepper motor controller   16 microstep = 1 step
 // A TICK is the name I use for the fraction of microsteps,                         2160 ticks = 1 microstep 
 
+/// STRUCT must not use up more than 16 longs because it uses one row in the display routine
 typedef struct   // those values are required per axis to be able to execute goto commands
    {             // I use a structure so that both DEC and RA axis can use the exact same routines
    long  pos;              // units: ticks (this is the current sky position)
@@ -223,7 +224,6 @@ PROGMEM const char dip328p[]={"\
 #endif
 
 #define STAR_NAME_LEN 23
-short cur_star=2,l_cur_star;   // currently selected star
 PROGMEM const char pgm_stars_name[]   =  // format: Constellation:Star Name , the s/w will use the first 2 letters to tell when we reach the next constellation
                     {
                      "Orion:Betelgeuse (Red)\0"     /*  0   */  \
@@ -434,8 +434,8 @@ short l_ir_count;
 /////////////////////////////////////////// RS232 INPUTS ///////////////////////////////////////////////////////////
 #define RS232_RX_BUF 32
 unsigned char rs232_rx_buf[RS232_RX_BUF] = {0};
-unsigned char rs232_rx_idx=0;                          // <- always points on the NULL
-unsigned char l_rs232_rx_idx=0;                       // 
+//unsigned char rs232_rx_idx=0;                          // <- always points on the NULL
+//unsigned char l_rs232_rx_idx=0;                       // 
 volatile unsigned char rs232_rx_clr=0;               // set by foreground to tell ap0c0 that it can clear the buffer
 /////////////////////////////////////////// RS232 OUTPUTS //////////////////////////////////////////////////////////
 #define RS232_TX_BUF 64
@@ -548,21 +548,21 @@ PROGMEM const unsigned char dd_x[DD_FIELDS]={ 22 , 32 , 42 , 52 , 64 , 74 , 84 ,
                                             , 22 , 27 , 32 , 37 , 42 , 47 , 52 , 57 , 64 , 69 , 74 , 79 , 84 , 89 , 94 , 99     // 0x20: Histogram 0->15
                                             , 39 , 39 , 39 , 72 , 97 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x30: RA structure values  [pos, pos_cor,pos_hw, speed, state
                                             , 22 , 22 , 22 , 72 , 97 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x40: DEC structure values [pos, pos_cor,pos_hw, speed, state
-                                            , 57 , 57 , 57 , 35 , 22 , 39 , 57 , 31 , 22 , 22 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds, start pos dec,ra,ra
+                                            , 57 , 57 , 57 , 35 , 22 , 39 , 57 , 31 , 22 , 22 , 22 , 14 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds, start pos dec,ra,ra
                                             };
 PROGMEM const unsigned char dd_y[DD_FIELDS]={ 36 , 36 , 36 , 36 , 36 , 36 , 36 , 36 , 37 , 37 , 37 , 37 , 37 , 37 , 37 , 37     // 0x00: DEBUG  0->15
                                             , 38 , 38 , 38 , 38 , 38 , 38 , 38 , 38 , 39 , 39 , 39 , 39 , 39 , 39 , 39 , 39     // 0x10: DEBUG 16->31
                                             , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35     // 0x20: Histogram 0->15
                                             , 25 , 26 , 27 , 31 , 31 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x30: RA structure values   [pos, pos_cor,pos_hw, speed, state
                                             , 25 , 26 , 27 , 32 , 32 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x40: DEC structure values  [pos, pos_cor,pos_hw, speed, state
-                                            , 25 , 26 , 27 , 22 , 29 , 29 , 29 , 31 , 31 , 32 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
+                                            , 25 , 26 , 27 , 22 , 29 , 29 , 29 , 31 , 31 , 32 , 28 , 44 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
                                             };
 PROGMEM const unsigned char dd_f[DD_FIELDS]={0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18    // 0x00: DEBUG  0->15      all HEX 8 bytes
                                             ,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18    // 0x10: DEBUG 16->31      all HEX 8 bytes
                                             ,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14    // 0x20: Histogram 0->15   all HEX 4 bytes
                                             ,0x50,0x50,0x50,0x26,0x23,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x30: RA structure values
                                             ,0x40,0x40,0x40,0x26,0x23,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x40: DEC structure values
-                                            ,0x60,0x60,0x60,0x38,0x40,0x50,0x60,0x14,0x18,0x18,0x00,0x00,0x00,0x00,0x00,0x00    // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
+                                            ,0x60,0x60,0x60,0x38,0x40,0x50,0x60,0x14,0x18,0x18,0xB0,0x70,0x00,0x00,0x00,0x00    // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
                                             };  
 // define the Start of each variable in the array
 #define DDS_DEBUG         0x00
@@ -579,6 +579,8 @@ PROGMEM const unsigned char dd_f[DD_FIELDS]={0x18,0x18,0x18,0x18,0x18,0x18,0x18,
 #define DDS_IR_COUNT      0x57  // dd_v[DDS_IR_COUNT]
 #define DDS_IR_CODE       0x58  // dd_v[DDS_IR_CODE]
 #define DDS_IR_L_CODE     0x59  // dd_v[DDS_IR_L_CODE]
+#define DDS_CUR_STAR      0x5A  // dd_v[DDS_CUR_STAR]
+#define DDS_RX_IDX        0x5B  // dd_v[DDS_RX_IDX]
 
 unsigned char dd_go(unsigned char task,char first)
 {
@@ -590,7 +592,10 @@ if ( dd_p[task] != dd_v[task] || first)
 
    if ( (XXX == 0) && (YYY == 0) ) return 0; // found nothing to display
 
-   display_data((char*)rs232_tx_buf,XXX,YYY,0,dd_v[task],FMT&0xF0,FMT&0x0F);
+   if ( task == DDS_CUR_STAR )     display_data((char*)rs232_tx_buf,XXX,YYY,pgm_stars_name + dd_v[DDS_CUR_STAR] * STAR_NAME_LEN ,0,FMT&0xF0,FMT&0x0F);   // special cases strings stored in FLASH
+   else if ( task == DDS_RX_IDX )  display_data((char*)rs232_tx_buf,XXX,YYY,0,(short)rs232_rx_buf,FMT&0xF0,FMT&0x0F); 
+   else                            display_data((char*)rs232_tx_buf,XXX,YYY,0,dd_v[task],FMT&0xF0,FMT&0x0F);
+
    dd_p[task] = dd_v[task];
    return 1;
    }
@@ -600,8 +605,8 @@ dd_v[DDS_RA_POS2]     = ra->pos;
 dd_v[DDS_RA_POS2_COR] = ra->pos_cor;
 dd_v[DDS_RA_POS2_HW]  = ra->pos_hw;
 
-dd_v[DDS_STAR_DEC_POS] = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);
-dd_v[DDS_STAR_RA_POS]  = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);
+dd_v[DDS_STAR_DEC_POS] = pgm_read_dword(&pgm_stars_pos[dd_v[DDS_CUR_STAR]*2+1]);
+dd_v[DDS_STAR_RA_POS]  = pgm_read_dword(&pgm_stars_pos[dd_v[DDS_CUR_STAR]*2+0]);
 dd_v[DDS_STAR_RA_POS2] = dd_v[DDS_STAR_RA_POS];
 
 return 0; // found nothing to display
@@ -977,49 +982,49 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
    else if ( code == 0x01D322CD ) goto_pos(6+2);      //  2
    else if ( code == 0x01D332CC ) goto_pos(6+3);      //  3
    else if ( code == 0x01D342CB ) goto_pos(6+4);      //  4
-   else if ( code == 0x01D272D8 ) goto_pos(cur_star); // GOTO
+   else if ( code == 0x01D272D8 ) goto_pos(dd_v[DDS_CUR_STAR]); // GOTO
    else if ( code == 0x01C2E3D1 || code == 0x01C2F3D0 )   //   <   >
       {
-      if ( code == 0x01C2E3D1 ) cur_star--;
-      if ( code == 0x01C2F3D0 ) cur_star++;
-      if ( 0 == pgm_read_byte(pgm_stars_name + cur_star*STAR_NAME_LEN) ) cur_star=0; // we reached the last star
-      if ( cur_star<0 )
+      if ( code == 0x01C2E3D1 ) dd_v[DDS_CUR_STAR]--;
+      if ( code == 0x01C2F3D0 ) dd_v[DDS_CUR_STAR]++;
+      if ( 0 == pgm_read_byte(pgm_stars_name + dd_v[DDS_CUR_STAR]*STAR_NAME_LEN) ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
+      if ( dd_v[DDS_CUR_STAR]<0 )
          {
          short iii;
          for(iii=0;pgm_read_byte(pgm_stars_name + iii*STAR_NAME_LEN);iii++ );  // search the last star
-         cur_star = iii-1;
+         dd_v[DDS_CUR_STAR] = iii-1;
          }
       }
     
    }
 ///// Process Keyboard commands
 
-if ( rs232_rx_idx==0 ) {;}  // nothing to do
-else if ( rs232_rx_idx==1 )  // check if it's a single key command
+if ( dd_v[DDS_RX_IDX]==0 ) {;}  // nothing to do
+else if ( dd_v[DDS_RX_IDX]==1 )  // check if it's a single key command
    {
    if( rs232_rx_buf[0] == '<' || rs232_rx_buf[0] == '>')
       {
-      if ( rs232_rx_buf[0] == '<') cur_star--; 
-      if ( rs232_rx_buf[0] == '>') cur_star++; 
-      if ( 0 == pgm_read_byte(pgm_stars_name + cur_star*STAR_NAME_LEN) ) cur_star=0; // we reached the last star
-      if ( cur_star<0 )
+      if ( rs232_rx_buf[0] == '<') dd_v[DDS_CUR_STAR]--; 
+      if ( rs232_rx_buf[0] == '>') dd_v[DDS_CUR_STAR]++; 
+      if ( 0 == pgm_read_byte(pgm_stars_name + dd_v[DDS_CUR_STAR]*STAR_NAME_LEN) ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
+      if ( dd_v[DDS_CUR_STAR]<0 )
          {
          short iii;
          for(iii=0;pgm_read_byte(pgm_stars_name + iii*STAR_NAME_LEN);iii++ );  // search the last star
-         cur_star = iii-1;
+         dd_v[DDS_CUR_STAR] = iii-1;
          }
       rs232_rx_buf[0] = 0;
-      rs232_rx_idx=0;
+      dd_v[DDS_RX_IDX]=0;
       }
    else if ( rs232_rx_buf[0] == '*')
       {
       if ( ! ( moving || goto_cmd ) ) 
          {
-         ra->pos_target  = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);
-         dec->pos_target = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);
+         ra->pos_target  = pgm_read_dword(&pgm_stars_pos[dd_v[DDS_CUR_STAR]*2+0]);
+         dec->pos_target = pgm_read_dword(&pgm_stars_pos[dd_v[DDS_CUR_STAR]*2+1]);
          goto_cmd = 1;
          rs232_rx_buf[0] = 0;
-         rs232_rx_idx=0;
+         dd_v[DDS_RX_IDX]=0;
          }
       }
    else if ( rs232_rx_buf[0] == '[' || rs232_rx_buf[0] == '[')
@@ -1030,25 +1035,25 @@ else if ( rs232_rx_idx==1 )  // check if it's a single key command
       if ( rs232_rx_buf[0] == '(' ) earth_tracking=1;
       else                          earth_tracking=0;
       rs232_rx_buf[0] = 0;
-      rs232_rx_idx=0;
+      dd_v[DDS_RX_IDX]=0;
       }
    else if ( rs232_rx_buf[0] == '!')
       {
       redraw = 1;  // redraw everything
       rs232_rx_buf[0] = 0;
-      rs232_rx_idx=0;
+      dd_v[DDS_RX_IDX]=0;
       }
    else if ( rs232_rx_buf[0] == '2' || rs232_rx_buf[0] == '4' || rs232_rx_buf[0] == '5' || rs232_rx_buf[0] == '6' || rs232_rx_buf[0] == '8')
       {
       slew_cmd = rs232_rx_buf[0] - '0';
       rs232_rx_buf[0] = 0;
-      rs232_rx_idx=0;
+      dd_v[DDS_RX_IDX]=0;
       }
    }
-else if ( rs232_rx_buf[rs232_rx_idx-1]==0x0D || rs232_rx_buf[rs232_rx_idx-1]==0x0A )  // Return
+else if ( rs232_rx_buf[dd_v[DDS_RX_IDX]-1]==0x0D || rs232_rx_buf[dd_v[DDS_RX_IDX]-1]==0x0A )  // Return
    {
    rs232_rx_buf[0] = 0;
-   rs232_rx_idx=0;
+   dd_v[DDS_RX_IDX]=0;
    }
    
 }
@@ -1103,19 +1108,19 @@ if ( (UCSR0A & 0x80) != 0)    // ********** CA CA LIT BIEN...
    CCC = UDR0;
    if ( rs232_rx_clr )
       {
-      rs232_rx_clr = rs232_rx_idx = 0;
-      rs232_rx_buf[rs232_rx_idx] = 0;
+      rs232_rx_clr = dd_v[DDS_RX_IDX] = 0;
+      rs232_rx_buf[dd_v[DDS_RX_IDX]] = 0;
       }
    if ( CCC == 0x08 ) // backspace
       {
-      if ( rs232_rx_idx > 0 ) rs232_rx_idx--;
-      rs232_rx_buf[rs232_rx_idx] = 0;
+      if ( dd_v[DDS_RX_IDX] > 0 ) dd_v[DDS_RX_IDX]--;
+      rs232_rx_buf[dd_v[DDS_RX_IDX]] = 0;
       }
    else
       {
-      rs232_rx_buf[rs232_rx_idx++] = CCC;
-      if ( rs232_rx_idx >= RS232_RX_BUF ) rs232_rx_idx=RS232_RX_BUF-1;
-      rs232_rx_buf[rs232_rx_idx] = 0;
+      rs232_rx_buf[dd_v[DDS_RX_IDX]++] = CCC;
+      if ( dd_v[DDS_RX_IDX] >= RS232_RX_BUF ) dd_v[DDS_RX_IDX]=RS232_RX_BUF-1;
+      rs232_rx_buf[dd_v[DDS_RX_IDX]] = 0;
       }
    }
 
@@ -1186,232 +1191,16 @@ else // print field data
             return;
             }
    
-         if ( dd_go(d_task-NB_DTASKS,first) )
-            {  // something to display was found, rs232_tx_buf has something
-            Next = rs232_tx_buf[rs232_tx_idx++];
-            }
+         if ( dd_go(d_task-NB_DTASKS,first) )  Next = rs232_tx_buf[rs232_tx_idx++];     // something to display was found, rs232_tx_buf has something
          d_task++;
 
          if ( d_task >= DD_FIELDS + NB_DTASKS) { first = 0 ; d_task = NB_DTASKS; }
-//         else                                    Next = rs232_tx_buf[rs232_tx_idx++];
-
-         //d_task = dd_go(d_task,first) ;
-
-
-
-// This list of IF() takes 30K in the flash
-//         if ( d_task == NB_DTASKS + 1  ) DISPLAY_DATA( 22,36,0,FMT_HEX,8,d_debug[0x00],l_debug[0x00]);
-//         if ( d_task == NB_DTASKS + 2  ) DISPLAY_DATA( 32,36,0,FMT_HEX,8,d_debug[0x01],l_debug[0x01]);
-//         if ( d_task == NB_DTASKS + 3  ) DISPLAY_DATA( 42,36,0,FMT_HEX,8,d_debug[0x02],l_debug[0x02]);
-//         if ( d_task == NB_DTASKS + 4  ) DISPLAY_DATA( 52,36,0,FMT_HEX,8,d_debug[0x03],l_debug[0x03]);
-//         if ( d_task == NB_DTASKS + 5  ) DISPLAY_DATA( 64,36,0,FMT_HEX,8,d_debug[0x04],l_debug[0x04]);
-//         if ( d_task == NB_DTASKS + 6  ) DISPLAY_DATA( 74,36,0,FMT_HEX,8,d_debug[0x05],l_debug[0x05]);
-//         if ( d_task == NB_DTASKS + 7  ) DISPLAY_DATA( 84,36,0,FMT_HEX,8,d_debug[0x06],l_debug[0x06]);
-//         if ( d_task == NB_DTASKS + 8  ) DISPLAY_DATA( 94,36,0,FMT_HEX,8,d_debug[0x07],l_debug[0x07]);
-//         if ( d_task == NB_DTASKS + 9  ) DISPLAY_DATA( 22,37,0,FMT_HEX,8,d_debug[0x08],l_debug[0x08]);
-//         if ( d_task == NB_DTASKS + 10 ) DISPLAY_DATA( 32,37,0,FMT_HEX,8,d_debug[0x09],l_debug[0x09]);
-//         if ( d_task == NB_DTASKS + 11 ) DISPLAY_DATA( 42,37,0,FMT_HEX,8,d_debug[0x0A],l_debug[0x0A]);
-//         if ( d_task == NB_DTASKS + 12 ) DISPLAY_DATA( 52,37,0,FMT_HEX,8,d_debug[0x0B],l_debug[0x0B]);
-//         if ( d_task == NB_DTASKS + 13 ) DISPLAY_DATA( 64,37,0,FMT_HEX,8,d_debug[0x0C],l_debug[0x0C]);
-//         if ( d_task == NB_DTASKS + 14 ) DISPLAY_DATA( 74,37,0,FMT_HEX,8,d_debug[0x0D],l_debug[0x0D]);
-//         if ( d_task == NB_DTASKS + 15 ) DISPLAY_DATA( 84,37,0,FMT_HEX,8,d_debug[0x0E],l_debug[0x0E]);
-//         if ( d_task == NB_DTASKS + 16 ) DISPLAY_DATA( 94,37,0,FMT_HEX,8,d_debug[0x0F],l_debug[0x0F]);
-//
-//         if ( d_task == NB_DTASKS + 17 ) DISPLAY_DATA( 22,35,0,FMT_HEX,4,histogram[0x00],l_histogram[0x00]);
-//         if ( d_task == NB_DTASKS + 18 ) DISPLAY_DATA( 27,35,0,FMT_HEX,4,histogram[0x01],l_histogram[0x01]);
-//         if ( d_task == NB_DTASKS + 19 ) DISPLAY_DATA( 32,35,0,FMT_HEX,4,histogram[0x02],l_histogram[0x02]);
-//         if ( d_task == NB_DTASKS + 20 ) DISPLAY_DATA( 37,35,0,FMT_HEX,4,histogram[0x03],l_histogram[0x03]);
-//         if ( d_task == NB_DTASKS + 21 ) DISPLAY_DATA( 42,35,0,FMT_HEX,4,histogram[0x04],l_histogram[0x04]);
-//         if ( d_task == NB_DTASKS + 22 ) DISPLAY_DATA( 47,35,0,FMT_HEX,4,histogram[0x05],l_histogram[0x05]);
-//         if ( d_task == NB_DTASKS + 23 ) DISPLAY_DATA( 52,35,0,FMT_HEX,4,histogram[0x06],l_histogram[0x06]);
-//         if ( d_task == NB_DTASKS + 24 ) DISPLAY_DATA( 57,35,0,FMT_HEX,4,histogram[0x07],l_histogram[0x07]);
-//         if ( d_task == NB_DTASKS + 25 ) DISPLAY_DATA( 64,35,0,FMT_HEX,4,histogram[0x08],l_histogram[0x08]);
-//         if ( d_task == NB_DTASKS + 26 ) DISPLAY_DATA( 69,35,0,FMT_HEX,4,histogram[0x09],l_histogram[0x09]);
-//         if ( d_task == NB_DTASKS + 27 ) DISPLAY_DATA( 74,35,0,FMT_HEX,4,histogram[0x0A],l_histogram[0x0A]);
-//         if ( d_task == NB_DTASKS + 28 ) DISPLAY_DATA( 79,35,0,FMT_HEX,4,histogram[0x0B],l_histogram[0x0B]);
-//         if ( d_task == NB_DTASKS + 29 ) DISPLAY_DATA( 84,35,0,FMT_HEX,4,histogram[0x0C],l_histogram[0x0C]);
-//         if ( d_task == NB_DTASKS + 30 ) DISPLAY_DATA( 89,35,0,FMT_HEX,4,histogram[0x0D],l_histogram[0x0D]);
-//         if ( d_task == NB_DTASKS + 31 ) DISPLAY_DATA( 94,35,0,FMT_HEX,4,histogram[0x0E],l_histogram[0x0E]);
-//         if ( d_task == NB_DTASKS + 32 ) DISPLAY_DATA( 99,35,0,FMT_HEX,4,histogram[0x0F],l_histogram[0x0F]);
-//
-//         if ( d_task == NB_DTASKS + 33 ) DISPLAY_DATA( 22,38,0,FMT_HEX,8,d_debug[0x10],l_debug[0x10]);
-//         if ( d_task == NB_DTASKS + 34 ) DISPLAY_DATA( 32,38,0,FMT_HEX,8,d_debug[0x11],l_debug[0x11]);
-//         if ( d_task == NB_DTASKS + 35 ) DISPLAY_DATA( 42,38,0,FMT_HEX,8,d_debug[0x12],l_debug[0x12]);
-//         if ( d_task == NB_DTASKS + 36 ) DISPLAY_DATA( 52,38,0,FMT_HEX,8,d_debug[0x13],l_debug[0x13]);
-//         if ( d_task == NB_DTASKS + 37 ) DISPLAY_DATA( 64,38,0,FMT_HEX,8,d_debug[0x14],l_debug[0x14]);
-//         if ( d_task == NB_DTASKS + 38 ) DISPLAY_DATA( 74,38,0,FMT_HEX,8,d_debug[0x15],l_debug[0x15]);
-//         if ( d_task == NB_DTASKS + 39 ) DISPLAY_DATA( 84,38,0,FMT_HEX,8,d_debug[0x16],l_debug[0x16]);
-//         if ( d_task == NB_DTASKS + 40 ) DISPLAY_DATA( 94,38,0,FMT_HEX,8,d_debug[0x17],l_debug[0x17]);
-//         if ( d_task == NB_DTASKS + 41 ) DISPLAY_DATA( 22,39,0,FMT_HEX,8,d_debug[0x18],l_debug[0x18]);
-//         if ( d_task == NB_DTASKS + 42 ) DISPLAY_DATA( 32,39,0,FMT_HEX,8,d_debug[0x19],l_debug[0x19]);
-//         if ( d_task == NB_DTASKS + 43 ) DISPLAY_DATA( 42,39,0,FMT_HEX,8,d_debug[0x1A],l_debug[0x1A]);
-//         if ( d_task == NB_DTASKS + 44 ) DISPLAY_DATA( 52,39,0,FMT_HEX,8,d_debug[0x1B],l_debug[0x1B]);
-//         if ( d_task == NB_DTASKS + 45 ) DISPLAY_DATA( 64,39,0,FMT_HEX,8,d_debug[0x1C],l_debug[0x1C]);
-//         if ( d_task == NB_DTASKS + 46 ) DISPLAY_DATA( 74,39,0,FMT_HEX,8,d_debug[0x1D],l_debug[0x1D]);
-//         if ( d_task == NB_DTASKS + 47 ) DISPLAY_DATA( 84,39,0,FMT_HEX,8,d_debug[0x1E],l_debug[0x1E]);
-//         if ( d_task == NB_DTASKS + 48 ) DISPLAY_DATA( 94,39,0,FMT_HEX,8,d_debug[0x1F],l_debug[0x1F]);
-
-//         if ( d_task == NB_DTASKS + 65 ) DISPLAY_DATA( 35,22,0,FMT_HMS,8,seconds,l_seconds);
-
-//         if ( d_task == NB_DTASKS + 66 ) DISPLAY_DATA( 22,25,0,FMT_NS,0,dec->pos,l_dec_pos);           // SKY POSITION
-//         if ( d_task == NB_DTASKS + 67 ) DISPLAY_DATA( 39,25,0,FMT_EW,0,ra->pos,l_ra_pos1);            // SKY POSITION
-//         if ( d_task == NB_DTASKS + 68 ) DISPLAY_DATA( 57,25,0,FMT_RA,0,ra->pos,l_ra_pos2);            // SKY POSITION
-//
-//         if ( d_task == NB_DTASKS + 69 ) DISPLAY_DATA( 22,26,0,FMT_NS,0,dec->pos_cor,l_dec_pos_cor);   // CORRECTED STAR POSITION
-//         if ( d_task == NB_DTASKS + 70 ) DISPLAY_DATA( 39,26,0,FMT_EW,0,ra->pos_cor,l_ra_pos_cor1);    // CORRECTED STAR POSITION
-//         if ( d_task == NB_DTASKS + 71 ) DISPLAY_DATA( 57,26,0,FMT_RA,0,ra->pos_cor,l_ra_pos_cor2);    // CORRECTED STAR POSITION
-//
-//         if ( d_task == NB_DTASKS + 72 ) DISPLAY_DATA( 22,27,0,FMT_NS,0,dec->pos_hw,l_dec_pos_hw);     // TELESCOPE POSITION
-//         if ( d_task == NB_DTASKS + 73 ) DISPLAY_DATA( 39,27,0,FMT_EW,0,ra->pos_hw,l_ra_pos_hw1);      // TELESCOPE POSITION
-//         if ( d_task == NB_DTASKS + 74 ) DISPLAY_DATA( 57,27,0,FMT_RA,0,ra->pos_hw,l_ra_pos_hw2);      // TELESCOPE POSITION
-
-//////////         if ( d_task == NB_DTASKS + 75 ) 
-//////////            {
-//////////            tmp = stmp = (short)rs232_rx_buf;
-//////////            if ( rs232_rx_idx != l_rs232_rx_idx) tmp=0;   // force an update of the command line
-//////////            DISPLAY_DATA( 14,44,0,FMT_STR,0,stmp,tmp);
-//////////            l_rs232_rx_idx = rs232_rx_idx;
-//////////            }
-//////////
-//////////         if ( d_task == NB_DTASKS + 76 ) DISPLAY_DATA( 22,28,pgm_stars_name + cur_star*STAR_NAME_LEN ,FMT_NO_VAL,0,cur_star,l_cur_star);
-// 
-//          ltmp = pgm_read_dword(&pgm_stars_pos[cur_star*2+1]);  tmp=0;
-//          if ( d_task == NB_DTASKS + 77 ) DISPLAY_DATA( 22,29,0,FMT_NS,0,ltmp,l_star_dec);      // NEAREAST STAR POSITION
-//          ltmp = pgm_read_dword(&pgm_stars_pos[cur_star*2+0]);  tmp=0;
-//          if ( d_task == NB_DTASKS + 78 ) DISPLAY_DATA( 39,29,0,FMT_EW,0,ltmp,l_star_ra1);      // NEAREAST STAR POSITION
-//                                                               tmp=0;
-//          if ( d_task == NB_DTASKS + 79 ) DISPLAY_DATA( 57,29,0,FMT_RA,0,ltmp,l_star_ra2);      // NEAREAST STAR POSITION
-// 
-//          if ( d_task == NB_DTASKS + 80 ) DISPLAY_DATA( 72,31,0,FMT_DEC,6,ra->speed,l_ra_speed);   // 
-//          if ( d_task == NB_DTASKS + 81 ) DISPLAY_DATA( 72,32,0,FMT_DEC,6,dec->speed,l_dec_speed); // 
-//          if ( d_task == NB_DTASKS + 82 ) DISPLAY_DATA( 97,31,0,FMT_DEC,3,ra->state,l_ra_state);   // 
-//          if ( d_task == NB_DTASKS + 83 ) DISPLAY_DATA( 97,32,0,FMT_DEC,3,dec->state,l_dec_state); // 
-// 
-//          if ( d_task == NB_DTASKS + 84 ) DISPLAY_DATA( 22,31,0,FMT_HEX,8,ir_code,ll_ir_code); // 
-//          if ( d_task == NB_DTASKS + 85 ) DISPLAY_DATA( 22,32,0,FMT_HEX,8,l_ir_code,ll_l_ir_code); // 
-//          if ( d_task == NB_DTASKS + 86 ) DISPLAY_DATA( 31,31,0,FMT_HEX,4,ir_count,ll_ir_count); // 
-
-//////////         if ( d_task == NB_DTASKS + 87 ) { first = 0 ; d_task = NB_DTASKS; }
-//////////         else                            Next = rs232_tx_buf[rs232_tx_idx++];
          }
       }
    } 
 if ( Next != 0 ) UDR0 = Next;
 }
 
-
-////////////////////////////////////////// INTERRUPT SECTION ////////////////////////////////////////////
-////////////////////////////////////////// INTERRUPT SECTION ////////////////////////////////////////////
-////////////////////////////////////////// INTERRUPT SECTION ////////////////////////////////////////////
-//-   
-//-            Interrupt priority goes from high to low, from 1 to 20
-//-  
-//-  1  0x0000 RESET External Pin, Power-on Reset, Brown-out Reset and Watchdog System Reset
-//-  2  0x0002 INT0 External Interrupt Request 0
-//-  3  0x0004 INT1 External Interrupt Request 1
-//-  4  0x0006 PCINT0 Pin Change Interrupt Request 0
-//-  5  0x0008 PCINT1 Pin Change Interrupt Request 1
-//-  6  0x000A PCINT2 Pin Change Interrupt Request 2
-//-  7  0x000C WDT Watchdog Time-out Interrupt
-//-  8  0x000E TIMER2 COMPA Timer/Counter2 Compare Match A
-//-  9  0x0010 TIMER2 COMPB Timer/Counter2 Compare Match B
-//-  10 0x0012 TIMER2 OVF Timer/Counter2 Overflow
-//-  11 0x0014 TIMER1 CAPT Timer/Counter1 Capture Event                          | sp0c0 : handle proper telescope movement and IR decoding
-//-  12 0x0016 TIMER1 COMPA Timer/Counter1 Compare Match A                       |     
-//-  13 0x0018 TIMER1 COMPB Timer/Coutner1 Compare Match B    TIMER1_COMPB_vect  |      
-//-  14 0x001A TIMER1 OVF Timer/Counter1 Overflow             TIMER1_OVF_vect    |
-//-  15 0x001C TIMER0 COMPA Timer/Counter0 Compare Match A                               | ap0c0 : handle async operation like rs232
-//-  16 0x001E TIMER0 COMPB Timer/Counter0 Compare Match B                               |
-//-  17 0x0020 TIMER0 OVF Timer/Counter0 Overflow             TIMER0_OVF_vect            |
-//-  18 0x0022 SPI, STC SPI Serial Transfer Complete
-//-  19 0x0024 USART, RX USART Rx Complete                    USART_RX_vect
-//-  20 0x0026 USART, UDRE USART, Data Register Empty
-//-  21 0x0028 USART, TX USART, Tx Complete                   USART_TX_vect
-//-  22 0x002A ADC ADC Conversion Complete
-//-  23 0x002C EE READY EEPROM Ready
-//-  24 0x002E ANALOG COMP Analog Comparator
-//-  25 0x0030 TWI 2-wire Serial Interface
-//-  26 0x0032 SPM READY Store Program Memory Ready
-//-  
-
-
-ISR(TIMER0_OVF_vect)     // AP0C0 ... process RS232 events
-{                       
-unsigned long histo;
-d_TIMER0++;
- 
-TIMSK0 = 0;     // timer0 interrupt disable (prevent re-entrant)
-
-sei();
-display_next();
-
-while ( TCNT1*100UL > F_CPU_K*9UL ) ; // if SP0 is about to start, wait... I dont want to be interruped in the next iterations  -> while(TCNT1 > 90% of target)
-TCNT0 = 0;                            // Make sure I'm not called in the next iterations by my own AP0 interrupt
-
-if ( histo_sp0 == 0 ) // if we are not monitoring SP0
-   {  
-   histo = TCNT0;
-   histo *= 15 * 10 * 8;  // TCNT0 counts from 0 to F_CPU_K/10/8 (see OCR0A) 
-   histo /= F_CPU_K;      // TCNT0 counts from 0 to F_CPU_K/10/8 (see OCR0A) 
-   if ( histo > 15 ) histo=15;
-   dd_v[DDS_HISTO + histo]++;
-   }
-
-TIMSK0 = 1;     // timer0 interrupt enable
-}
-
-ISR(TIMER1_COMPB_vect)   // Clear the Step outputs
-{
-long temp;
-// too long to complete !! set_digital_output(DO_RA_STEP,0);    // eventually, I should use my routines...flush polopu...
-// too long to complete !! set_digital_output(DO_DEC_STEP,0);   // eventually, I should use my routines...flush polopu...
-//FAST_SET_RA_STEP(0);
-//FAST_SET_DEC_STEP(0);
-
-temp = ra->pos_hw-ra->pos_cor;
-if ( temp >= TICKS_P_STEP )
-   {
-   // too long to complete !!set_digital_output(DO_RA_DIR,0); // go backward
-   //FAST_SET_RA_DIR(0);
-   ra->direction=0x00;
-   ADD_VALUE_TO_POS(-TICKS_P_STEP,ra->pos_hw);
-   ra->next=FAST_RA_STEP;
-   }
-else if ( -temp >= TICKS_P_STEP )
-   {
-   // too long to complete !!set_digital_output(DO_RA_DIR,1); // go forward
-   //FAST_SET_RA_DIR(1);
-   ra->direction=FAST_RA_DIR;
-   ADD_VALUE_TO_POS(TICKS_P_STEP,ra->pos_hw);
-   ra->next=FAST_RA_STEP;
-   }
-else { ra->next=0; }
-
-temp = dec->pos_hw-dec->pos_cor;
-if ( temp >= (2*TICKS_P_STEP) )      // The DEC axis has 2 times less teeths 
-   {
-   // too long to complete !!set_digital_output(DO_DEC_DIR,0); // go backward
-   //FAST_SET_DEC_DIR(0);
-   dec->direction=0x00;
-   ADD_VALUE_TO_POS(-(2*TICKS_P_STEP),dec->pos_hw);
-   dec->next=FAST_DEC_STEP;
-   }
-else if ( -temp >= (2*TICKS_P_STEP) )
-   {
-   // too long to complete !!set_digital_output(DO_DEC_DIR,1); // go forward
-   //FAST_SET_DEC_DIR(1);
-   dec->direction=FAST_DEC_DIR;
-   ADD_VALUE_TO_POS( (2*TICKS_P_STEP),dec->pos_hw);
-   dec->next=FAST_DEC_STEP;
-   }
-else { dec->next=0; }
-
-dd_v[DDS_DEBUG + 0x02]=ra->direction;
-dd_v[DDS_DEBUG + 0x0A]=dec->direction;
-
-PORTC = ra->direction | dec->direction;    // I do this to optimize execution time
-
-}
 
 short process_goto(AXIS *axis,char ra_axis)
 {
@@ -1657,6 +1446,124 @@ return axis->state;
 }
 
 
+////////////////////////////////////////// INTERRUPT SECTION ////////////////////////////////////////////
+////////////////////////////////////////// INTERRUPT SECTION ////////////////////////////////////////////
+////////////////////////////////////////// INTERRUPT SECTION ////////////////////////////////////////////
+//-   
+//-            Interrupt priority goes from high to low, from 1 to 20
+//-  
+//-  1  0x0000 RESET External Pin, Power-on Reset, Brown-out Reset and Watchdog System Reset
+//-  2  0x0002 INT0 External Interrupt Request 0
+//-  3  0x0004 INT1 External Interrupt Request 1
+//-  4  0x0006 PCINT0 Pin Change Interrupt Request 0
+//-  5  0x0008 PCINT1 Pin Change Interrupt Request 1
+//-  6  0x000A PCINT2 Pin Change Interrupt Request 2
+//-  7  0x000C WDT Watchdog Time-out Interrupt
+//-  8  0x000E TIMER2 COMPA Timer/Counter2 Compare Match A
+//-  9  0x0010 TIMER2 COMPB Timer/Counter2 Compare Match B
+//-  10 0x0012 TIMER2 OVF Timer/Counter2 Overflow
+//-  11 0x0014 TIMER1 CAPT Timer/Counter1 Capture Event                          | sp0c0 : handle proper telescope movement and IR decoding
+//-  12 0x0016 TIMER1 COMPA Timer/Counter1 Compare Match A                       |     
+//-  13 0x0018 TIMER1 COMPB Timer/Coutner1 Compare Match B    TIMER1_COMPB_vect  |      
+//-  14 0x001A TIMER1 OVF Timer/Counter1 Overflow             TIMER1_OVF_vect    |
+//-  15 0x001C TIMER0 COMPA Timer/Counter0 Compare Match A                               | ap0c0 : handle async operation like rs232
+//-  16 0x001E TIMER0 COMPB Timer/Counter0 Compare Match B                               |
+//-  17 0x0020 TIMER0 OVF Timer/Counter0 Overflow             TIMER0_OVF_vect            |
+//-  18 0x0022 SPI, STC SPI Serial Transfer Complete
+//-  19 0x0024 USART, RX USART Rx Complete                    USART_RX_vect
+//-  20 0x0026 USART, UDRE USART, Data Register Empty
+//-  21 0x0028 USART, TX USART, Tx Complete                   USART_TX_vect
+//-  22 0x002A ADC ADC Conversion Complete
+//-  23 0x002C EE READY EEPROM Ready
+//-  24 0x002E ANALOG COMP Analog Comparator
+//-  25 0x0030 TWI 2-wire Serial Interface
+//-  26 0x0032 SPM READY Store Program Memory Ready
+//-  
+
+
+ISR(TIMER0_OVF_vect)     // AP0C0 ... process RS232 events
+{                       
+unsigned long histo;
+d_TIMER0++;
+ 
+TIMSK0 = 0;     // timer0 interrupt disable (prevent re-entrant)
+
+sei();
+display_next();
+
+while ( TCNT1*100UL > F_CPU_K*9UL ) ; // if SP0 is about to start, wait... I dont want to be interruped in the next iterations  -> while(TCNT1 > 90% of target)
+TCNT0 = 0;                            // Make sure I'm not called in the next iterations by my own AP0 interrupt
+
+if ( histo_sp0 == 0 ) // if we are not monitoring SP0
+   {  
+   histo = TCNT0;
+   histo *= 15 * 10 * 8;  // TCNT0 counts from 0 to F_CPU_K/10/8 (see OCR0A) 
+   histo /= F_CPU_K;      // TCNT0 counts from 0 to F_CPU_K/10/8 (see OCR0A) 
+   if ( histo > 15 ) histo=15;
+   dd_v[DDS_HISTO + histo]++;
+   }
+
+TIMSK0 = 1;     // timer0 interrupt enable
+}
+
+ISR(TIMER1_COMPB_vect)   // Clear the Step outputs
+{
+return;
+}
+
+void close_loop(void)  // Clear the Step outputs
+{
+long temp;
+// too long to complete !! set_digital_output(DO_RA_STEP,0);    // eventually, I should use my routines...flush polopu...
+// too long to complete !! set_digital_output(DO_DEC_STEP,0);   // eventually, I should use my routines...flush polopu...
+//FAST_SET_RA_STEP(0);
+//FAST_SET_DEC_STEP(0);
+
+temp = ra->pos_hw-ra->pos_cor;
+if ( temp >= TICKS_P_STEP )
+   {
+   // too long to complete !!set_digital_output(DO_RA_DIR,0); // go backward
+   //FAST_SET_RA_DIR(0);
+   ra->direction=0x00;
+   ADD_VALUE_TO_POS(-TICKS_P_STEP,ra->pos_hw);
+   ra->next=FAST_RA_STEP;
+   }
+else if ( -temp >= TICKS_P_STEP )
+   {
+   // too long to complete !!set_digital_output(DO_RA_DIR,1); // go forward
+   //FAST_SET_RA_DIR(1);
+   ra->direction=FAST_RA_DIR;
+   ADD_VALUE_TO_POS(TICKS_P_STEP,ra->pos_hw);
+   ra->next=FAST_RA_STEP;
+   }
+else { ra->next=0; }
+
+temp = dec->pos_hw-dec->pos_cor;
+if ( temp >= (2*TICKS_P_STEP) )      // The DEC axis has 2 times less teeths 
+   {
+   // too long to complete !!set_digital_output(DO_DEC_DIR,0); // go backward
+   //FAST_SET_DEC_DIR(0);
+   dec->direction=0x00;
+   ADD_VALUE_TO_POS(-(2*TICKS_P_STEP),dec->pos_hw);
+   dec->next=FAST_DEC_STEP;
+   }
+else if ( -temp >= (2*TICKS_P_STEP) )
+   {
+   // too long to complete !!set_digital_output(DO_DEC_DIR,1); // go forward
+   //FAST_SET_DEC_DIR(1);
+   dec->direction=FAST_DEC_DIR;
+   ADD_VALUE_TO_POS( (2*TICKS_P_STEP),dec->pos_hw);
+   dec->next=FAST_DEC_STEP;
+   }
+else { dec->next=0; }
+
+//dd_v[DDS_DEBUG + 0x02]=ra->direction;
+//dd_v[DDS_DEBUG + 0x0A]=dec->direction;
+
+PORTC = ra->direction | dec->direction;    // I do this to optimize execution time
+
+}
+
 //  IR CODE:
 //  The code is in the delay between "1"
 //  __-----__-__-_-_-__-__-__-   
@@ -1674,6 +1581,12 @@ static short earth_comp=0;
 static short count_0;
 static long loc_ir_code;
 static unsigned short ir_timeout=0;  // limit the inputs to 4 per seconds
+
+// These takes too long to complete !!!  set_digital_output(DO_RA_STEP ,ra->next);     // eventually, I should use my routines...flush polopu...
+// These takes too long to complete !!!  set_digital_output(DO_DEC_STEP,dec->next);    // eventually, I should use my routines...flush polopu...
+PORTC = ra->next | dec->next | ra->direction | dec->direction;    // I do this to optimize execution time   activate the STEP CLOCK OUTPUT
+
+//////////////////////// Process IR ///////////////////////
 
 IR2  = IR1;
 IR1  = IR0;
@@ -1718,14 +1631,6 @@ if ( ssec == 0) dd_v[DDS_SECONDS]++;
 d_TIMER1++;             // counts time in 0.1 ms
 if ( ! motor_disable )    //////////////////// motor disabled ///////////
    {
-// These takes too long to complete !!!  set_digital_output(DO_RA_STEP ,ra->next);     // eventually, I should use my routines...flush polopu...
-// These takes too long to complete !!!  set_digital_output(DO_DEC_STEP,dec->next);    // eventually, I should use my routines...flush polopu...
-//   FAST_SET_RA_STEP(ra->next);    //   >
-//   FAST_SET_DEC_STEP(dec->next);  //   > 1/16
-//   if ( ra->next )  fast_portc |= (1<<DO_RA_STEP);
-//   if ( dec->next ) fast_portc |= (1<<DO_DEC_STEP);
-//   PORTC = ra->next | dec->next;
-   PORTC = ra->next | dec->next | ra->direction | dec->direction;    // I do this to optimize execution time
  
    ///////////// Process earth compensation
    // this takes a lot of time . . . .:earth_comp = (earth_comp+1)%EARTH_COMP;
@@ -1766,6 +1671,8 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
    if ( moving ) slew_cmd=goto_cmd=0;                   // command received
    
    }
+
+close_loop();
 
 // This section terminates the interrupt routine and will help identify how much CPU time we use in the real-time interrupt
 if ( histo_sp0 == 1 ) // if we are not monitoring SP0
@@ -1811,7 +1718,7 @@ void init_disp(void)
 //   TCCR2B  = 0x02;           // Clock divider set to 8 , this will cause a Motor driver PWM at 10KHz
 //   TCCR2A  = 0xF3;           // Forced to 0xF3 by the get_ms() routines
 
-TIMSK1 |= 1 << OCIE1B;    // timer1 interrupt when Output Compare B Match
+// pmichel: disabled the close loop interrupt, I now call it at the ent of the Overflow interrupt ::::: TIMSK1 |= 1 << OCIE1B;    // timer1 interrupt when Output Compare B Match
 TIMSK1 |= 1 <<  TOIE1;    // timer1 interrupt when Overflow                    ///////////////// SP0C0
 TCCR1A  = 0xA3;           // FAST PWM, Clear OC1A/OC1B on counter match, SET on BOTTOM
 TCCR1B  = 0x19;           // Clock divider set to 1 , FAST PWM, TOP = OCR1A
@@ -1972,6 +1879,12 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.34  2011/12/28 22:30:03  pmichel
+Major change in the display of values
+saved 10K of flash
+at the expence of ~250 bytes of ram
+Remains to display the stars
+
 Revision 1.33  2011/12/28 19:35:55  pmichel
 This is before I start to manually optimize for speed
 
