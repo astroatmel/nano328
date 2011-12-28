@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/27 21:57:11 $
-$Id: telescope.c,v 1.31 2011/12/27 21:57:11 pmichel Exp pmichel $
+$Date: 2011/12/27 22:20:57 $
+$Id: telescope.c,v 1.32 2011/12/27 22:20:57 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.31 $
+$Revision: 1.32 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -1115,63 +1115,57 @@ else // print field data
          }
     
          d_task ++ ;
-         if ( d_task >=  NB_DTASKS+1  && d_task <= NB_DTASKS+16 )    
-            {
-            if ( d_task == NB_DTASKS + 1  ) DISPLAY_DATA( 22,36,0,FMT_HEX,8,d_debug[0x00],l_debug[0x00]);
-            if ( d_task == NB_DTASKS + 2  ) DISPLAY_DATA( 32,36,0,FMT_HEX,8,d_debug[0x01],l_debug[0x01]);
-            if ( d_task == NB_DTASKS + 3  ) DISPLAY_DATA( 42,36,0,FMT_HEX,8,d_debug[0x02],l_debug[0x02]);
-            if ( d_task == NB_DTASKS + 4  ) DISPLAY_DATA( 52,36,0,FMT_HEX,8,d_debug[0x03],l_debug[0x03]);
-            if ( d_task == NB_DTASKS + 5  ) DISPLAY_DATA( 64,36,0,FMT_HEX,8,d_debug[0x04],l_debug[0x04]);
-            if ( d_task == NB_DTASKS + 6  ) DISPLAY_DATA( 74,36,0,FMT_HEX,8,d_debug[0x05],l_debug[0x05]);
-            if ( d_task == NB_DTASKS + 7  ) DISPLAY_DATA( 84,36,0,FMT_HEX,8,d_debug[0x06],l_debug[0x06]);
-            if ( d_task == NB_DTASKS + 8  ) DISPLAY_DATA( 94,36,0,FMT_HEX,8,d_debug[0x07],l_debug[0x07]);
-            if ( d_task == NB_DTASKS + 9  ) DISPLAY_DATA( 22,37,0,FMT_HEX,8,d_debug[0x08],l_debug[0x08]);
-            if ( d_task == NB_DTASKS + 10 ) DISPLAY_DATA( 32,37,0,FMT_HEX,8,d_debug[0x09],l_debug[0x09]);
-            if ( d_task == NB_DTASKS + 11 ) DISPLAY_DATA( 42,37,0,FMT_HEX,8,d_debug[0x0A],l_debug[0x0A]);
-            if ( d_task == NB_DTASKS + 12 ) DISPLAY_DATA( 52,37,0,FMT_HEX,8,d_debug[0x0B],l_debug[0x0B]);
-            if ( d_task == NB_DTASKS + 13 ) DISPLAY_DATA( 64,37,0,FMT_HEX,8,d_debug[0x0C],l_debug[0x0C]);
-            if ( d_task == NB_DTASKS + 14 ) DISPLAY_DATA( 74,37,0,FMT_HEX,8,d_debug[0x0D],l_debug[0x0D]);
-            if ( d_task == NB_DTASKS + 15 ) DISPLAY_DATA( 84,37,0,FMT_HEX,8,d_debug[0x0E],l_debug[0x0E]);
-            if ( d_task == NB_DTASKS + 16 ) DISPLAY_DATA( 94,37,0,FMT_HEX,8,d_debug[0x0F],l_debug[0x0F]);
-            }
-         if ( d_task >=  NB_DTASKS+17  && d_task <= NB_DTASKS+32 )    
-            {
-            if ( d_task == NB_DTASKS + 17 ) DISPLAY_DATA( 22,35,0,FMT_HEX,4,histogram[0x00],l_histogram[0x00]);
-            if ( d_task == NB_DTASKS + 18 ) DISPLAY_DATA( 27,35,0,FMT_HEX,4,histogram[0x01],l_histogram[0x01]);
-            if ( d_task == NB_DTASKS + 19 ) DISPLAY_DATA( 32,35,0,FMT_HEX,4,histogram[0x02],l_histogram[0x02]);
-            if ( d_task == NB_DTASKS + 20 ) DISPLAY_DATA( 37,35,0,FMT_HEX,4,histogram[0x03],l_histogram[0x03]);
-            if ( d_task == NB_DTASKS + 21 ) DISPLAY_DATA( 42,35,0,FMT_HEX,4,histogram[0x04],l_histogram[0x04]);
-            if ( d_task == NB_DTASKS + 22 ) DISPLAY_DATA( 47,35,0,FMT_HEX,4,histogram[0x05],l_histogram[0x05]);
-            if ( d_task == NB_DTASKS + 23 ) DISPLAY_DATA( 52,35,0,FMT_HEX,4,histogram[0x06],l_histogram[0x06]);
-            if ( d_task == NB_DTASKS + 24 ) DISPLAY_DATA( 57,35,0,FMT_HEX,4,histogram[0x07],l_histogram[0x07]);
-            if ( d_task == NB_DTASKS + 25 ) DISPLAY_DATA( 64,35,0,FMT_HEX,4,histogram[0x08],l_histogram[0x08]);
-            if ( d_task == NB_DTASKS + 26 ) DISPLAY_DATA( 69,35,0,FMT_HEX,4,histogram[0x09],l_histogram[0x09]);
-            if ( d_task == NB_DTASKS + 27 ) DISPLAY_DATA( 74,35,0,FMT_HEX,4,histogram[0x0A],l_histogram[0x0A]);
-            if ( d_task == NB_DTASKS + 28 ) DISPLAY_DATA( 79,35,0,FMT_HEX,4,histogram[0x0B],l_histogram[0x0B]);
-            if ( d_task == NB_DTASKS + 29 ) DISPLAY_DATA( 84,35,0,FMT_HEX,4,histogram[0x0C],l_histogram[0x0C]);
-            if ( d_task == NB_DTASKS + 30 ) DISPLAY_DATA( 89,35,0,FMT_HEX,4,histogram[0x0D],l_histogram[0x0D]);
-            if ( d_task == NB_DTASKS + 31 ) DISPLAY_DATA( 94,35,0,FMT_HEX,4,histogram[0x0E],l_histogram[0x0E]);
-            if ( d_task == NB_DTASKS + 32 ) DISPLAY_DATA( 99,35,0,FMT_HEX,4,histogram[0x0F],l_histogram[0x0F]);
-            }
-         if ( d_task >=  NB_DTASKS+33  && d_task <= NB_DTASKS+48 )    
-            {
-            if ( d_task == NB_DTASKS + 33 ) DISPLAY_DATA( 22,38,0,FMT_HEX,8,d_debug[0x10],l_debug[0x10]);
-            if ( d_task == NB_DTASKS + 34 ) DISPLAY_DATA( 32,38,0,FMT_HEX,8,d_debug[0x11],l_debug[0x11]);
-            if ( d_task == NB_DTASKS + 35 ) DISPLAY_DATA( 42,38,0,FMT_HEX,8,d_debug[0x12],l_debug[0x12]);
-            if ( d_task == NB_DTASKS + 36 ) DISPLAY_DATA( 52,38,0,FMT_HEX,8,d_debug[0x13],l_debug[0x13]);
-            if ( d_task == NB_DTASKS + 37 ) DISPLAY_DATA( 64,38,0,FMT_HEX,8,d_debug[0x14],l_debug[0x14]);
-            if ( d_task == NB_DTASKS + 38 ) DISPLAY_DATA( 74,38,0,FMT_HEX,8,d_debug[0x15],l_debug[0x15]);
-            if ( d_task == NB_DTASKS + 39 ) DISPLAY_DATA( 84,38,0,FMT_HEX,8,d_debug[0x16],l_debug[0x16]);
-            if ( d_task == NB_DTASKS + 40 ) DISPLAY_DATA( 94,38,0,FMT_HEX,8,d_debug[0x17],l_debug[0x17]);
-            if ( d_task == NB_DTASKS + 41 ) DISPLAY_DATA( 22,39,0,FMT_HEX,8,d_debug[0x18],l_debug[0x18]);
-            if ( d_task == NB_DTASKS + 42 ) DISPLAY_DATA( 32,39,0,FMT_HEX,8,d_debug[0x19],l_debug[0x19]);
-            if ( d_task == NB_DTASKS + 43 ) DISPLAY_DATA( 42,39,0,FMT_HEX,8,d_debug[0x1A],l_debug[0x1A]);
-            if ( d_task == NB_DTASKS + 44 ) DISPLAY_DATA( 52,39,0,FMT_HEX,8,d_debug[0x1B],l_debug[0x1B]);
-            if ( d_task == NB_DTASKS + 45 ) DISPLAY_DATA( 64,39,0,FMT_HEX,8,d_debug[0x1C],l_debug[0x1C]);
-            if ( d_task == NB_DTASKS + 46 ) DISPLAY_DATA( 74,39,0,FMT_HEX,8,d_debug[0x1D],l_debug[0x1D]);
-            if ( d_task == NB_DTASKS + 47 ) DISPLAY_DATA( 84,39,0,FMT_HEX,8,d_debug[0x1E],l_debug[0x1E]);
-            if ( d_task == NB_DTASKS + 48 ) DISPLAY_DATA( 94,39,0,FMT_HEX,8,d_debug[0x1F],l_debug[0x1F]);
-            }
+// This list of IF() takes 30K in the flash
+         if ( d_task == NB_DTASKS + 1  ) DISPLAY_DATA( 22,36,0,FMT_HEX,8,d_debug[0x00],l_debug[0x00]);
+         if ( d_task == NB_DTASKS + 2  ) DISPLAY_DATA( 32,36,0,FMT_HEX,8,d_debug[0x01],l_debug[0x01]);
+         if ( d_task == NB_DTASKS + 3  ) DISPLAY_DATA( 42,36,0,FMT_HEX,8,d_debug[0x02],l_debug[0x02]);
+         if ( d_task == NB_DTASKS + 4  ) DISPLAY_DATA( 52,36,0,FMT_HEX,8,d_debug[0x03],l_debug[0x03]);
+         if ( d_task == NB_DTASKS + 5  ) DISPLAY_DATA( 64,36,0,FMT_HEX,8,d_debug[0x04],l_debug[0x04]);
+         if ( d_task == NB_DTASKS + 6  ) DISPLAY_DATA( 74,36,0,FMT_HEX,8,d_debug[0x05],l_debug[0x05]);
+         if ( d_task == NB_DTASKS + 7  ) DISPLAY_DATA( 84,36,0,FMT_HEX,8,d_debug[0x06],l_debug[0x06]);
+         if ( d_task == NB_DTASKS + 8  ) DISPLAY_DATA( 94,36,0,FMT_HEX,8,d_debug[0x07],l_debug[0x07]);
+         if ( d_task == NB_DTASKS + 9  ) DISPLAY_DATA( 22,37,0,FMT_HEX,8,d_debug[0x08],l_debug[0x08]);
+         if ( d_task == NB_DTASKS + 10 ) DISPLAY_DATA( 32,37,0,FMT_HEX,8,d_debug[0x09],l_debug[0x09]);
+         if ( d_task == NB_DTASKS + 11 ) DISPLAY_DATA( 42,37,0,FMT_HEX,8,d_debug[0x0A],l_debug[0x0A]);
+         if ( d_task == NB_DTASKS + 12 ) DISPLAY_DATA( 52,37,0,FMT_HEX,8,d_debug[0x0B],l_debug[0x0B]);
+         if ( d_task == NB_DTASKS + 13 ) DISPLAY_DATA( 64,37,0,FMT_HEX,8,d_debug[0x0C],l_debug[0x0C]);
+         if ( d_task == NB_DTASKS + 14 ) DISPLAY_DATA( 74,37,0,FMT_HEX,8,d_debug[0x0D],l_debug[0x0D]);
+         if ( d_task == NB_DTASKS + 15 ) DISPLAY_DATA( 84,37,0,FMT_HEX,8,d_debug[0x0E],l_debug[0x0E]);
+         if ( d_task == NB_DTASKS + 16 ) DISPLAY_DATA( 94,37,0,FMT_HEX,8,d_debug[0x0F],l_debug[0x0F]);
+
+         if ( d_task == NB_DTASKS + 17 ) DISPLAY_DATA( 22,35,0,FMT_HEX,4,histogram[0x00],l_histogram[0x00]);
+         if ( d_task == NB_DTASKS + 18 ) DISPLAY_DATA( 27,35,0,FMT_HEX,4,histogram[0x01],l_histogram[0x01]);
+         if ( d_task == NB_DTASKS + 19 ) DISPLAY_DATA( 32,35,0,FMT_HEX,4,histogram[0x02],l_histogram[0x02]);
+         if ( d_task == NB_DTASKS + 20 ) DISPLAY_DATA( 37,35,0,FMT_HEX,4,histogram[0x03],l_histogram[0x03]);
+         if ( d_task == NB_DTASKS + 21 ) DISPLAY_DATA( 42,35,0,FMT_HEX,4,histogram[0x04],l_histogram[0x04]);
+         if ( d_task == NB_DTASKS + 22 ) DISPLAY_DATA( 47,35,0,FMT_HEX,4,histogram[0x05],l_histogram[0x05]);
+         if ( d_task == NB_DTASKS + 23 ) DISPLAY_DATA( 52,35,0,FMT_HEX,4,histogram[0x06],l_histogram[0x06]);
+         if ( d_task == NB_DTASKS + 24 ) DISPLAY_DATA( 57,35,0,FMT_HEX,4,histogram[0x07],l_histogram[0x07]);
+         if ( d_task == NB_DTASKS + 25 ) DISPLAY_DATA( 64,35,0,FMT_HEX,4,histogram[0x08],l_histogram[0x08]);
+         if ( d_task == NB_DTASKS + 26 ) DISPLAY_DATA( 69,35,0,FMT_HEX,4,histogram[0x09],l_histogram[0x09]);
+         if ( d_task == NB_DTASKS + 27 ) DISPLAY_DATA( 74,35,0,FMT_HEX,4,histogram[0x0A],l_histogram[0x0A]);
+         if ( d_task == NB_DTASKS + 28 ) DISPLAY_DATA( 79,35,0,FMT_HEX,4,histogram[0x0B],l_histogram[0x0B]);
+         if ( d_task == NB_DTASKS + 29 ) DISPLAY_DATA( 84,35,0,FMT_HEX,4,histogram[0x0C],l_histogram[0x0C]);
+         if ( d_task == NB_DTASKS + 30 ) DISPLAY_DATA( 89,35,0,FMT_HEX,4,histogram[0x0D],l_histogram[0x0D]);
+         if ( d_task == NB_DTASKS + 31 ) DISPLAY_DATA( 94,35,0,FMT_HEX,4,histogram[0x0E],l_histogram[0x0E]);
+         if ( d_task == NB_DTASKS + 32 ) DISPLAY_DATA( 99,35,0,FMT_HEX,4,histogram[0x0F],l_histogram[0x0F]);
+
+         if ( d_task == NB_DTASKS + 33 ) DISPLAY_DATA( 22,38,0,FMT_HEX,8,d_debug[0x10],l_debug[0x10]);
+         if ( d_task == NB_DTASKS + 34 ) DISPLAY_DATA( 32,38,0,FMT_HEX,8,d_debug[0x11],l_debug[0x11]);
+         if ( d_task == NB_DTASKS + 35 ) DISPLAY_DATA( 42,38,0,FMT_HEX,8,d_debug[0x12],l_debug[0x12]);
+         if ( d_task == NB_DTASKS + 36 ) DISPLAY_DATA( 52,38,0,FMT_HEX,8,d_debug[0x13],l_debug[0x13]);
+         if ( d_task == NB_DTASKS + 37 ) DISPLAY_DATA( 64,38,0,FMT_HEX,8,d_debug[0x14],l_debug[0x14]);
+         if ( d_task == NB_DTASKS + 38 ) DISPLAY_DATA( 74,38,0,FMT_HEX,8,d_debug[0x15],l_debug[0x15]);
+         if ( d_task == NB_DTASKS + 39 ) DISPLAY_DATA( 84,38,0,FMT_HEX,8,d_debug[0x16],l_debug[0x16]);
+         if ( d_task == NB_DTASKS + 40 ) DISPLAY_DATA( 94,38,0,FMT_HEX,8,d_debug[0x17],l_debug[0x17]);
+         if ( d_task == NB_DTASKS + 41 ) DISPLAY_DATA( 22,39,0,FMT_HEX,8,d_debug[0x18],l_debug[0x18]);
+         if ( d_task == NB_DTASKS + 42 ) DISPLAY_DATA( 32,39,0,FMT_HEX,8,d_debug[0x19],l_debug[0x19]);
+         if ( d_task == NB_DTASKS + 43 ) DISPLAY_DATA( 42,39,0,FMT_HEX,8,d_debug[0x1A],l_debug[0x1A]);
+         if ( d_task == NB_DTASKS + 44 ) DISPLAY_DATA( 52,39,0,FMT_HEX,8,d_debug[0x1B],l_debug[0x1B]);
+         if ( d_task == NB_DTASKS + 45 ) DISPLAY_DATA( 64,39,0,FMT_HEX,8,d_debug[0x1C],l_debug[0x1C]);
+         if ( d_task == NB_DTASKS + 46 ) DISPLAY_DATA( 74,39,0,FMT_HEX,8,d_debug[0x1D],l_debug[0x1D]);
+         if ( d_task == NB_DTASKS + 47 ) DISPLAY_DATA( 84,39,0,FMT_HEX,8,d_debug[0x1E],l_debug[0x1E]);
+         if ( d_task == NB_DTASKS + 48 ) DISPLAY_DATA( 94,39,0,FMT_HEX,8,d_debug[0x1F],l_debug[0x1F]);
 
          if ( d_task == NB_DTASKS + 65 ) DISPLAY_DATA( 35,22,0,FMT_HMS,8,seconds,l_seconds);
 
@@ -1794,7 +1788,7 @@ set_digital_output(DO_10KHZ    ,PULL_UP_ENABLED);    // Set 10 Khz pwm output of
 set_digital_input (DI_REMOTE   ,PULL_UP_ENABLED);
 //DDRC = 0x00; // set pins 0 1 2 3 of port C as output
 
-set_analog_mode(MODE_8_BIT);                         // 8-bit analog-to-digital conversions
+//set_analog_mode(MODE_8_BIT);                         // 8-bit analog-to-digital conversions
 d_ram = get_free_memory();
 sei();         //enable global interrupts
 
@@ -1888,6 +1882,9 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.32  2011/12/27 22:20:57  pmichel
+Yet another big error fixed
+
 Revision 1.31  2011/12/27 21:57:11  pmichel
 important fix for sin() cos() functions
 fg
