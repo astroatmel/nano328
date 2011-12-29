@@ -1,29 +1,23 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/28 22:30:03 $
-$Id: telescope.c,v 1.34 2011/12/28 22:30:03 pmichel Exp pmichel $
+$Date: 2011/12/28 23:29:58 $
+$Id: telescope.c,v 1.35 2011/12/28 23:29:58 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.34 $
+$Revision: 1.35 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
-- > Detect interrupt mayham where the histogram reads values all over the place
--> remove the falling edge interrupt, instead do everything in the same handler....to aviod skipping steps
+-  
+- show current polar X/Y displacement required (in steps)
+- show total error with current polar correction calculation using the stores corrected star position
+- show x and y of polar correction (good indication of direction and amplitude)
+-
+ > Detect interrupt mayham where the histogram reads values all over the place
 - Add main stars from directory
-- Code to toggle motor on/off :  M
-- Code to reset histogram     :  H
-- add a command that displays at the console : time, position, star name (corrected star position)
-- add a panic button that stops a movement (without the need to reset and loose everything)
 - add a way to change the direction of movement, when going to far positions, the tube might start to turn the wring way (shortedt path)
-- process RETURN as command complete
-- decode modes:  GOTO / MOVEMENT / DIRCTORY
-- decode command set_star             [RECORD]              (DIRECTORY MODE : the current H/W position is the corrected position for the active star) 
-- decode command set_pos              [RECORD + Number]     (MOVEMENT MODE : the current H/W position is stored in memory to go back after) 
-- decode command go_ra                [VOL+- + numbers]     (GOTO MODE : manual goto ex: CH+ 0130 means : North 1 deg 30 minutes 00.00 sec)
-- decode command go_dec               [CH+- + numbers]      (GOTO MODE)
 - display command on LCD
 - do banding in SP0 to handle both axis and not burn too much CPU time, tried quickly and it doesn't work first shot
-
+- reduce the amount of ram that the sin() cos() functions use
 */
 #define AP0_DISPLAY 0    // ca plante asse souvent si j'essaye de rouller avec AP)
 
@@ -243,7 +237,6 @@ PROGMEM const char pgm_stars_name[]   =  // format: Constellation:Star Name , th
                      "Orion-B:Mintaka       \0"     /*  14  */  \
                      "Orion-B:Alnilam       \0"     /*  15  */  \
                      "Pignon Maison         \0"     /*  15  */  \
-                     "\0"\
                     };
 // pignon: -83°58'30.6"  (E) 075°03'39.1"  05h00m14.61s
 PROGMEM const unsigned long pgm_stars_pos[] =    // Note, the positions below must match the above star names
@@ -265,8 +258,8 @@ PROGMEM const unsigned long pgm_stars_pos[] =    // Note, the positions below mu
                       ( 5*TICKS_P_HOUR+32*TICKS_P_MIN+ 0.4*TICKS_P_SEC), (359*TICKS_P_DEG+42*TICKS_P_DEG_MIN+ 3.0*TICKS_P_DEG_SEC),     // Orion: Mintaka   5h32m0.4   -0;17.57.0
                       ( 5*TICKS_P_HOUR+36*TICKS_P_MIN+ 12 *TICKS_P_SEC), (358*TICKS_P_DEG+48*TICKS_P_DEG_MIN+ 0.0*TICKS_P_DEG_SEC),     // Orion: Alnilam   5h36m12s   -1;12;00.00
                       ( 5*TICKS_P_HOUR+ 0*TICKS_P_MIN+14.6*TICKS_P_SEC), (276*TICKS_P_DEG+ 1*TICKS_P_DEG_MIN+29.4*TICKS_P_DEG_SEC),     // Orion: Alnilam   5h36m12s   -1;12;00.00
-                      0,0 // last one
                     };
+#define NB_PGM_STARS (sizeof(pgm_stars_pos)/8)
 
 PROGMEM const char pgm_free_mem[]="Free Memory:";
 PROGMEM const char pgm_starting[]="Telescope Starting...";
@@ -541,7 +534,7 @@ ________________________________________________________________________________
 #define   DD_FIELDS     0x60
 volatile long dd_v[DD_FIELDS]; 
 volatile long dd_p[DD_FIELDS];
-//#############################>> the first are fucked because of NB_DTASKS NB_DTASKS NB_DTASKS NB_DTASKS NB_DTASKS
+
 //                                             0    1    2    3    4    5    6    7    8    9    A    B    C    D    E    F
 PROGMEM const unsigned char dd_x[DD_FIELDS]={ 22 , 32 , 42 , 52 , 64 , 74 , 84 , 94 , 22 , 32 , 42 , 52 , 64 , 74 , 84 , 94     // 0x00: DEBUG  0->15
                                             , 22 , 32 , 42 , 52 , 64 , 74 , 84 , 94 , 22 , 32 , 42 , 52 , 64 , 74 , 84 , 94     // 0x10: DEBUG 16->31
@@ -561,12 +554,12 @@ PROGMEM const unsigned char dd_f[DD_FIELDS]={0x18,0x18,0x18,0x18,0x18,0x18,0x18,
                                             ,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18    // 0x10: DEBUG 16->31      all HEX 8 bytes
                                             ,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14    // 0x20: Histogram 0->15   all HEX 4 bytes
                                             ,0x50,0x50,0x50,0x26,0x23,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x30: RA structure values
-                                            ,0x40,0x40,0x40,0x26,0x23,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x40: DEC structure values
+                                            ,0x40,0x40,0x40,0x26,0x23,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x40: DEC structure values 
                                             ,0x60,0x60,0x60,0x38,0x40,0x50,0x60,0x14,0x18,0x18,0xB0,0x70,0x00,0x00,0x00,0x00    // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
                                             };  
 // define the Start of each variable in the array
 #define DDS_DEBUG         0x00
-#define DDS_HISTO         0x20
+#define DDS_HISTO         0x20   // dd_v[DDS_HISTO]
 #define DDS_RA            0x30   // ra  = (struct AXIS*)dd_v[DDS_RA];
 #define DDS_DEC           0x40   // dec = (struct AXIS*)dd_v[DDS_DEC];
 #define DDS_RA_POS2       0x50 
@@ -948,8 +941,51 @@ else if ( fmt == FMT_ASC )  // ASCII
    }
 }
 
-void goto_pos(short pos)
+#define PROSCAN_VCR1_CH_P   0x021D2E2D
+#define PROSCAN_VCR1_CH_M   0x021D3E2C
+#define PROSCAN_VCR1_VOL_P  0x023D0C2F
+#define PROSCAN_VCR1_VOL_M  0x023D1C2E
+#define PROSCAN_VCR1_RECORD 0x021E8E17
+#define PROSCAN_VCR1_PLAY   0x021EAE15
+#define PROSCAN_VCR1_STOP   0x021E0E1F
+#define PROSCAN_VCR1_NORTH  0x021A6E59
+#define PROSCAN_VCR1_SOUTH  0x021A7E58
+#define PROSCAN_VCR1_WEST   0x021A8E57
+#define PROSCAN_VCR1_EAST   0x021A9E56
+#define PROSCAN_VCR1_OK     0x0210BEF4
+#define PROSCAN_VCR1_SEARCH 0x021ACE53
+#define PROSCAN_VCR1_GOBACK 0x021D8E27
+#define PROSCAN_VCR1_INPUT  0x021B8E47
+#define PROSCAN_VCR1_ANTENA 0x021FAE05
+#define PROSCAN_VCR1_CLEAR  0x021F9E06
+#define PROSCAN_VCR1_GUIDE  0x021E5E1A
+#define PROSCAN_VCR1_INFO   0x021C3E3C
+#define PROSCAN_VCR1_POWER  0x021D5E2A
+#define PROSCAN_VCR1_TRAK_P 0x021F4E0B
+#define PROSCAN_VCR1_TRAK_M 0x021F5E0A
+#define PROSCAN_VCR1_0      0x021CFE30
+#define PROSCAN_VCR1_1      0x021CEE31
+#define PROSCAN_VCR1_2      0x021CDE32
+#define PROSCAN_VCR1_3      0x021CCE33
+#define PROSCAN_VCR1_4      0x021CBE34
+#define PROSCAN_VCR1_5      0x021CAE35
+#define PROSCAN_VCR1_6      0x021C9E36
+#define PROSCAN_VCR1_7      0x021C8E37
+#define PROSCAN_VCR1_8      0x021C7E38
+#define PROSCAN_VCR1_9      0x021C6E39
+
+#define NB_SAVED 20
+typedef struct
+   {         
+   long ra;
+   long dec;
+   unsigned char ref_star;  // if not 0, then it tells us that this is a Corrected star position
+   } POSITION;
+POSITION saved[NB_SAVED];
+
+void goto_pgm_pos(short pos)
 {
+if ( pos >= NB_PGM_STARS ) return;  // out of bound . . .
 if ( ! ( moving || goto_cmd ) )
    {
    ra->pos_target  = pgm_read_dword(&pgm_stars_pos[pos*2+0]);
@@ -958,44 +994,182 @@ if ( ! ( moving || goto_cmd ) )
    }
 }
 
+void goto_pos(short pos)
+{
+if ( pos > NB_SAVED ) return;   // out of bound . . .
+if ( ! ( moving || goto_cmd ) )
+   {
+   ra->pos_target  = saved[pos].ra;
+   dec->pos_target = saved[pos].dec;
+   goto_cmd = 1;
+   }
+}
+
+void record_pos(short pos)
+{
+if ( pos > NB_SAVED ) return;   // out of bound . . .
+saved[pos].ra  = ra->pos;
+saved[pos].dec = dec->pos;
+saved[pos].ref_star = dd_v[DDS_CUR_STAR];
+}
+
+short is_search(long *code) // return true on PROSCAN_VCR1_NORTH/SOUTH/EAST/WEST and PROSCAN_VCR1_SEARCH
+{
+if ( (*code&0xFFFF0FF0) == 0x021A0E50 ) return 1;  
+return 0;
+}
+
+short is_digit(long *code)
+{
+if ( (*code&0xFFFF0FF0) == 0x021C0E30 ) return 1;  
+return 0;
+}
+
+/*
+- redo proscan codes using #defines and VCR1
+- the following IR commands clear after 3 seconds  ... The IR sends values to the RS232 buffer same as keyboard  3sec is 
+- Store generic position 1-10  (complex command sequence)           Sg1 <enter>               [RECORD  + INPUT + X]  // 10 slots avail for generic pos
+- goto  generic position 1-10  (complex command sequence)           Gg1 <enter>               [PLAY    + INPUT + X]
+- Store corrected star position 1-10  (complex command sequence)    Sc2 <enter>               [RECORD  + ANTENA + X]  //  10 slots for star correction
+- goto  corrected star position 1-10  (complex command sequence)    Gc2 <enter>               [PLAY    + ANTENA + X]  //     each slot also contains the index of the star (reference)
+- goto  directory start position 1-??  (complex command sequence)   G123 <enter>              [PLAY    + X + X + X]
+- Go to Catalog star                                                *                         [PLAY    + PLAY] 
+- Select next/previous star from catalog                            < / >                     [FWD/REV] 
+- clear all generic recorded positions                              Cg   <enter>              [CLEAR   + INPUT]
+- clear all stars corrected positions                               Cc   <enter>              [CLEAR   + ANTENA]
+- clear histogram values                                            Ch   <enter>              [CLEAR   + INFO]
+- move back and forth to remove friction                            Cf   <enter>              [CLEAR   + GO BACK]
+- Redraw screen                                                     !                         [CLEAR   + OK] 
+- Reset input command                                               <enter>                   [CLEAR   + GUIDE]
+- goto ra position                                                  [EW]123 45 67 <enter>     [VOL     + 123 45 67 + SEARCH]
+- goto dec position                                                 [NS]123 45 67 <enter>     [CH      + 12 34 56 78 + SEARCH]
+- calculate polar error based on corrected star position            Po    <enter>             [ANTENA  + SEARCH]
+- Code to toggle motor on/off                                       Mo[nf] <enter>            [POWER]
+- Slew                                                              [esc][O[ABCD]             [UP/DOWN/LEFT/RIGHT]
+- Slew stop                                                         [esc][OFABCD]             [OK/STOP]
+- Start/stop tracking                                               + / -                     [TRACKING +/-] 
+- add a command that displays at the console : time, position, star name (corrected star position)
+*/
+
+//  Remote defined codes:
+//  PROSCAN_VCR1_CH_P    PROSCAN_VCR1_CH_M    PROSCAN_VCR1_VOL_P   PROSCAN_VCR1_VOL_M   PROSCAN_VCR1_TRAK_P  PROSCAN_VCR1_TRAK_M  PROSCAN_VCR1_RECORD  PROSCAN_VCR1_PLAY    PROSCAN_VCR1_STOP    
+//  PROSCAN_VCR1_NORTH   PROSCAN_VCR1_SOUTH   PROSCAN_VCR1_EAST    PROSCAN_VCR1_WEST    PROSCAN_VCR1_OK      
+//  PROSCAN_VCR1_POWER   PROSCAN_VCR1_SEARCH  PROSCAN_VCR1_GOBACK  PROSCAN_VCR1_INPUT   PROSCAN_VCR1_ANTENA  PROSCAN_VCR1_CLEAR   PROSCAN_VCR1_GUIDE   
+//  PROSCAN_VCR1_0       PROSCAN_VCR1_1       PROSCAN_VCR1_2       PROSCAN_VCR1_3       PROSCAN_VCR1_4       PROSCAN_VCR1_5       PROSCAN_VCR1_6       PROSCAN_VCR1_7       PROSCAN_VCR1_8       PROSCAN_VCR1_9       
+//  OA up      OD   left
+//  OB down    OC   right    OF
+
+unsigned char cmd_state=0;
+unsigned char cmd_val[10],cmd_val_idx;  //store the last byte of the last IR codes received
+
+// using a table state machine to shorten the s/w code
+// I'm a bit supprised, I think this little table will acomplish something very complex !!
+//    INPUTS:                 NUM  PLA  REC  CLR  INP  ANT  SEARCH        STATE:
+PROGMEM char cmd_states[] = {   0,   1,   6,   9,   0,  11,  10        //   0 ready tp process a new command
+                            ,   2,   0,   0,   0,   4,   5,   0        //   1 PLAY X  / PLAY INPUT / PLAY ANTENA
+                            ,   3,   0,   0,   0,   0,   0,   0        //   2 PLAY X X
+                            , 100,   0,   0,   0,   0,   0,   0        //   3 PLAY X X X
+                            , 101,   0,   0,   0,   0,   0,   0        //   4 PLAY INPUT X
+                            , 102,   0,   0,   0,   0,   0,   0        //   5 PLAY ANTENA X
+                            ,   0,   0,   0,   0,   7,   8,   0        //   6 RECORD INPUT / RECORD ANTENA
+                            , 103,   0,   0,   0,   0,   0,   0        //   7 RECORD INPUT X
+                            , 104,   0,   0,   0,   0,   0,   0        //   8 RECORD ANTENA X
+                            , 107, 107, 107, 107, 105, 106, 107        //   9 CLEAR ? INPUT / ANTENA / INFO / 
+                            ,  10,   0,   0,   0,   0,   0, 108        //  10 GOTO MANUAL POSITION ?
+                            ,   0,   0,   0,   0,   0,   0, 109        //  11 ANTENA SEARCH ?
+                            };
+
 void display_next(void);
 void display_next_bg(void) 
 {
-dd_v[DDS_DEBUG + 0x0C]++;
+short iii,jjj;
+
 if ( AP0_DISPLAY == 0 ) display_next();  // if not printing from AP0, then print here
 
 ///// Process IR commands
+dd_v[DDS_DEBUG + 0x0C] = cmd_state;
+
 if ( l_ir_count != dd_v[DDS_IR_COUNT])
    {
    long code = dd_v[DDS_IR_CODE];
+   short next_input;
    l_ir_count = dd_v[DDS_IR_COUNT]; // tell SP0 that he can go on
-   if      ( code == 0x01D592A6 ) slew_cmd = 8;       // North
-   else if ( code == 0x01D582A7 ) slew_cmd = 2;       // South
-   else if ( code == 0x01D562A9 ) slew_cmd = 4;       // East
-   else if ( code == 0x01D572A8 ) slew_cmd = 6;       // West
-   else if ( code == 0x01DF420B ) slew_cmd = 5;       // Stop
-   else if ( code == 0x01D062F9 ) redraw   = 1;       // redraw everything
-   else if ( code == 0x01D0A2F5 ) earth_tracking=0;   // Stop tracking
-   else if ( code == 0x01D0B2F4 ) earth_tracking=1;   // Start tracking
-   else if ( code == 0x01D302CF ) goto_pos(6+0);      //  0
-   else if ( code == 0x01D312CE ) goto_pos(6+1);      //  1
-   else if ( code == 0x01D322CD ) goto_pos(6+2);      //  2
-   else if ( code == 0x01D332CC ) goto_pos(6+3);      //  3
-   else if ( code == 0x01D342CB ) goto_pos(6+4);      //  4
-   else if ( code == 0x01D272D8 ) goto_pos(dd_v[DDS_CUR_STAR]); // GOTO
-   else if ( code == 0x01C2E3D1 || code == 0x01C2F3D0 )   //   <   >
+
+   if      ( is_digit(&code) )             next_input = 0;
+   else if ( code == PROSCAN_VCR1_PLAY)    next_input = 1;
+   else if ( code == PROSCAN_VCR1_RECORD)  next_input = 2;
+   else if ( code == PROSCAN_VCR1_CLEAR)   next_input = 3;
+   else if ( code == PROSCAN_VCR1_INPUT)   next_input = 4;
+   else if ( code == PROSCAN_VCR1_ANTENA)  next_input = 5;
+   else if ( is_search(&code) )            next_input = 6;
+   else                                    next_input = -1;
+
+   if ( next_input >=0 ) 
       {
-      if ( code == 0x01C2E3D1 ) dd_v[DDS_CUR_STAR]--;
-      if ( code == 0x01C2F3D0 ) dd_v[DDS_CUR_STAR]++;
-      if ( 0 == pgm_read_byte(pgm_stars_name + dd_v[DDS_CUR_STAR]*STAR_NAME_LEN) ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
-      if ( dd_v[DDS_CUR_STAR]<0 )
-         {
-         short iii;
-         for(iii=0;pgm_read_byte(pgm_stars_name + iii*STAR_NAME_LEN);iii++ );  // search the last star
-         dd_v[DDS_CUR_STAR] = iii-1;
-         }
+      if ( cmd_state==0 ) cmd_val_idx=0;  // reset captured data
+      cmd_state = pgm_read_byte(&cmd_states[cmd_state*7 + next_input]);  // go to next state based on input type
+      if ( cmd_val_idx<10) cmd_val[cmd_val_idx++] = code & 0x0000000F;   // store the last digit of the code
+      jjj = cmd_val[cmd_val_idx-1];  // last digit...
       }
-    
+   else cmd_state=0;   // unknown input
+
+   if ( cmd_state >= 100 ) // a command is complete, need to process it
+      {
+      if ( cmd_state==100 ) // PLAY X X X : goto direct to catalog star 
+         { goto_pgm_pos(cmd_val[cmd_val_idx-3]*100 + cmd_val[cmd_val_idx-2]*10 + jjj); }
+      if ( cmd_state==101 ) // PLAY INPUT X : goto user position X
+         { goto_pos(jjj); }
+      if ( cmd_state==102 ) // PLAY ANTENA X : goto star corrected position X
+         { goto_pos(10+jjj); }
+      if ( cmd_state==103 ) // RECORD INPUT X : record user position X
+         { record_pos(jjj); }
+      if ( cmd_state==104 ) // RECORD ANTENA X : record star corrected position X
+         { record_pos(10+jjj); }
+      if ( cmd_state==105 ) // CLEAR INPUT : clear all user positinos
+         { for(iii=0;iii<10;iii++) saved[iii].ra = saved[iii].dec = saved[iii].ref_star=0; }
+      if ( cmd_state==106 ) // CLEAR ANTENA : clear all star corrected position 
+         { for(iii=0;iii<10;iii++) saved[10+iii].ra = saved[10+iii].dec = saved[10+iii].ref_star=0; }
+      if ( cmd_state==107 ) // CLEAR ? : clear something else !
+         { if ( code == PROSCAN_VCR1_INFO ) for(iii=0;iii<16;iii++) dd_v[DDS_HISTO+iii]=0; }
+      if ( cmd_state==108 ) // COMPLEX GOTO MANUAL POSITION
+         {
+         }
+      if ( cmd_state==109 ) // ANTENA SEARCH : Calculate polar error
+         {
+         }
+      cmd_state=0; // we are done 
+      }
+   else if ( next_input < 0 ) // Check for a one key command
+      {
+      }
+
+//   if      ( code == 0x01D592A6 ) slew_cmd = 8;       // North
+//   else if ( code == 0x01D582A7 ) slew_cmd = 2;       // South
+//   else if ( code == 0x01D562A9 ) slew_cmd = 4;       // East
+//   else if ( code == 0x01D572A8 ) slew_cmd = 6;       // West
+//   else if ( code == 0x01DF420B ) slew_cmd = 5;       // Stop
+//   else if ( code == 0x01D062F9 ) redraw   = 1;       // redraw everything
+//   else if ( code == 0x01D0A2F5 ) earth_tracking=0;   // Stop tracking
+//   else if ( code == 0x01D0B2F4 ) earth_tracking=1;   // Start tracking
+//   else if ( code == 0x01D302CF ) goto_pgm_pos(6+0);      //  0
+//   else if ( code == 0x01D312CE ) goto_pgm_pos(6+1);      //  1
+//   else if ( code == 0x01D322CD ) goto_pgm_pos(6+2);      //  2
+//   else if ( code == 0x01D332CC ) goto_pgm_pos(6+3);      //  3
+//   else if ( code == 0x01D342CB ) goto_pgm_pos(6+4);      //  4
+//   else if ( code == 0x01D272D8 ) goto_pgm_pos(dd_v[DDS_CUR_STAR]); // GOTO
+//   else if ( code == 0x01E1C1E3 || code == 0x01E1D1E2 )   //   <   >
+//      {
+//      if ( code == 0x01E1C1E3 ) dd_v[DDS_CUR_STAR]--;  // >> FWD
+//      if ( code == 0x01E1D1E2 ) dd_v[DDS_CUR_STAR]++;  // << REV
+//      if ( 0 == pgm_read_byte(pgm_stars_name + dd_v[DDS_CUR_STAR]*STAR_NAME_LEN) ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
+//      if ( dd_v[DDS_CUR_STAR]<0 )
+//         {
+//         short iii;
+//         for(iii=0;pgm_read_byte(pgm_stars_name + iii*STAR_NAME_LEN);iii++ );  // search the last star
+//         dd_v[DDS_CUR_STAR] = iii-1;
+//         }
+//      }
+//    
    }
 ///// Process Keyboard commands
 
@@ -1006,13 +1180,14 @@ else if ( dd_v[DDS_RX_IDX]==1 )  // check if it's a single key command
       {
       if ( rs232_rx_buf[0] == '<') dd_v[DDS_CUR_STAR]--; 
       if ( rs232_rx_buf[0] == '>') dd_v[DDS_CUR_STAR]++; 
-      if ( 0 == pgm_read_byte(pgm_stars_name + dd_v[DDS_CUR_STAR]*STAR_NAME_LEN) ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
-      if ( dd_v[DDS_CUR_STAR]<0 )
-         {
-         short iii;
-         for(iii=0;pgm_read_byte(pgm_stars_name + iii*STAR_NAME_LEN);iii++ );  // search the last star
-         dd_v[DDS_CUR_STAR] = iii-1;
-         }
+      if ( dd_v[DDS_CUR_STAR] >= NB_PGM_STARS ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
+//      if ( 0 == pgm_read_byte(pgm_stars_name + dd_v[DDS_CUR_STAR]*STAR_NAME_LEN) ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
+      if ( dd_v[DDS_CUR_STAR]<0 ) dd_v[DDS_CUR_STAR] = NB_PGM_STARS-1;
+//         {
+//         short iii;
+//         for(iii=0;pgm_read_byte(pgm_stars_name + iii*STAR_NAME_LEN);iii++ );  // search the last star
+//         dd_v[DDS_CUR_STAR] = iii-1;
+//         }
       rs232_rx_buf[0] = 0;
       dd_v[DDS_RX_IDX]=0;
       }
@@ -1603,7 +1778,7 @@ if ( code_started!=0 || IR!=0 )
       if ( IR )
          {
          loc_ir_code = loc_ir_code<<1;   
-         if ( count_0 > 0x10 ) loc_ir_code|=1;   // set the "1" bit 
+         if ( count_0 < 0x10 ) loc_ir_code|=1;   // set the "1" bit 
          count_0 = 0;
          }
       else count_bit++;
@@ -1612,11 +1787,11 @@ if ( code_started!=0 || IR!=0 )
       {
       if ( dd_v[DDS_IR_COUNT] == l_ir_count && ir_timeout==0 )  // wait for bg to process the code
          {
-         dd_v[DDS_IR_L_CODE] = dd_v[DDS_IR_CODE];
-         dd_v[DDS_IR_CODE]   = loc_ir_code;
+         dd_v[DDS_IR_L_CODE]   = dd_v[DDS_IR_CODE];
+         dd_v[DDS_IR_CODE]     = loc_ir_code;
          dd_v[DDS_IR_COUNT]++;
          dd_v[DDS_DEBUG + 0x1F]=dd_v[DDS_IR_CODE];
-         ir_timeout = 2500;      // 1/4 seconds
+         ir_timeout = 5000;      // 1/2 seconds
          }
       count_0 = code_started = count_bit = loc_ir_code = 0;
       }
@@ -1879,6 +2054,11 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.35  2011/12/28 23:29:58  pmichel
+Completed the optimization
+plus removed the second interrupt handler
+now the histogram really shows everything that happens in SP0
+
 Revision 1.34  2011/12/28 22:30:03  pmichel
 Major change in the display of values
 saved 10K of flash
