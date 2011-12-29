@@ -1,13 +1,14 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/28 23:29:58 $
-$Id: telescope.c,v 1.35 2011/12/28 23:29:58 pmichel Exp pmichel $
+$Date: 2011/12/29 21:08:55 $
+$Id: telescope.c,v 1.36 2011/12/29 21:08:55 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.35 $
+$Revision: 1.36 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
--  
+- Better IR CODE detection + reject invalid codes + detect key-off
+
 - show current polar X/Y displacement required (in steps)
 - show total error with current polar correction calculation using the stores corrected star position
 - show x and y of polar correction (good indication of direction and amplitude)
@@ -163,58 +164,61 @@ PROGMEM const long speed_index[NB_SPEEDS] = {0,1,2,5,10,20,50,100,200,500,1000,2
 
 
 PROGMEM const char NLNL[]="\012\015";
-#ifdef POLOLU
-// this is 1K if slash:
-PROGMEM const char pololu[]={"\
-                ------------------------------\012\015\
-           M1B  < 01                      24 >  VCC\012\015\
-           M1A  < 02                      23 >  GND\012\015\
-           PB0  < 03   IO/CLK/TIMER       22 >  M2BN\012\015\
-           PB1  < 04   IO/PWM             21 >  M2A\012\015\
-DO 10Khz   PB2  < 05   IO/PWM     AI/IO   20 >  PC5 (ADC5/SCL)\012\015\
-           PB4  < 06   IO         AI/IO   19 >  PC4 (ADC4/SDA)\012\015\
-           PB5  < 07   IO         AI/IO   18 >  PC3 (ADC3) DO  DEC DIR\012\015\
-DI RX232   PD0  < 08   IO         AI/IO   17 >  PC2 (ADC2) DO  DEC STEP\012\015\
-DO TX232   PD1  < 09   IO         AI/IO   16 >  PC1 (ADC1) DO  RA DIR\012\015\
-IR REMOTE  PD2  < 10   IO         AI/IO   15 >  PC0 (ADC0) DO  RA STEP\012\015\
-DO DISABLE PD4  < 11   IO         AI      14 >      (ADC6) AIP BATTERY MONITOR\012\015\
-           PD7  < 12   IO                 13 >  PC6 (RESET)                      * PD7 cant be used as DIP !\012\015\
-                ------------------------------\012\015\
-\012\015\
-RS232 Commands:\012\015\
-  <   >  Prev/Next Catalog Star\012\015\
-  [   ]  Move to Prev/Next Catalog Star\012\015\
-    8    Move North\012\015\
-  4 5 6  Move West / All Stop / Move East\012\015\
-    2    Move South\012\015\
-      *  Go to current star\012\015\
-      +  Save current position to slot X\012\015\
-    G    Go to position specified by the next characters\012\015\
-    !    To redraw screen\012\015\
-  (   )  Start / Stop earth tracking\012\015\
-\012\015\
-"};
 
-#else
-// this is 1K if slash:
-PROGMEM const char dip328p[]={"\
-                            -----------\012\015\
- (PCINT14/RESET)      PC6  < 01     15 > PC5 (ADC5/SCL/PCINT13)\012\015\
- (PCINT16/RXD)        PD0  < 02     16 > PC4 (ADC4/SDA/PCINT12)\012\015\
- (PCINT17/TXD)        PD1  < 03     17 > PC3 (ADC3/PCINT11)\012\015\
- (PCINT18/INT0)       PD2  < 04     18 > PC2 (ADC2/PCINT10)\012\015\
- (PCINT19/OC2B/INT1)  PD3  < 05     19 > PC1AREF (ADC1/PCINT9)\012\015\
- (PCINT20/XCK/T0)     PD4  < 06     20 > PC0 (ADAVCCC0/PCINT8)\012\015\
-                      VCC  < 07     21 > GND\012\015\
-                      GND  < 08     22 > AREF\012\015\
- (PCINT6/XTAL1/TOSC1) PB6  < 09     23 > AVCC\012\015\
- (PCINT7/XTAL2/TOSC2) PB7  < 10     24 > PB5 (SCK/PCINT5)\012\015\
- (PCINT21/OC0B/T1)    PD5  < 11     25 > PB4 (MISO/PCINT4)\012\015\
- (PCINT22/OC0A/AIN0)  PD6  < 12     26 > PB3 (MOSI/OC2A/PCINT3)\012\015\
- (PCINT23/AIN1)       PD7  < 13     27 > PB2 (SS/OC1B/PCINT2)\012\015\
- (PCINT0/CLKO/ICP1)   PB0  < 14     28 > PB1 (OC1A/PCINT1)\012\015\
-                            -----------\012\015\
-"};
+#ifdef DISPLAY_HELP
+   #ifdef POLOLU
+   // this is 1K if slash:
+   PROGMEM const char pololu[]={"\
+                   ------------------------------\012\015\
+              M1B  < 01                      24 >  VCC\012\015\
+              M1A  < 02                      23 >  GND\012\015\
+              PB0  < 03   IO/CLK/TIMER       22 >  M2BN\012\015\
+              PB1  < 04   IO/PWM             21 >  M2A\012\015\
+   DO 10Khz   PB2  < 05   IO/PWM     AI/IO   20 >  PC5 (ADC5/SCL)\012\015\
+              PB4  < 06   IO         AI/IO   19 >  PC4 (ADC4/SDA)\012\015\
+              PB5  < 07   IO         AI/IO   18 >  PC3 (ADC3) DO  DEC DIR\012\015\
+   DI RX232   PD0  < 08   IO         AI/IO   17 >  PC2 (ADC2) DO  DEC STEP\012\015\
+   DO TX232   PD1  < 09   IO         AI/IO   16 >  PC1 (ADC1) DO  RA DIR\012\015\
+   IR REMOTE  PD2  < 10   IO         AI/IO   15 >  PC0 (ADC0) DO  RA STEP\012\015\
+   DO DISABLE PD4  < 11   IO         AI      14 >      (ADC6) AIP BATTERY MONITOR\012\015\
+              PD7  < 12   IO                 13 >  PC6 (RESET)                      * PD7 cant be used as DIP !\012\015\
+                   ------------------------------\012\015\
+   \012\015\
+   RS232 Commands:\012\015\
+     <   >  Prev/Next Catalog Star\012\015\
+     [   ]  Move to Prev/Next Catalog Star\012\015\
+       8    Move North\012\015\
+     4 5 6  Move West / All Stop / Move East\012\015\
+       2    Move South\012\015\
+         *  Go to current star\012\015\
+         +  Save current position to slot X\012\015\
+       G    Go to position specified by the next characters\012\015\
+       !    To redraw screen\012\015\
+     (   )  Start / Stop earth tracking\012\015\
+   \012\015\
+   "};
+   
+   #else
+   // this is 1K if slash:
+   PROGMEM const char dip328p[]={"\
+                               -----------\012\015\
+    (PCINT14/RESET)      PC6  < 01     15 > PC5 (ADC5/SCL/PCINT13)\012\015\
+    (PCINT16/RXD)        PD0  < 02     16 > PC4 (ADC4/SDA/PCINT12)\012\015\
+    (PCINT17/TXD)        PD1  < 03     17 > PC3 (ADC3/PCINT11)\012\015\
+    (PCINT18/INT0)       PD2  < 04     18 > PC2 (ADC2/PCINT10)\012\015\
+    (PCINT19/OC2B/INT1)  PD3  < 05     19 > PC1AREF (ADC1/PCINT9)\012\015\
+    (PCINT20/XCK/T0)     PD4  < 06     20 > PC0 (ADAVCCC0/PCINT8)\012\015\
+                         VCC  < 07     21 > GND\012\015\
+                         GND  < 08     22 > AREF\012\015\
+    (PCINT6/XTAL1/TOSC1) PB6  < 09     23 > AVCC\012\015\
+    (PCINT7/XTAL2/TOSC2) PB7  < 10     24 > PB5 (SCK/PCINT5)\012\015\
+    (PCINT21/OC0B/T1)    PD5  < 11     25 > PB4 (MISO/PCINT4)\012\015\
+    (PCINT22/OC0A/AIN0)  PD6  < 12     26 > PB3 (MOSI/OC2A/PCINT3)\012\015\
+    (PCINT23/AIN1)       PD7  < 13     27 > PB2 (SS/OC1B/PCINT2)\012\015\
+    (PCINT0/CLKO/ICP1)   PB0  < 14     28 > PB1 (OC1A/PCINT1)\012\015\
+                               -----------\012\015\
+   "};
+   #endif
 #endif
 
 #define STAR_NAME_LEN 23
@@ -945,6 +949,8 @@ else if ( fmt == FMT_ASC )  // ASCII
 #define PROSCAN_VCR1_CH_M   0x021D3E2C
 #define PROSCAN_VCR1_VOL_P  0x023D0C2F
 #define PROSCAN_VCR1_VOL_M  0x023D1C2E
+#define PROSCAN_VCR1_FWD    0x021E3E1C
+#define PROSCAN_VCR1_REW    0x021E2E1D
 #define PROSCAN_VCR1_RECORD 0x021E8E17
 #define PROSCAN_VCR1_PLAY   0x021EAE15
 #define PROSCAN_VCR1_STOP   0x021E0E1F
@@ -991,6 +997,7 @@ if ( ! ( moving || goto_cmd ) )
    ra->pos_target  = pgm_read_dword(&pgm_stars_pos[pos*2+0]);
    dec->pos_target = pgm_read_dword(&pgm_stars_pos[pos*2+1]);
    goto_cmd = 1;
+   dd_v[DDS_CUR_STAR] = pos;
    }
 }
 
@@ -1033,12 +1040,12 @@ return 0;
 - Store corrected star position 1-10  (complex command sequence)    Sc2 <enter>               [RECORD  + ANTENA + X]  //  10 slots for star correction
 - goto  corrected star position 1-10  (complex command sequence)    Gc2 <enter>               [PLAY    + ANTENA + X]  //     each slot also contains the index of the star (reference)
 - goto  directory start position 1-??  (complex command sequence)   G123 <enter>              [PLAY    + X + X + X]
-- Go to Catalog star                                                *                         [PLAY    + PLAY] 
+- Go to Catalog star                                                *                         [GO BACK] 
 - Select next/previous star from catalog                            < / >                     [FWD/REV] 
 - clear all generic recorded positions                              Cg   <enter>              [CLEAR   + INPUT]
 - clear all stars corrected positions                               Cc   <enter>              [CLEAR   + ANTENA]
 - clear histogram values                                            Ch   <enter>              [CLEAR   + INFO]
-- move back and forth to remove friction                            Cf   <enter>              [CLEAR   + GO BACK]
+= move back and forth to remove friction                            Cf   <enter>              [CLEAR   + GO BACK]
 - Redraw screen                                                     !                         [CLEAR   + OK] 
 - Reset input command                                               <enter>                   [CLEAR   + GUIDE]
 - goto ra position                                                  [EW]123 45 67 <enter>     [VOL     + 123 45 67 + SEARCH]
@@ -1053,7 +1060,7 @@ return 0;
 
 //  Remote defined codes:
 //  PROSCAN_VCR1_CH_P    PROSCAN_VCR1_CH_M    PROSCAN_VCR1_VOL_P   PROSCAN_VCR1_VOL_M   PROSCAN_VCR1_TRAK_P  PROSCAN_VCR1_TRAK_M  PROSCAN_VCR1_RECORD  PROSCAN_VCR1_PLAY    PROSCAN_VCR1_STOP    
-//  PROSCAN_VCR1_NORTH   PROSCAN_VCR1_SOUTH   PROSCAN_VCR1_EAST    PROSCAN_VCR1_WEST    PROSCAN_VCR1_OK      
+//  PROSCAN_VCR1_NORTH   PROSCAN_VCR1_SOUTH   PROSCAN_VCR1_EAST    PROSCAN_VCR1_WEST    PROSCAN_VCR1_OK      PROSCAN_VCR1_FWD     PROSCAN_VCR1_RW
 //  PROSCAN_VCR1_POWER   PROSCAN_VCR1_SEARCH  PROSCAN_VCR1_GOBACK  PROSCAN_VCR1_INPUT   PROSCAN_VCR1_ANTENA  PROSCAN_VCR1_CLEAR   PROSCAN_VCR1_GUIDE   
 //  PROSCAN_VCR1_0       PROSCAN_VCR1_1       PROSCAN_VCR1_2       PROSCAN_VCR1_3       PROSCAN_VCR1_4       PROSCAN_VCR1_5       PROSCAN_VCR1_6       PROSCAN_VCR1_7       PROSCAN_VCR1_8       PROSCAN_VCR1_9       
 //  OA up      OD   left
@@ -1066,7 +1073,7 @@ unsigned char cmd_val[10],cmd_val_idx;  //store the last byte of the last IR cod
 // I'm a bit supprised, I think this little table will acomplish something very complex !!
 //    INPUTS:                 NUM  PLA  REC  CLR  INP  ANT  SEARCH        STATE:
 PROGMEM char cmd_states[] = {   0,   1,   6,   9,   0,  11,  10        //   0 ready tp process a new command
-                            ,   2,   0,   0,   0,   4,   5,   0        //   1 PLAY X  / PLAY INPUT / PLAY ANTENA
+                            ,   2, 110,   0,   0,   4,   5,   0        //   1 PLAY X  / PLAY INPUT / PLAY ANTENA / PLAY PLAY
                             ,   3,   0,   0,   0,   0,   0,   0        //   2 PLAY X X
                             , 100,   0,   0,   0,   0,   0,   0        //   3 PLAY X X X
                             , 101,   0,   0,   0,   0,   0,   0        //   4 PLAY INPUT X
@@ -1074,7 +1081,7 @@ PROGMEM char cmd_states[] = {   0,   1,   6,   9,   0,  11,  10        //   0 re
                             ,   0,   0,   0,   0,   7,   8,   0        //   6 RECORD INPUT / RECORD ANTENA
                             , 103,   0,   0,   0,   0,   0,   0        //   7 RECORD INPUT X
                             , 104,   0,   0,   0,   0,   0,   0        //   8 RECORD ANTENA X
-                            , 107, 107, 107, 107, 105, 106, 107        //   9 CLEAR ? INPUT / ANTENA / INFO / 
+                            ,   0,   0,   0,   0, 105, 106,   0        //   9 CLEAR ? INPUT / ANTENA / INFO / 
                             ,  10,   0,   0,   0,   0,   0, 108        //  10 GOTO MANUAL POSITION ?
                             ,   0,   0,   0,   0,   0,   0, 109        //  11 ANTENA SEARCH ?
                             };
@@ -1111,7 +1118,12 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
       if ( cmd_val_idx<10) cmd_val[cmd_val_idx++] = code & 0x0000000F;   // store the last digit of the code
       jjj = cmd_val[cmd_val_idx-1];  // last digit...
       }
-   else cmd_state=0;   // unknown input
+   else 
+      {
+      if ( cmd_state== 9 ) cmd_state=107;   // state 9 will  process anything  !
+      else                 cmd_state=0;     // unknown command
+      jjj = 0;
+      }
 
    if ( cmd_state >= 100 ) // a command is complete, need to process it
       {
@@ -1130,7 +1142,11 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
       if ( cmd_state==106 ) // CLEAR ANTENA : clear all star corrected position 
          { for(iii=0;iii<10;iii++) saved[10+iii].ra = saved[10+iii].dec = saved[10+iii].ref_star=0; }
       if ( cmd_state==107 ) // CLEAR ? : clear something else !
-         { if ( code == PROSCAN_VCR1_INFO ) for(iii=0;iii<16;iii++) dd_v[DDS_HISTO+iii]=0; }
+         { 
+         if ( code == PROSCAN_VCR1_INFO ) for(iii=0;iii<16;iii++) dd_v[DDS_HISTO+iii]=0; 
+         if ( code == PROSCAN_VCR1_OK ) redraw   = 1;       // redraw everything
+         cmd_state = 0;
+         }
       if ( cmd_state==108 ) // COMPLEX GOTO MANUAL POSITION
          {
          }
@@ -1141,35 +1157,32 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
       }
    else if ( next_input < 0 ) // Check for a one key command
       {
+      if      ( code == PROSCAN_VCR1_NORTH   ) slew_cmd = 8;       // North
+      else if ( code == PROSCAN_VCR1_SOUTH   ) slew_cmd = 2;       // South
+      else if ( code == PROSCAN_VCR1_EAST    ) slew_cmd = 4;       // East
+      else if ( code == PROSCAN_VCR1_WEST    ) slew_cmd = 6;       // West
+      else if ( code == PROSCAN_VCR1_OK      ) slew_cmd = 5;       // Stop
+      else if ( code == PROSCAN_VCR1_STOP    ) slew_cmd = 5;       // Stop
+      else if ( code == PROSCAN_VCR1_TRAK_P  ) earth_tracking=1;   // Start tracking
+      else if ( code == PROSCAN_VCR1_TRAK_M  ) earth_tracking=0;   // Stop tracking
+      else if ( code == PROSCAN_VCR1_GOBACK  ) goto_pgm_pos(dd_v[DDS_CUR_STAR]);  // goto active star
+      else if ( code == PROSCAN_VCR1_POWER   ) 
+         {
+         motor_disable = !motor_disable;
+         set_digital_output(DO_DISABLE  ,motor_disable);
+         }
+      else if ( code == PROSCAN_VCR1_FWD     ) 
+         {
+         if ( dd_v[DDS_CUR_STAR] == NB_PGM_STARS -1 ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
+         else                                         dd_v[DDS_CUR_STAR]++;
+         }
+      else if ( code == PROSCAN_VCR1_REW ) 
+         {
+         if ( dd_v[DDS_CUR_STAR] == 0 )               dd_v[DDS_CUR_STAR] = NB_PGM_STARS-1; // we reached the first star
+         else                                         dd_v[DDS_CUR_STAR]--;  
+         }
+ 
       }
-
-//   if      ( code == 0x01D592A6 ) slew_cmd = 8;       // North
-//   else if ( code == 0x01D582A7 ) slew_cmd = 2;       // South
-//   else if ( code == 0x01D562A9 ) slew_cmd = 4;       // East
-//   else if ( code == 0x01D572A8 ) slew_cmd = 6;       // West
-//   else if ( code == 0x01DF420B ) slew_cmd = 5;       // Stop
-//   else if ( code == 0x01D062F9 ) redraw   = 1;       // redraw everything
-//   else if ( code == 0x01D0A2F5 ) earth_tracking=0;   // Stop tracking
-//   else if ( code == 0x01D0B2F4 ) earth_tracking=1;   // Start tracking
-//   else if ( code == 0x01D302CF ) goto_pgm_pos(6+0);      //  0
-//   else if ( code == 0x01D312CE ) goto_pgm_pos(6+1);      //  1
-//   else if ( code == 0x01D322CD ) goto_pgm_pos(6+2);      //  2
-//   else if ( code == 0x01D332CC ) goto_pgm_pos(6+3);      //  3
-//   else if ( code == 0x01D342CB ) goto_pgm_pos(6+4);      //  4
-//   else if ( code == 0x01D272D8 ) goto_pgm_pos(dd_v[DDS_CUR_STAR]); // GOTO
-//   else if ( code == 0x01E1C1E3 || code == 0x01E1D1E2 )   //   <   >
-//      {
-//      if ( code == 0x01E1C1E3 ) dd_v[DDS_CUR_STAR]--;  // >> FWD
-//      if ( code == 0x01E1D1E2 ) dd_v[DDS_CUR_STAR]++;  // << REV
-//      if ( 0 == pgm_read_byte(pgm_stars_name + dd_v[DDS_CUR_STAR]*STAR_NAME_LEN) ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
-//      if ( dd_v[DDS_CUR_STAR]<0 )
-//         {
-//         short iii;
-//         for(iii=0;pgm_read_byte(pgm_stars_name + iii*STAR_NAME_LEN);iii++ );  // search the last star
-//         dd_v[DDS_CUR_STAR] = iii-1;
-//         }
-//      }
-//    
    }
 ///// Process Keyboard commands
 
@@ -1180,14 +1193,6 @@ else if ( dd_v[DDS_RX_IDX]==1 )  // check if it's a single key command
       {
       if ( rs232_rx_buf[0] == '<') dd_v[DDS_CUR_STAR]--; 
       if ( rs232_rx_buf[0] == '>') dd_v[DDS_CUR_STAR]++; 
-      if ( dd_v[DDS_CUR_STAR] >= NB_PGM_STARS ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
-//      if ( 0 == pgm_read_byte(pgm_stars_name + dd_v[DDS_CUR_STAR]*STAR_NAME_LEN) ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
-      if ( dd_v[DDS_CUR_STAR]<0 ) dd_v[DDS_CUR_STAR] = NB_PGM_STARS-1;
-//         {
-//         short iii;
-//         for(iii=0;pgm_read_byte(pgm_stars_name + iii*STAR_NAME_LEN);iii++ );  // search the last star
-//         dd_v[DDS_CUR_STAR] = iii-1;
-//         }
       rs232_rx_buf[0] = 0;
       dd_v[DDS_RX_IDX]=0;
       }
@@ -1230,7 +1235,10 @@ else if ( rs232_rx_buf[dd_v[DDS_RX_IDX]-1]==0x0D || rs232_rx_buf[dd_v[DDS_RX_IDX
    rs232_rx_buf[0] = 0;
    dd_v[DDS_RX_IDX]=0;
    }
-   
+
+// make sure CUR_STAR is inbound   
+if ( dd_v[DDS_CUR_STAR] >= NB_PGM_STARS ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
+if ( dd_v[DDS_CUR_STAR] <  0            ) dd_v[DDS_CUR_STAR] = NB_PGM_STARS-1;
 }
 
 #define SEC 10000
@@ -1748,6 +1756,7 @@ PORTC = ra->direction | dec->direction;    // I do this to optimize execution ti
 //  The  Start bit is a "1" for ~ 0x2A then a "0" for !0x2A
 //  The code with Proscan is about 25 bits of information
 
+#define KEY_OFF 1000
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 10 KHz
 {
 static char IR0,IR1,IR2,IR,l_IR,code_started=0,count_bit;
@@ -1755,7 +1764,7 @@ unsigned long histo;
 static short earth_comp=0;
 static short count_0;
 static long loc_ir_code;
-static unsigned short ir_timeout=0;  // limit the inputs to 4 per seconds
+static unsigned short ir_key_off=0;  // limit the inputs to 4 per seconds
 
 // These takes too long to complete !!!  set_digital_output(DO_RA_STEP ,ra->next);     // eventually, I should use my routines...flush polopu...
 // These takes too long to complete !!!  set_digital_output(DO_DEC_STEP,dec->next);    // eventually, I should use my routines...flush polopu...
@@ -1767,10 +1776,11 @@ IR2  = IR1;
 IR1  = IR0;
 IR0  = is_digital_input_high(DI_REMOTE);
 IR   = IR0 & IR1 & IR2;
-if ( ir_timeout ) ir_timeout--;
+if ( ir_key_off < KEY_OFF) ir_key_off++;
 if ( code_started!=0 || IR!=0 )
    {
    code_started = 1;
+
    if ( ! IR ) count_0++;   // count the 0 time
    if ( IR != l_IR ) 
       {
@@ -1783,16 +1793,16 @@ if ( code_started!=0 || IR!=0 )
          }
       else count_bit++;
       }
-   if ( count_0 > 0x40 || count_bit==0x1A) // code over
+   if ( count_0 > 0x40 ) //  || count_bit==0x1A) // code over
       {
-      if ( dd_v[DDS_IR_COUNT] == l_ir_count && ir_timeout==0 )  // wait for bg to process the code
+      if ( dd_v[DDS_IR_COUNT] == l_ir_count && ir_key_off>=KEY_OFF )  // wait for bg to process the code
          {
          dd_v[DDS_IR_L_CODE]   = dd_v[DDS_IR_CODE];
          dd_v[DDS_IR_CODE]     = loc_ir_code;
          dd_v[DDS_IR_COUNT]++;
-         dd_v[DDS_DEBUG + 0x1F]=dd_v[DDS_IR_CODE];
-         ir_timeout = 5000;      // 1/2 seconds
+         dd_v[DDS_DEBUG + 0x1F]=count_bit;
          }
+      ir_key_off = 0;  // reset time since last valid code...
       count_0 = code_started = count_bit = loc_ir_code = 0;
       }
    }
@@ -1964,13 +1974,14 @@ sei();         //enable global interrupts
 wait(1,SEC);
 while (console_go) display_next_bg(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_starting,d_ram,FMT_NO_VAL,8);  console_go = 1;
 
-#ifdef POLOLU
-   while (console_special); /* wait for ready */ console_special = pololu;
-#else
-   while (console_special); /* wait for ready */ console_special = dip328p;
+#ifdef DISPLAY_HELP
+   #ifdef POLOLU
+      while (console_special); /* wait for ready */ console_special = pololu;
+   #else
+      while (console_special); /* wait for ready */ console_special = dip328p;
+   #endif
 #endif
 
-while (console_go) display_next_bg(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_free_mem,d_ram,FMT_HEX,8);  console_go = 1;
 while (console_go) display_next_bg(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_free_mem,d_ram,FMT_HEX,8);  console_go = 1;
 while (console_go) display_next_bg();
 
@@ -1982,8 +1993,8 @@ dd_v[DDS_DEBUG + 0x0E]=0x3333;
 wait(2,SEC);
 
 d_now   = d_TIMER1;
-for(iii=0;iii<16;iii++) dd_v[DDS_HISTO + iii]=0;
-dd_v[DDS_SECONDS] = ssec = 0;
+//for(iii=0;iii<16;iii++) dd_v[DDS_HISTO + iii]=0;
+//dd_v[DDS_SECONDS] = ssec = 0;
 motor_disable = 0;   // Stepper motor enabled...
 set_digital_output(DO_DISABLE  ,motor_disable);   
 
@@ -2054,6 +2065,10 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.36  2011/12/29 21:08:55  pmichel
+Complex decoding well under way
+the only issue is the IR decoding, I need to detect key-off
+
 Revision 1.35  2011/12/28 23:29:58  pmichel
 Completed the optimization
 plus removed the second interrupt handler
