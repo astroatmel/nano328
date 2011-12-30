@@ -1,14 +1,13 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/29 21:08:55 $
-$Id: telescope.c,v 1.36 2011/12/29 21:08:55 pmichel Exp pmichel $
+$Date: 2011/12/29 22:49:41 $
+$Id: telescope.c,v 1.37 2011/12/29 22:49:41 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.36 $
+$Revision: 1.37 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
-- Better IR CODE detection + reject invalid codes + detect key-off
-
+** when clearing corrected stars positions, ALSO reset the polar vector to 0,0,1
 - show current polar X/Y displacement required (in steps)
 - show total error with current polar correction calculation using the stores corrected star position
 - show x and y of polar correction (good indication of direction and amplitude)
@@ -615,6 +614,7 @@ return 0; // found nothing to display
 // LAT : (N)-90 59'59.00"
 // LON : (W)-179 59'59.00"
 // RA  : 23h59m59.000s
+void display_next(void);
 
 void pc(char ccc);
 void ps(char *ssz);
@@ -945,6 +945,156 @@ else if ( fmt == FMT_ASC )  // ASCII
    }
 }
 
+#define NB_SAVED 20
+typedef struct
+   {         
+   unsigned long ra;
+   unsigned long dec;
+   unsigned char ref_star;  // if not 0, then it tells us that this is a Corrected star position
+   } POSITION;
+POSITION saved[NB_SAVED];
+
+typedef struct
+   {
+   long x,y,z;
+   } VECTOR;
+
+typedef struct
+   {
+   long m11,m12,m13;
+   long m21,m22,m23;
+   long m31,m32,m33;
+   } MATRIX;
+
+// set the XYZ of a VECTOR from the RA and DEC values provided
+// RA and DEC are in TICK units
+void set_vector(VECTOR *VVV,unsigned long *RA,unsigned long *DEC)
+{
+long cos_dec;
+VVV->z  = fp_sin(*DEC);
+cos_dec = fp_cos(*DEC);
+VVV->x  = fp_mult(fp_sin(*RA),cos_dec);
+VVV->y  = fp_mult(fp_cos(*RA),cos_dec);
+}
+
+// Generate a rotation matrix R from the polar RA and DEC
+PROGMEM const char pgm_polar_matrix     []="Polar Matrix: ";
+void generate_polar_matrix(MATRIX *R,unsigned long *RA,unsigned long *DEC)
+{
+long cos_ra  = fp_cos(*RA);
+long sin_ra  = fp_sin(*RA);
+long cos_dec = fp_cos(*DEC);
+long sin_dec = fp_sin(*DEC);
+
+long cos2_ra  = fp_mult(cos_ra ,cos_ra);
+long sin2_ra  = fp_mult(sin_ra ,sin_ra);
+long tmp      = 0x7FFFFFFF - cos_dec;     //  1 - COS(DEC)
+
+// Dont worry, even I dont understand this...
+R->m11 =  cos2_ra + fp_mult(sin2_ra,cos_dec);
+R->m21 =  fp_mult(cos_ra ,sin_ra);
+R->m21 =  fp_mult(R->m21 ,tmp);
+R->m31 =  fp_mult(sin_ra,sin_dec);
+
+R->m12 =  R->m21;
+R->m22 =  fp_mult(cos2_ra ,cos_dec);
+R->m22 =  fp_mult(R->m22  ,sin2_ra);
+R->m32 = -fp_mult(cos_ra ,sin_dec);
+
+R->m13 = -R->m31;
+R->m23 = -R->m32;
+R->m33 =  cos_dec;
+
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m11 ,FMT_HEX   ,8);  console_go = 1;
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m21 ,FMT_HEX   ,8);  console_go = 1;
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m31 ,FMT_HEX   ,8);  console_go = 1;
+
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m12 ,FMT_HEX   ,8);  console_go = 1;
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m22 ,FMT_HEX   ,8);  console_go = 1;
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m32 ,FMT_HEX   ,8);  console_go = 1;
+
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m13 ,FMT_HEX   ,8);  console_go = 1;
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m23 ,FMT_HEX   ,8);  console_go = 1;
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m33 ,FMT_HEX   ,8);  console_go = 1;
+}
+// use rotation matrix to rotate the star...
+void apply_polar_correction(MATRIX *R,VECTOR *S)
+{
+unsigned long x,y,z;
+
+x = fp_mult(R->m11,S->x) + fp_mult(R->m21,S->y) + fp_mult(R->m31,S->z);
+y = fp_mult(R->m12,S->x) + fp_mult(R->m22,S->y) + fp_mult(R->m32,S->z);
+z = fp_mult(R->m13,S->x) + fp_mult(R->m23,S->y) + fp_mult(R->m33,S->z);
+S->x = x;
+S->y = y;
+S->z = z;
+}
+
+PROGMEM const char pgm_polar_line       []="_______________________";
+PROGMEM const char pgm_polar_case       []="Case #:";
+PROGMEM const char pgm_polar_hour       []="Hour   :";
+PROGMEM const char pgm_polar_dec        []="Declin :";
+PROGMEM const char pgm_polar_x          []="X:";
+PROGMEM const char pgm_polar_y          []="Y:";
+PROGMEM const char pgm_polar_z          []="Z:";
+PROGMEM const char pgm_polar_star       []="Star #:";
+PROGMEM const char pgm_polar_error      []="Error :";
+PROGMEM const char pgm_polar_sum        []="Sum Errors ==== ";
+PROGMEM const char pgm_recorded_pos     []="Recorded position: ";
+
+// find our polar error based on the corrected star positions
+void do_polar(void)
+{
+unsigned short star_idx,case_idx,ref;
+unsigned long hour,deg,ra,dec;
+unsigned long error_sum,error;
+VECTOR pole,star,real_star;
+MATRIX M;
+
+case_idx=0;
+for ( deg=0 ; deg<=TICKS_P_DEG_SEC*60*60*6 ; deg+=TICKS_P_DEG_SEC*60*60*2 )
+   {
+   for ( hour = 0 ; hour < TICKS_P_SEC*60*60*24 ; hour += TICKS_P_SEC*60*60*2 )
+      {
+      case_idx++;
+      error_sum=0;
+      set_vector(&pole, &hour, &deg);
+
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL,8);  console_go = 1;
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_case,case_idx ,FMT_DEC   ,8);  console_go = 1;
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,hour     ,FMT_RA    ,8);  console_go = 1;
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,deg      ,FMT_NS    ,8);  console_go = 1;
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_x   ,pole.x   ,FMT_HEX   ,8);  console_go = 1;
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_y   ,pole.y   ,FMT_HEX   ,8);  console_go = 1;
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_z   ,pole.z   ,FMT_HEX   ,8);  console_go = 1;
+
+      generate_polar_matrix(&M,&hour, &deg);
+     
+      for ( star_idx=error=0 ; star_idx<10 ; star_idx++ )
+         { // here the magic happens... for each registered star, calculate the error: delta_x^2 + delta_y^2 + delta_z^2
+         ref = saved[star_idx+10].ref_star;
+         if ( ref !=0 )  // foe every star with a corrected position
+            {
+            while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_star ,star_idx ,FMT_DEC   ,4);  console_go = 1;
+            ra  = pgm_read_dword(&pgm_stars_pos[ref*2+0]);
+            dec = pgm_read_dword(&pgm_stars_pos[ref*2+1]);
+            set_vector(     &star, &ra, &dec);
+            apply_polar_correction(&M,&star);
+
+            set_vector(&real_star, &saved[star_idx+10].ra, &saved[star_idx+10].dec);
+            error = star.x - real_star.x;
+            while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_HEX   ,8);  console_go = 1;
+            error = fp_mult(error,error);
+            while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_HEX   ,8);  console_go = 1;
+            error_sum += error; 
+            }
+         } 
+
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_sum ,error_sum,FMT_HEX   ,8);  console_go = 1;
+      }
+   }
+}
+
 #define PROSCAN_VCR1_CH_P   0x021D2E2D
 #define PROSCAN_VCR1_CH_M   0x021D3E2C
 #define PROSCAN_VCR1_VOL_P  0x023D0C2F
@@ -980,14 +1130,6 @@ else if ( fmt == FMT_ASC )  // ASCII
 #define PROSCAN_VCR1_8      0x021C7E38
 #define PROSCAN_VCR1_9      0x021C6E39
 
-#define NB_SAVED 20
-typedef struct
-   {         
-   long ra;
-   long dec;
-   unsigned char ref_star;  // if not 0, then it tells us that this is a Corrected star position
-   } POSITION;
-POSITION saved[NB_SAVED];
 
 void goto_pgm_pos(short pos)
 {
@@ -1022,12 +1164,18 @@ saved[pos].ref_star = dd_v[DDS_CUR_STAR];
 
 short is_search(long *code) // return true on PROSCAN_VCR1_NORTH/SOUTH/EAST/WEST and PROSCAN_VCR1_SEARCH
 {
-if ( (*code&0xFFFF0FF0) == 0x021A0E50 ) return 1;  
+//if ( (*code&0xFFFF0FF0) == 0x021A0E50 ) return 1;  
+if ( *code == PROSCAN_VCR1_CH_P   ) return 1;  
+if ( *code == PROSCAN_VCR1_CH_M   ) return 1;  
+if ( *code == PROSCAN_VCR1_VOL_P  ) return 1;  
+if ( *code == PROSCAN_VCR1_VOL_M  ) return 1;  
+if ( *code == PROSCAN_VCR1_SEARCH ) return 1;  
 return 0;
 }
 
 short is_digit(long *code)
 {
+if ( *code == PROSCAN_VCR1_INFO ) return 0;
 if ( (*code&0xFFFF0FF0) == 0x021C0E30 ) return 1;  
 return 0;
 }
@@ -1086,7 +1234,6 @@ PROGMEM char cmd_states[] = {   0,   1,   6,   9,   0,  11,  10        //   0 re
                             ,   0,   0,   0,   0,   0,   0, 109        //  11 ANTENA SEARCH ?
                             };
 
-void display_next(void);
 void display_next_bg(void) 
 {
 short iii,jjj;
@@ -1134,9 +1281,15 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
       if ( cmd_state==102 ) // PLAY ANTENA X : goto star corrected position X
          { goto_pos(10+jjj); }
       if ( cmd_state==103 ) // RECORD INPUT X : record user position X
-         { record_pos(jjj); }
+         { 
+         record_pos(jjj); 
+         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_recorded_pos   ,jjj   ,FMT_HEX   ,8);  console_go = 1;
+         }
       if ( cmd_state==104 ) // RECORD ANTENA X : record star corrected position X
-         { record_pos(10+jjj); }
+         { 
+         record_pos(10+jjj); 
+         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_recorded_pos   ,jjj   ,FMT_HEX   ,8);  console_go = 1;
+         }
       if ( cmd_state==105 ) // CLEAR INPUT : clear all user positinos
          { for(iii=0;iii<10;iii++) saved[iii].ra = saved[iii].dec = saved[iii].ref_star=0; }
       if ( cmd_state==106 ) // CLEAR ANTENA : clear all star corrected position 
@@ -1151,8 +1304,7 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
          {
          }
       if ( cmd_state==109 ) // ANTENA SEARCH : Calculate polar error
-         {
-         }
+         { if ( jjj==3) do_polar(); }
       cmd_state=0; // we are done 
       }
    else if ( next_input < 0 ) // Check for a one key command
@@ -1797,9 +1949,12 @@ if ( code_started!=0 || IR!=0 )
       {
       if ( dd_v[DDS_IR_COUNT] == l_ir_count && ir_key_off>=KEY_OFF )  // wait for bg to process the code
          {
-         dd_v[DDS_IR_L_CODE]   = dd_v[DDS_IR_CODE];
-         dd_v[DDS_IR_CODE]     = loc_ir_code;
-         dd_v[DDS_IR_COUNT]++;
+         if ( count_bit == 0x001A )  // a complete code....
+            {
+            dd_v[DDS_IR_L_CODE]   = dd_v[DDS_IR_CODE];
+            dd_v[DDS_IR_CODE]     = loc_ir_code;
+            dd_v[DDS_IR_COUNT]++;
+            }
          dd_v[DDS_DEBUG + 0x1F]=count_bit;
          }
       ir_key_off = 0;  // reset time since last valid code...
@@ -2065,6 +2220,9 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.37  2011/12/29 22:49:41  pmichel
+More decoding, plus improved IR decodong
+
 Revision 1.36  2011/12/29 21:08:55  pmichel
 Complex decoding well under way
 the only issue is the IR decoding, I need to detect key-off
