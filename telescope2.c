@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/29 22:49:41 $
-$Id: telescope.c,v 1.37 2011/12/29 22:49:41 pmichel Exp pmichel $
+$Date: 2011/12/30 22:26:20 $
+$Id: telescope.c,v 1.38 2011/12/30 22:26:20 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.37 $
+$Revision: 1.38 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -997,8 +997,7 @@ R->m21 =  fp_mult(R->m21 ,tmp);
 R->m31 =  fp_mult(sin_ra,sin_dec);
 
 R->m12 =  R->m21;
-R->m22 =  fp_mult(cos2_ra ,cos_dec);
-R->m22 =  fp_mult(R->m22  ,sin2_ra);
+R->m22 =  fp_mult(cos2_ra ,cos_dec) + sin2_ra;
 R->m32 = -fp_mult(cos_ra ,sin_dec);
 
 R->m13 = -R->m31;
@@ -1034,9 +1033,6 @@ PROGMEM const char pgm_polar_line       []="_______________________";
 PROGMEM const char pgm_polar_case       []="Case #:";
 PROGMEM const char pgm_polar_hour       []="Hour   :";
 PROGMEM const char pgm_polar_dec        []="Declin :";
-PROGMEM const char pgm_polar_x          []="X:";
-PROGMEM const char pgm_polar_y          []="Y:";
-PROGMEM const char pgm_polar_z          []="Z:";
 PROGMEM const char pgm_polar_star       []="Star #:";
 PROGMEM const char pgm_polar_error      []="Error :";
 PROGMEM const char pgm_polar_sum        []="Sum Errors ==== ";
@@ -1048,7 +1044,7 @@ void do_polar(void)
 unsigned short star_idx,case_idx,ref;
 unsigned long hour,deg,ra,dec;
 unsigned long error_sum,error;
-VECTOR pole,star,real_star;
+VECTOR star,real_star;
 MATRIX M;
 
 case_idx=0;
@@ -1058,15 +1054,11 @@ for ( deg=0 ; deg<=TICKS_P_DEG_SEC*60*60*6 ; deg+=TICKS_P_DEG_SEC*60*60*2 )
       {
       case_idx++;
       error_sum=0;
-      set_vector(&pole, &hour, &deg);
 
       while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL,8);  console_go = 1;
       while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_case,case_idx ,FMT_DEC   ,8);  console_go = 1;
       while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,hour     ,FMT_RA    ,8);  console_go = 1;
       while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,deg      ,FMT_NS    ,8);  console_go = 1;
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_x   ,pole.x   ,FMT_HEX   ,8);  console_go = 1;
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_y   ,pole.y   ,FMT_HEX   ,8);  console_go = 1;
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_z   ,pole.z   ,FMT_HEX   ,8);  console_go = 1;
 
       generate_polar_matrix(&M,&hour, &deg);
      
@@ -2220,6 +2212,9 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.38  2011/12/30 22:26:20  pmichel
+Debut of the polar correction s/w
+
 Revision 1.37  2011/12/29 22:49:41  pmichel
 More decoding, plus improved IR decodong
 
