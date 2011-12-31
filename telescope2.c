@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/30 22:26:20 $
-$Id: telescope.c,v 1.38 2011/12/30 22:26:20 pmichel Exp pmichel $
+$Date: 2011/12/31 18:23:25 $
+$Id: telescope.c,v 1.39 2011/12/31 18:23:25 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.38 $
+$Revision: 1.39 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -223,44 +223,44 @@ PROGMEM const char NLNL[]="\012\015";
 #define STAR_NAME_LEN 23
 PROGMEM const char pgm_stars_name[]   =  // format: Constellation:Star Name , the s/w will use the first 2 letters to tell when we reach the next constellation
                     {
-                     "Orion:Betelgeuse (Red)\0"     /*  0   */  \
-                     "Orion:Rigel (Blue)    \0"     /*  1   */  \
-                     "Pisces:19psc          \0"     /*  2   */  \
-                     "Lyra:Vega             \0"     /*  3   */  \
-                     "Gynus:Deneb           \0"     /*  4   */  \
-                     "Gynus:Sadr            \0"     /*  5   */  \
-                     "Origin: 0,0           \0"     /*  6   */  \
-                     "Q1 RA+,DEC+           \0"     /*  7   */  \
-                     "Q2 RA-,DEC+           \0"     /*  8   */  \
-                     "Q3 RA+,DEC-           \0"     /*  9   */  \
-                     "Q4 RA-,DEC-           \0"     /*  10  */  \
-                     "Orion:Saiph           \0"     /*  11  */  \
-                     "Orion:Bellatrix       \0"     /*  12  */  \
-                     "Orion-B:Alnitak       \0"     /*  13  */  \
-                     "Orion-B:Mintaka       \0"     /*  14  */  \
-                     "Orion-B:Alnilam       \0"     /*  15  */  \
-                     "Pignon Maison         \0"     /*  15  */  \
+                     "Origin: Ra=0, Dec=0   \0"     /*  0   */  \
+                     "Orion:Betelgeuse (Red)\0"     /*  1   */  \
+                     "Orion:Rigel (Blue)    \0"     /*  2   */  \
+                     "Orion:Saiph           \0"     /*  3   */  \
+                     "Orion:Bellatrix       \0"     /*  4   */  \
+                     "Orion-Belt:Alnitak    \0"     /*  5   */  \
+                     "Orion-Belt:Mintaka    \0"     /*  6   */  \
+                     "Orion-Belt:Alnilam    \0"     /*  7   */  \
+                     "Pisces:19psc          \0"     /*  8   */  \
+                     "Q1 RA+,DEC+           \0"     /*  9   */  \
+                     "Q2 RA-,DEC+           \0"     /*  10  */  \
+                     "Q3 RA+,DEC-           \0"     /*  11  */  \
+                     "Q4 RA-,DEC-           \0"     /*  12  */  \
+                     "Pignon Maison         \0"     /*  13  */  \
+                     "Lyra:Vega             \0"     /*  14  */  \
+                     "Gynus:Deneb           \0"     /*  15  */  \
+                     "Gynus:Sadr            \0"     /*  16  */  \
                     };
 // pignon: -83°58'30.6"  (E) 075°03'39.1"  05h00m14.61s
 PROGMEM const unsigned long pgm_stars_pos[] =    // Note, the positions below must match the above star names
                     {                  //   RA                                                DEC
-                      ( 5*TICKS_P_HOUR+55*TICKS_P_MIN+10.3*TICKS_P_SEC), (  7*TICKS_P_DEG+24*TICKS_P_DEG_MIN+25  *TICKS_P_DEG_SEC),     // Orion:Betelgeuse (Red)  5h55m10.3  +7;24'25.0
-                      ( 5*TICKS_P_HOUR+14*TICKS_P_MIN+32.3*TICKS_P_SEC), (351*TICKS_P_DEG+47*TICKS_P_DEG_MIN+54.0*TICKS_P_DEG_SEC),     // Orion:Rigel (Blue)      5h14m32.3  -8;12'06.0
-                      (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // Pisces:19psc           23h46m23.5s  3;29'12.0
-                      (18*TICKS_P_HOUR+36*TICKS_P_MIN+56.3*TICKS_P_SEC), ( 38*TICKS_P_DEG+47*TICKS_P_DEG_MIN+ 3  *TICKS_P_DEG_SEC),     // Lyra:Vega              18h36m56.3 +38;47'03.0
-                      (20*TICKS_P_HOUR+41*TICKS_P_MIN+25.9*TICKS_P_SEC), ( 45*TICKS_P_DEG+16*TICKS_P_DEG_MIN+49  *TICKS_P_DEG_SEC),     // Gynus:Deneb            20h41m25.9 +45;16'49.0
-                      (20*TICKS_P_HOUR+22*TICKS_P_MIN+13.7*TICKS_P_SEC), ( 40*TICKS_P_DEG+15*TICKS_P_DEG_MIN+24  *TICKS_P_DEG_SEC),     // Gynus:Sadr             20h22m13.7 +40;15'24.0
-                      0,0,   // origin
-                      ( 1*TICKS_P_HOUR+16*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // Inhouse test point Q1
-                      (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // Inhouse test point Q2
-                      ( 1*TICKS_P_HOUR+16*TICKS_P_MIN+23.5*TICKS_P_SEC), (353*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // Inhouse test point Q3
-                      (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (353*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // Inhouse test point Q4
-                      ( 5*TICKS_P_HOUR+47*TICKS_P_MIN+45.4*TICKS_P_SEC), (350*TICKS_P_DEG+19*TICKS_P_DEG_MIN+49  *TICKS_P_DEG_SEC),     // Orion: Saiph     7h47m45.4s -9;40;11.0
-                      ( 5*TICKS_P_HOUR+25*TICKS_P_MIN+ 7.9*TICKS_P_SEC), (  6*TICKS_P_DEG+20*TICKS_P_DEG_MIN+59.0*TICKS_P_DEG_SEC),     // Orion: Bellatrix 5h25m7.9s   6;20;59.0
-                      ( 5*TICKS_P_HOUR+40*TICKS_P_MIN+45.5*TICKS_P_SEC), (358*TICKS_P_DEG+3 *TICKS_P_DEG_MIN+27.0*TICKS_P_DEG_SEC),     // Orion: Alnitak   5h40m45.5  -1;56;33.0
-                      ( 5*TICKS_P_HOUR+32*TICKS_P_MIN+ 0.4*TICKS_P_SEC), (359*TICKS_P_DEG+42*TICKS_P_DEG_MIN+ 3.0*TICKS_P_DEG_SEC),     // Orion: Mintaka   5h32m0.4   -0;17.57.0
-                      ( 5*TICKS_P_HOUR+36*TICKS_P_MIN+ 12 *TICKS_P_SEC), (358*TICKS_P_DEG+48*TICKS_P_DEG_MIN+ 0.0*TICKS_P_DEG_SEC),     // Orion: Alnilam   5h36m12s   -1;12;00.00
-                      ( 5*TICKS_P_HOUR+ 0*TICKS_P_MIN+14.6*TICKS_P_SEC), (276*TICKS_P_DEG+ 1*TICKS_P_DEG_MIN+29.4*TICKS_P_DEG_SEC),     // Orion: Alnilam   5h36m12s   -1;12;00.00
+                        0                                              ,    0                                                     ,     // 0  origin 
+                      ( 5*TICKS_P_HOUR+55*TICKS_P_MIN+10.3*TICKS_P_SEC), (  7*TICKS_P_DEG+24*TICKS_P_DEG_MIN+25  *TICKS_P_DEG_SEC),     // 1  Orion: Betelgeuse (Red)  5h55m10.3  +7;24'25.0
+                      ( 5*TICKS_P_HOUR+14*TICKS_P_MIN+32.3*TICKS_P_SEC), (351*TICKS_P_DEG+47*TICKS_P_DEG_MIN+54.0*TICKS_P_DEG_SEC),     // 2  Orion: Rigel (Blue)      5h14m32.3  -8;12'06.0
+                      ( 5*TICKS_P_HOUR+47*TICKS_P_MIN+45.4*TICKS_P_SEC), (350*TICKS_P_DEG+19*TICKS_P_DEG_MIN+49  *TICKS_P_DEG_SEC),     // 3  Orion: Saiph     7h47m45.4s -9;40;11.0
+                      ( 5*TICKS_P_HOUR+25*TICKS_P_MIN+ 7.9*TICKS_P_SEC), (  6*TICKS_P_DEG+20*TICKS_P_DEG_MIN+59.0*TICKS_P_DEG_SEC),     // 4  Orion: Bellatrix 5h25m7.9s   6;20;59.0
+                      ( 5*TICKS_P_HOUR+40*TICKS_P_MIN+45.5*TICKS_P_SEC), (358*TICKS_P_DEG+3 *TICKS_P_DEG_MIN+27.0*TICKS_P_DEG_SEC),     // 5  Orion: Alnitak   5h40m45.5  -1;56;33.0
+                      ( 5*TICKS_P_HOUR+32*TICKS_P_MIN+ 0.4*TICKS_P_SEC), (359*TICKS_P_DEG+42*TICKS_P_DEG_MIN+ 3.0*TICKS_P_DEG_SEC),     // 6  Orion: Mintaka   5h32m0.4   -0;17.57.0
+                      ( 5*TICKS_P_HOUR+36*TICKS_P_MIN+ 12 *TICKS_P_SEC), (358*TICKS_P_DEG+48*TICKS_P_DEG_MIN+ 0.0*TICKS_P_DEG_SEC),     // 7  Orion: Alnilam   5h36m12s   -1;12;00.00
+                      (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // 8  Pisces:19psc           23h46m23.5s  3;29'12.0
+                      ( 1*TICKS_P_HOUR+16*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // 9  Inhouse test point Q1
+                      (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // 10 Inhouse test point Q2
+                      ( 1*TICKS_P_HOUR+16*TICKS_P_MIN+23.5*TICKS_P_SEC), (353*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // 11 Inhouse test point Q3
+                      (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (353*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // 12 Inhouse test point Q4
+                      ( 5*TICKS_P_HOUR+ 0*TICKS_P_MIN+14.6*TICKS_P_SEC), (276*TICKS_P_DEG+ 1*TICKS_P_DEG_MIN+29.4*TICKS_P_DEG_SEC),     // 13 Pignon maison
+                      (18*TICKS_P_HOUR+36*TICKS_P_MIN+56.3*TICKS_P_SEC), ( 38*TICKS_P_DEG+47*TICKS_P_DEG_MIN+ 3  *TICKS_P_DEG_SEC),     // 14 Lyra:Vega              18h36m56.3 +38;47'03.0
+                      (20*TICKS_P_HOUR+41*TICKS_P_MIN+25.9*TICKS_P_SEC), ( 45*TICKS_P_DEG+16*TICKS_P_DEG_MIN+49  *TICKS_P_DEG_SEC),     // 15 Gynus:Deneb            20h41m25.9 +45;16'49.0
+                      (20*TICKS_P_HOUR+22*TICKS_P_MIN+13.7*TICKS_P_SEC), ( 40*TICKS_P_DEG+15*TICKS_P_DEG_MIN+24  *TICKS_P_DEG_SEC),     // 16 Gynus:Sadr             20h22m13.7 +40;15'24.0
                     };
 #define NB_PGM_STARS (sizeof(pgm_stars_pos)/8)
 
@@ -289,7 +289,7 @@ volatile char slew_cmd=0;            //     slew position
 volatile char stop_cmd=0;            // Stop any movement or slew
 volatile char earth_tracking=0;      // Stop earth tracking
 
-void display_data(char *str,short xxx,short yyy,const char *pgm_str,unsigned long value,char fmt,char size);
+void display_data(char *str,short xxx,short yyy,const char *pgm_str,unsigned long value,unsigned char fmt,unsigned char size);
 
 ////////////////////////////////////////////// SIN COS /////////////////////////////////////////////////////////////   (uses 3K if flash)
 
@@ -533,6 +533,7 @@ ________________________________________________________________________________
 #define   PGM_POLOLU    0x90
 #define   PGM_DIPA328P  0xA0
 #define   PGM_STR       0xB0
+#define   FMT_FP        0xC0
 
 #define   DD_FIELDS     0x60
 volatile long dd_v[DD_FIELDS]; 
@@ -777,7 +778,7 @@ if ( nl ) pgm_ps(NLNL);
 }
 
 // Main function to print data in various format
-void display_data(char *str,short xxx,short yyy,const char *pgm_str,unsigned long value,char fmt,char size)
+void display_data(char *str,short xxx,short yyy,const char *pgm_str,unsigned long value,unsigned char fmt,unsigned char size)
 {
 short iii=0;
 unsigned long  jjj=0;
@@ -931,10 +932,8 @@ else if ( fmt == FMT_STR )  // String
    }
 else if ( fmt == PGM_STR )  // ASCII from flash
    {
-   char *ppp = ((char*)svalue);
-   while ( (str[iii++] = pgm_read_byte(ppp++)) );
-   str[iii-1] = ' ';               
-   str[iii]   = 0;  
+   // If pgm_str is not 0, then the above while() at the start of the function will print the string before any other formatting
+   // this is useful to display    STRING : DATA
    }
 else if ( fmt == FMT_ASC )  // ASCII
    {
@@ -942,6 +941,30 @@ else if ( fmt == FMT_ASC )  // ASCII
    str[iii++] = value;  
    str[iii++] = ']';  
    str[iii]   = 0;  
+   }
+else if ( fmt == FMT_FP )  // Fixed point  fron -1.00000 to 1.000000
+   {
+   /* temporary until I'm confidant that it does work */ p08x(&str[iii],value);
+   /* temporary until I'm confidant that it does work */ iii+=8;
+   /* temporary until I'm confidant that it does work */ str[iii++] = ' ';
+   /* temporary until I'm confidant that it does work */ str[iii++] = ' ';
+   if ( value & 0x80000000 )  // negative
+      {
+      str[iii++] = '-';
+      value = -value;
+      }
+   else str[iii++] = '0';
+   str[iii++] = '.';
+   value = value>>3; 
+
+   for ( ; size > 0 ;size--)
+      {   
+      value *= 10; 
+      jjj = value >> 28;   // jjj   is unsigned... so the upper bits will remain 0
+      str[iii++] = '0'+jjj;
+      value &= 0x0FFFFFFF;
+      }
+   str[iii++] = 0;
    }
 }
 
@@ -1004,17 +1027,17 @@ R->m13 = -R->m31;
 R->m23 = -R->m32;
 R->m33 =  cos_dec;
 
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m11 ,FMT_HEX   ,8);  console_go = 1;
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m21 ,FMT_HEX   ,8);  console_go = 1;
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m31 ,FMT_HEX   ,8);  console_go = 1;
-
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m12 ,FMT_HEX   ,8);  console_go = 1;
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m22 ,FMT_HEX   ,8);  console_go = 1;
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m32 ,FMT_HEX   ,8);  console_go = 1;
-
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m13 ,FMT_HEX   ,8);  console_go = 1;
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m23 ,FMT_HEX   ,8);  console_go = 1;
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m33 ,FMT_HEX   ,8);  console_go = 1;
+// while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m11 ,FMT_FP    ,8);  console_go = 1;
+// while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m21 ,FMT_FP    ,8);  console_go = 1;
+// while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m31 ,FMT_FP    ,8);  console_go = 1;
+// 
+// while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m12 ,FMT_FP    ,8);  console_go = 1;
+// while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m22 ,FMT_FP    ,8);  console_go = 1;
+// while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m32 ,FMT_FP    ,8);  console_go = 1;
+// 
+// while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m13 ,FMT_FP    ,8);  console_go = 1;
+// while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m23 ,FMT_FP    ,8);  console_go = 1;
+// while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m33 ,FMT_FP    ,8);  console_go = 1;
 }
 // use rotation matrix to rotate the star...
 void apply_polar_correction(MATRIX *R,VECTOR *S)
@@ -1037,6 +1060,9 @@ PROGMEM const char pgm_polar_star       []="Star #:";
 PROGMEM const char pgm_polar_error      []="Error :";
 PROGMEM const char pgm_polar_sum        []="Sum Errors ==== ";
 PROGMEM const char pgm_recorded_pos     []="Recorded position: ";
+PROGMEM const char pgm_recorded_pos_ra  []="RA :";
+PROGMEM const char pgm_recorded_pos_dec []="DEC:";
+PROGMEM const char pgm_recorded_pos_ref []="ref:";
 
 // find our polar error based on the corrected star positions
 void do_polar(void)
@@ -1046,11 +1072,12 @@ unsigned long hour,deg,ra,dec;
 unsigned long error_sum,error;
 VECTOR star,real_star;
 MATRIX M;
+unsigned long best_ra=0,best_dec=0,best_error=0x7FFFFFFF;
 
 case_idx=0;
-for ( deg=0 ; deg<=TICKS_P_DEG_SEC*60*60*6 ; deg+=TICKS_P_DEG_SEC*60*60*2 )
+for ( deg=0 ; deg<=TICKS_P_DEG_SEC*60*60*4 ; deg+=TICKS_P_DEG_SEC*60*30   )  // avance a coupde 0.5 deg    til 4 degree
    {
-   for ( hour = 0 ; hour < TICKS_P_SEC*60*60*24 ; hour += TICKS_P_SEC*60*60*2 )
+   for ( hour = 0 ; hour < TICKS_P_SEC*60*60*24 ; hour += TICKS_P_SEC*60*30   )  // avance a coupo de 30 minutes
       {
       case_idx++;
       error_sum=0;
@@ -1063,28 +1090,56 @@ for ( deg=0 ; deg<=TICKS_P_DEG_SEC*60*60*6 ; deg+=TICKS_P_DEG_SEC*60*60*2 )
       generate_polar_matrix(&M,&hour, &deg);
      
       for ( star_idx=error=0 ; star_idx<10 ; star_idx++ )
+//for ( star_idx=error=0 ; star_idx<4  ; star_idx++ )
          { // here the magic happens... for each registered star, calculate the error: delta_x^2 + delta_y^2 + delta_z^2
          ref = saved[star_idx+10].ref_star;
+//ref = star_idx; // temp for tests
          if ( ref !=0 )  // foe every star with a corrected position
             {
-            while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_star ,star_idx ,FMT_DEC   ,4);  console_go = 1;
+//             while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_star ,star_idx ,FMT_DEC   ,4);  console_go = 1;
             ra  = pgm_read_dword(&pgm_stars_pos[ref*2+0]);
             dec = pgm_read_dword(&pgm_stars_pos[ref*2+1]);
             set_vector(     &star, &ra, &dec);
+//set_vector(&real_star, &ra, &dec);
             apply_polar_correction(&M,&star);
 
             set_vector(&real_star, &saved[star_idx+10].ra, &saved[star_idx+10].dec);
+
             error = star.x - real_star.x;
-            while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_HEX   ,8);  console_go = 1;
+//             while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_FP    ,8);  console_go = 1;
             error = fp_mult(error,error);
-            while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_HEX   ,8);  console_go = 1;
-            error_sum += error; 
+//          while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_HEX   ,8);  console_go = 1;
+            ra = error_sum + (error>>4);                      // use temp label to bake sure error only goes up
+            if (ra > error_sum ) error_sum = ra;
+
+            error = star.y - real_star.y;
+//             while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_FP    ,8);  console_go = 1;
+            error = fp_mult(error,error);
+//          while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_HEX   ,8);  console_go = 1;
+            ra = error_sum + (error>>4);                      // use temp label to bake sure error only goes up
+            if (ra > error_sum ) error_sum = ra;
+
+            error = star.z - real_star.z;
+//             while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_FP    ,8);  console_go = 1;
+            error = fp_mult(error,error);
+//          while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_HEX   ,8);  console_go = 1;
+            ra = error_sum + (error>>4);                      // use temp label to bake sure error only goes up
+            if (ra > error_sum ) error_sum = ra;
             }
          } 
 
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_sum ,error_sum,FMT_HEX   ,8);  console_go = 1;
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_sum ,error_sum,FMT_FP    ,8);  console_go = 1;
+      if ( error_sum < best_error )
+         {
+         best_error = error_sum;
+         best_ra    = hour;
+         best_dec   = deg;
+         }
       }
    }
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,best_error ,FMT_HEX   ,8);  console_go = 1;
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,best_ra     ,FMT_RA    ,8);  console_go = 1;
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,best_dec    ,FMT_NS    ,8);  console_go = 1;
 }
 
 #define PROSCAN_VCR1_CH_P   0x021D2E2D
@@ -1280,7 +1335,10 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
       if ( cmd_state==104 ) // RECORD ANTENA X : record star corrected position X
          { 
          record_pos(10+jjj); 
-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_recorded_pos   ,jjj   ,FMT_HEX   ,8);  console_go = 1;
+         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_recorded_pos    ,jjj   ,FMT_HEX   ,8);  console_go = 1;
+         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_recorded_pos_ra ,saved[10+jjj].ra        ,FMT_HEX   ,8);  console_go = 1;
+         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_recorded_pos_dec,saved[10+jjj].dec       ,FMT_HEX   ,8);  console_go = 1;
+         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_recorded_pos_ref,saved[10+jjj].ref_star  ,FMT_HEX   ,8);  console_go = 1;
          }
       if ( cmd_state==105 ) // CLEAR INPUT : clear all user positinos
          { for(iii=0;iii<10;iii++) saved[iii].ra = saved[iii].dec = saved[iii].ref_star=0; }
@@ -2145,6 +2203,41 @@ d_now   = d_TIMER1;
 motor_disable = 0;   // Stepper motor enabled...
 set_digital_output(DO_DISABLE  ,motor_disable);   
 
+// Corrected star positions with a polar error that I introduced
+// Recorded position: 00000001      
+// RA :F6479380                     
+// DEC:035D1742                     
+// ref:0000000A                     
+// Recorded position: 00000002      
+// RA :0E468E90                     
+// DEC:F3DC0290                     
+// ref:0000000B                     
+// Recorded position: 00000003      
+// RA :3CB12D08                     
+// DEC:05A475C9                     
+// ref:00000001                     
+// Recorded position: 00000004      
+// RA :3561ACB2                     
+// DEC:F23DC335                     
+// ref:00000002       
+// 
+saved[10].ra  = 0xF6479380;
+saved[10].dec = 0x035D1742;
+saved[10].ref_star  = 0x0A;
+
+saved[11].ra  = 0x0E468E90;
+saved[11].dec = 0xF3DC0290;
+saved[11].ref_star  = 0x0B;
+
+saved[12].ra  = 0x3CB12D08;
+saved[12].dec = 0x05A475C9;
+saved[12].ref_star  = 0x01;
+
+saved[13].ra  = 0x3561ACB2;
+saved[13].dec = 0xF23DC335;
+saved[13].ref_star  = 0x02;
+
+
 #ifdef ASFAS 
    dd_v[DDS_DEBUG + 0x0E]=0x4444;
    wait(5,SEC);
@@ -2212,6 +2305,9 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.39  2011/12/31 18:23:25  pmichel
+Before starting FMT_FP
+
 Revision 1.38  2011/12/30 22:26:20  pmichel
 Debut of the polar correction s/w
 
