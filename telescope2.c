@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/31 21:09:17 $
-$Id: telescope.c,v 1.40 2011/12/31 21:09:17 pmichel Exp pmichel $
+$Date: 2012/01/02 20:26:48 $
+$Id: telescope.c,v 1.41 2012/01/02 20:26:48 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.40 $
+$Revision: 1.41 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -1005,13 +1005,13 @@ void set_vector(VECTOR *VVV,unsigned long *RA,unsigned long *DEC)
 long cos_dec;
 VVV->z  = fp_sin(*DEC);
 cos_dec = fp_cos(*DEC);
-VVV->x  = fp_mult(fp_sin(*RA),cos_dec);
-VVV->y  = fp_mult(fp_cos(*RA),cos_dec);
+VVV->x  = fp_mult(fp_cos(*RA),cos_dec);
+VVV->y  = fp_mult(fp_sin(*RA),cos_dec);
 }
 
 // Generate a rotation matrix R from the polar RA and DEC
 PROGMEM const char pgm_polar_matrix     []="Polar Matrix: ";
-void generate_polar_matrix(MATRIX *R,unsigned long *RA,unsigned long *DEC)
+void generate_polar_matrix(MATRIX *R,unsigned long *RA,unsigned long *DEC,unsigned PRINT)
 {
 long cos_ra  = fp_cos(*RA);
 long sin_ra  = fp_sin(*RA);
@@ -1036,17 +1036,20 @@ R->m13 = -R->m31;
 R->m23 = -R->m32;
 R->m33 =  cos_dec;
 
-// while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m11 ,FMT_FP    ,8);  console_go = 1;
-// while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m21 ,FMT_FP    ,8);  console_go = 1;
-// while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m31 ,FMT_FP    ,8);  console_go = 1;
-// 
-// while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m12 ,FMT_FP    ,8);  console_go = 1;
-// while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m22 ,FMT_FP    ,8);  console_go = 1;
-// while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m32 ,FMT_FP    ,8);  console_go = 1;
-// 
-// while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m13 ,FMT_FP    ,8);  console_go = 1;
-// while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m23 ,FMT_FP    ,8);  console_go = 1;
-// while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m33 ,FMT_FP    ,8);  console_go = 1;
+if ( PRINT )
+   {
+   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m11 ,FMT_FP    ,8);  console_go = 1;
+   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m21 ,FMT_FP    ,8);  console_go = 1;
+   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m31 ,FMT_FP    ,8);  console_go = 1;
+   
+   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m12 ,FMT_FP    ,8);  console_go = 1;
+   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m22 ,FMT_FP    ,8);  console_go = 1;
+   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m32 ,FMT_FP    ,8);  console_go = 1;
+   
+   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m13 ,FMT_FP    ,8);  console_go = 1;
+   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m23 ,FMT_FP    ,8);  console_go = 1;
+   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m33 ,FMT_FP    ,8);  console_go = 1;
+   }
 }
 // use rotation matrix to rotate the star...
 void apply_polar_correction(MATRIX *R,VECTOR *S)
@@ -1074,11 +1077,49 @@ PROGMEM const char pgm_recorded_pos_ra  []="RA :";
 PROGMEM const char pgm_recorded_pos_dec []="DEC:";
 PROGMEM const char pgm_recorded_pos_ref []="ref:";
 /*
-Error :005160A8                                                                                                                                                                                                                       
-Hour   :22h10m46.87s                                                                                                                                                                                                                  
-Declin :(N) 01°37'15.9"                                                                                                                                                                                                               
+Error  : 
+Hour   : 
+Declin : 
 */
-                                                                                                                                                                                                                                      
+        
+PROGMEM const char pgm_polar_x      []="X :";
+PROGMEM const char pgm_polar_y      []="Y :";
+PROGMEM const char pgm_polar_z      []="Z :";
+
+void test_polar(unsigned long hour,unsigned long deg)
+{
+unsigned long test_ra;
+unsigned long test_dec;
+VECTOR star;
+
+generate_polar_matrix(&PoleMatrix,&hour, &deg,1);
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL,8);  console_go = 1;
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL,8);  console_go = 1;
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,hour     ,FMT_RA    ,8);  console_go = 1;
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,deg      ,FMT_NS    ,8);  console_go = 1;
+
+for ( test_dec = 0 ; test_dec <= 90*TICKS_P_DEG ; test_dec += 45*TICKS_P_DEG )
+   {
+   for ( test_ra = 0 ; test_ra < 24*TICKS_P_HOUR ; test_ra += 3*TICKS_P_HOUR )
+      {
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL,8);  console_go = 1;
+      set_vector(&star, &test_ra, &test_dec);
+
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,test_ra     ,FMT_RA    ,8);  console_go = 1;
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,test_dec      ,FMT_NS    ,8);  console_go = 1;
+
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_x ,star.x ,FMT_FP    ,8);  console_go = 1;
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_y ,star.y ,FMT_FP    ,8);  console_go = 1;
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_z ,star.z ,FMT_FP    ,8);  console_go = 1;
+      apply_polar_correction(&PoleMatrix,&star);
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_x ,star.x ,FMT_FP    ,8);  console_go = 1;
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_y ,star.y ,FMT_FP    ,8);  console_go = 1;
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_z ,star.z ,FMT_FP    ,8);  console_go = 1;
+      if ( test_dec == 90*TICKS_P_DEG ) return;
+      }
+   }
+}
+                                                                                                                                                                                                                              
 // find our polar error based on the corrected star positions
 void do_polar(void)
 {
@@ -1115,7 +1156,7 @@ for ( span_idx = 1 ; span_idx < 6 ; span_idx++ )  // do 6 passes   >> 3 each tim
 //-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,hour     ,FMT_RA    ,8);  console_go = 1;
 //-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,deg      ,FMT_NS    ,8);  console_go = 1;
    
-         generate_polar_matrix(&PoleMatrix,&hour, &deg);
+         generate_polar_matrix(&PoleMatrix,&hour, &deg,0);
         
          for ( star_idx=error=0 ; star_idx<10 ; star_idx++ )
 //-   //for ( star_idx=error=0 ; star_idx<4  ; star_idx++ )
@@ -1188,7 +1229,7 @@ Declin :(N) 00°00'00.0"
 */
 
    }
-generate_polar_matrix(&PoleMatrix,&best_ra, &best_dec);
+generate_polar_matrix(&PoleMatrix,&best_ra, &best_dec,0);
 
 while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m11 ,FMT_FP    ,8);  console_go = 1;
 while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m21 ,FMT_FP    ,8);  console_go = 1;
@@ -2297,8 +2338,9 @@ wait(2,SEC);
 d_now   = d_TIMER1;
 //for(iii=0;iii<16;iii++) dd_v[DDS_HISTO + iii]=0;
 //dd_v[DDS_SECONDS] = ssec = 0;
-motor_disable = 0;   // Stepper motor enabled...
-set_digital_output(DO_DISABLE  ,motor_disable);   
+
+//--motor_disable = 0;   // Stepper motor enabled...
+//--set_digital_output(DO_DISABLE  ,motor_disable);   
 
 // Corrected star positions with a polar error that I introduced
 /*
@@ -2359,6 +2401,11 @@ saved[15].ref_star  = 0x02;
 saved[16].ra  = 0x3739E783;
 saved[16].dec = 0x046A5F79;
 saved[16].ref_star  = 0x04;
+
+//         RA            DEC
+test_polar(45*TICKS_P_DEG,10*TICKS_P_DEG);
+
+
 
 /*
 Polar Correction Matrix:
@@ -2471,6 +2518,9 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.41  2012/01/02 20:26:48  pmichel
+Polar correction in progress, about to test rotation matrix to be sure
+
 Revision 1.40  2011/12/31 21:09:17  pmichel
 Polar Error seems to start working
 I need to change the way I scan for the solution
