@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2011/12/31 18:23:25 $
-$Id: telescope.c,v 1.39 2011/12/31 18:23:25 pmichel Exp pmichel $
+$Date: 2011/12/31 21:09:17 $
+$Id: telescope.c,v 1.40 2011/12/31 21:09:17 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.39 $
+$Revision: 1.40 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -126,6 +126,35 @@ if ( (unsigned long)(POS) >= TICKS_P_DAY )   /* we are in the dead band */  \
    else             POS -= DEAD_BAND; /* step over the dead band */         \
    }                                                                        \
 }
+
+#define NB_SAVED 20
+typedef struct
+   {         
+   unsigned long ra;
+   unsigned long dec;
+   unsigned char ref_star;  // if not 0, then it tells us that this is a Corrected star position
+   } POSITION;
+POSITION saved[NB_SAVED];
+
+typedef struct
+   {
+   long x,y,z;
+   } VECTOR;
+
+typedef struct
+   {
+   long m11,m12,m13;
+   long m21,m22,m23;
+   long m31,m32,m33;
+   } MATRIX;
+
+MATRIX PoleMatrix;
+
+void set_vector(VECTOR *VVV,unsigned long *RA,unsigned long *DEC);
+void apply_polar_correction(MATRIX *R,VECTOR *S);
+unsigned char use_polar=0;
+unsigned long ra_correction=0;   // local RA correction from polar error
+unsigned long dec_correction=0;  // local DEC correction from polar error
 
 // I define: 
 // A step is a pure step from the motor (only one coil is 100% ON at a time)        200 steps = 1 full turn ... with the gear ratio : 1000 steps = 1 full turn = 3 deg (ra) = 12 minutes  
@@ -968,26 +997,6 @@ else if ( fmt == FMT_FP )  // Fixed point  fron -1.00000 to 1.000000
    }
 }
 
-#define NB_SAVED 20
-typedef struct
-   {         
-   unsigned long ra;
-   unsigned long dec;
-   unsigned char ref_star;  // if not 0, then it tells us that this is a Corrected star position
-   } POSITION;
-POSITION saved[NB_SAVED];
-
-typedef struct
-   {
-   long x,y,z;
-   } VECTOR;
-
-typedef struct
-   {
-   long m11,m12,m13;
-   long m21,m22,m23;
-   long m31,m32,m33;
-   } MATRIX;
 
 // set the XYZ of a VECTOR from the RA and DEC values provided
 // RA and DEC are in TICK units
@@ -1052,6 +1061,7 @@ S->y = y;
 S->z = z;
 }
 
+PROGMEM const char pgm_polar_pass       []="Pass #:";
 PROGMEM const char pgm_polar_line       []="_______________________";
 PROGMEM const char pgm_polar_case       []="Case #:";
 PROGMEM const char pgm_polar_hour       []="Hour   :";
@@ -1063,85 +1073,137 @@ PROGMEM const char pgm_recorded_pos     []="Recorded position: ";
 PROGMEM const char pgm_recorded_pos_ra  []="RA :";
 PROGMEM const char pgm_recorded_pos_dec []="DEC:";
 PROGMEM const char pgm_recorded_pos_ref []="ref:";
-
+/*
+Error :005160A8                                                                                                                                                                                                                       
+Hour   :22h10m46.87s                                                                                                                                                                                                                  
+Declin :(N) 01°37'15.9"                                                                                                                                                                                                               
+*/
+                                                                                                                                                                                                                                      
 // find our polar error based on the corrected star positions
 void do_polar(void)
 {
-unsigned short star_idx,case_idx,ref;
-unsigned long hour,deg,ra,dec;
+unsigned long next_ra  = 12 * TICKS_P_HOUR;     // start midpoint   scan +/- 12 steps   // 2073600000   which is 12h / 180 deg
+         long ra_span  =      TICKS_P_HOUR;     // 172800000
+unsigned long next_dec =  5 * TICKS_P_DEG;      // start midpoint, scan 10 degrees              
+         long dec_span =      TICKS_P_DEG;     
+unsigned long best_ra,best_dec;
+short    dec_idx,ra_idx,span_idx;               // scan indexes
+unsigned long best_error=0x7FFFFFFF;
+unsigned short star_idx,ref;
+unsigned long hour,dec,ra,deg;
 unsigned long error_sum,error;
 VECTOR star,real_star;
-MATRIX M;
-unsigned long best_ra=0,best_dec=0,best_error=0x7FFFFFFF;
 
-case_idx=0;
-for ( deg=0 ; deg<=TICKS_P_DEG_SEC*60*60*4 ; deg+=TICKS_P_DEG_SEC*60*30   )  // avance a coupde 0.5 deg    til 4 degree
+use_polar=0;
+
+best_ra = next_ra;
+best_dec = next_dec;
+
+for ( span_idx = 1 ; span_idx < 6 ; span_idx++ )  // do 6 passes   >> 3 each time to divide the span
    {
-   for ( hour = 0 ; hour < TICKS_P_SEC*60*60*24 ; hour += TICKS_P_SEC*60*30   )  // avance a coupo de 30 minutes
+   for ( dec_idx = -5 ; dec_idx <= 5 ; dec_idx++)
       {
-      case_idx++;
-      error_sum=0;
-
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL,8);  console_go = 1;
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_case,case_idx ,FMT_DEC   ,8);  console_go = 1;
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,hour     ,FMT_RA    ,8);  console_go = 1;
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,deg      ,FMT_NS    ,8);  console_go = 1;
-
-      generate_polar_matrix(&M,&hour, &deg);
-     
-      for ( star_idx=error=0 ; star_idx<10 ; star_idx++ )
-//for ( star_idx=error=0 ; star_idx<4  ; star_idx++ )
-         { // here the magic happens... for each registered star, calculate the error: delta_x^2 + delta_y^2 + delta_z^2
-         ref = saved[star_idx+10].ref_star;
-//ref = star_idx; // temp for tests
-         if ( ref !=0 )  // foe every star with a corrected position
-            {
-//             while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_star ,star_idx ,FMT_DEC   ,4);  console_go = 1;
-            ra  = pgm_read_dword(&pgm_stars_pos[ref*2+0]);
-            dec = pgm_read_dword(&pgm_stars_pos[ref*2+1]);
-            set_vector(     &star, &ra, &dec);
-//set_vector(&real_star, &ra, &dec);
-            apply_polar_correction(&M,&star);
-
-            set_vector(&real_star, &saved[star_idx+10].ra, &saved[star_idx+10].dec);
-
-            error = star.x - real_star.x;
-//             while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_FP    ,8);  console_go = 1;
-            error = fp_mult(error,error);
-//          while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_HEX   ,8);  console_go = 1;
-            ra = error_sum + (error>>4);                      // use temp label to bake sure error only goes up
-            if (ra > error_sum ) error_sum = ra;
-
-            error = star.y - real_star.y;
-//             while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_FP    ,8);  console_go = 1;
-            error = fp_mult(error,error);
-//          while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_HEX   ,8);  console_go = 1;
-            ra = error_sum + (error>>4);                      // use temp label to bake sure error only goes up
-            if (ra > error_sum ) error_sum = ra;
-
-            error = star.z - real_star.z;
-//             while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_FP    ,8);  console_go = 1;
-            error = fp_mult(error,error);
-//          while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_HEX   ,8);  console_go = 1;
-            ra = error_sum + (error>>4);                      // use temp label to bake sure error only goes up
-            if (ra > error_sum ) error_sum = ra;
-            }
-         } 
-
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_sum ,error_sum,FMT_FP    ,8);  console_go = 1;
-      if ( error_sum < best_error )
+      deg = next_dec + dec_idx * dec_span;
+   
+      for ( ra_idx = -12 ; ra_idx <= 12 ; ra_idx++)
          {
-         best_error = error_sum;
-         best_ra    = hour;
-         best_dec   = deg;
+         hour = next_ra + ra_idx * ra_span;
+
+         error_sum=0;
+   
+//-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL,8);  console_go = 1;
+//-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,hour     ,FMT_RA    ,8);  console_go = 1;
+//-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,deg      ,FMT_NS    ,8);  console_go = 1;
+   
+         generate_polar_matrix(&PoleMatrix,&hour, &deg);
+        
+         for ( star_idx=error=0 ; star_idx<10 ; star_idx++ )
+//-   //for ( star_idx=error=0 ; star_idx<4  ; star_idx++ )
+            { // here the magic happens... for each registered star, calculate the error: delta_x^2 + delta_y^2 + delta_z^2
+            ref = saved[star_idx+10].ref_star;
+//-   //ref = star_idx; // temp for tests
+            if ( ref !=0 )  // foe every star with a corrected position
+               {
+               display_next();
+//-   //             while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_star ,star_idx ,FMT_DEC   ,4);  console_go = 1;
+               ra  = pgm_read_dword(&pgm_stars_pos[ref*2+0]);
+               dec = pgm_read_dword(&pgm_stars_pos[ref*2+1]);
+               set_vector(     &star, &ra, &dec);
+//-   //set_vector(&real_star, &ra, &dec);
+               apply_polar_correction(&PoleMatrix,&star);
+   
+               set_vector(&real_star, &saved[star_idx+10].ra, &saved[star_idx+10].dec);
+   
+               error = star.x - real_star.x;
+//-   //             while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_FP    ,8);  console_go = 1;
+               error = fp_mult(error,error);
+//-   //          while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_HEX   ,8);  console_go = 1;
+               ra = error_sum + (error);                      // use temp label to bake sure error only goes up
+               if (ra > error_sum ) error_sum = ra;
+   
+               error = star.y - real_star.y;
+//-   //             while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_FP    ,8);  console_go = 1;
+               error = fp_mult(error,error);
+//-   //          while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_HEX   ,8);  console_go = 1;
+               ra = error_sum + (error);                      // use temp label to bake sure error only goes up
+               if (ra > error_sum ) error_sum = ra;
+   
+               error = star.z - real_star.z;
+//-   //             while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_FP    ,8);  console_go = 1;
+               error = fp_mult(error,error);
+//-   //          while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_HEX   ,8);  console_go = 1;
+               ra = error_sum + (error);                      // use temp label to bake sure error only goes up
+               if (ra > error_sum ) error_sum = ra;
+               }
+            } 
+   
+//-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_sum ,error_sum,FMT_FP    ,8);  console_go = 1;
+         if ( error_sum < best_error )
+            {
+            best_error = error_sum;
+            best_ra    = hour;
+            best_dec   = deg;
+            }
          }
       }
-   }
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,best_error ,FMT_HEX   ,8);  console_go = 1;
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,best_ra     ,FMT_RA    ,8);  console_go = 1;
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,best_dec    ,FMT_NS    ,8);  console_go = 1;
-}
+   next_ra  = best_ra;
+   next_dec = best_dec;
+   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_pass,span_idx    ,FMT_DEC   ,4);  console_go = 1;
+   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,best_error ,FMT_HEX   ,8);  console_go = 1;
+   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,best_ra     ,FMT_RA    ,8);  console_go = 1;
+   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,best_dec    ,FMT_NS    ,8);  console_go = 1;
 
+   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,ra_span     ,FMT_RA    ,8);  console_go = 1;
+   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,dec_span    ,FMT_NS    ,8);  console_go = 1;
+
+   dec_span = dec_span >> 3; // reduce span to slowly converge towards the solution
+   ra_span  = ra_span  >> 3; // reduce span to slowly converge towards the solution
+/*
+Pass #:+011                 
+Error :005160A2             
+Hour   :22h10m41.71s        
+Declin :(N) 01°37'11.6"     
+Hour   :00h00m00.00s        
+Declin :(N) 00°00'00.0"    
+*/
+
+   }
+generate_polar_matrix(&PoleMatrix,&best_ra, &best_dec);
+
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m11 ,FMT_FP    ,8);  console_go = 1;
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m21 ,FMT_FP    ,8);  console_go = 1;
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m31 ,FMT_FP    ,8);  console_go = 1;
+
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m12 ,FMT_FP    ,8);  console_go = 1;
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m22 ,FMT_FP    ,8);  console_go = 1;
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m32 ,FMT_FP    ,8);  console_go = 1;
+
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m13 ,FMT_FP    ,8);  console_go = 1;
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m23 ,FMT_FP    ,8);  console_go = 1;
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m33 ,FMT_FP    ,8);  console_go = 1;
+use_polar=1;
+}
+   
 #define PROSCAN_VCR1_CH_P   0x021D2E2D
 #define PROSCAN_VCR1_CH_M   0x021D3E2C
 #define PROSCAN_VCR1_VOL_P  0x023D0C2F
@@ -1584,6 +1646,41 @@ else // print field data
       }
    } 
 if ( Next != 0 ) UDR0 = Next;
+
+if ( use_polar )
+   {
+   static long last_sec;
+   VECTOR before, after;
+
+   if ( last_sec != dd_v[DDS_SECONDS] ) 
+      {
+      long error,sum=0;
+      last_sec = dd_v[DDS_SECONDS];
+      set_vector(&before, (unsigned long * ) &ra->pos, (unsigned long * ) &dec->pos);
+      set_vector(&after , (unsigned long * ) &ra->pos, (unsigned long * ) &dec->pos);
+      apply_polar_correction(&PoleMatrix,&after);
+
+      error = after.x-before.x;
+      dd_v[DDS_DEBUG + 0x18]=error;
+      error = fp_mult(error,error);
+      dd_v[DDS_DEBUG + 0x1C]=error;
+      sum+=error;
+  
+      error = after.y-before.y;
+      dd_v[DDS_DEBUG + 0x19]=error;
+      error = fp_mult(error,error);
+      dd_v[DDS_DEBUG + 0x1D]=error;
+      sum+=error;
+
+      error = after.z-before.z;
+      dd_v[DDS_DEBUG + 0x1A]=error;
+      error = fp_mult(error,error);
+      dd_v[DDS_DEBUG + 0x1E]=error;
+      sum+=error;
+
+      dd_v[DDS_DEBUG + 0x1B]=sum;
+      }
+   }
 }
 
 
@@ -1909,7 +2006,7 @@ if ( temp >= TICKS_P_STEP )
    {
    // too long to complete !!set_digital_output(DO_RA_DIR,0); // go backward
    //FAST_SET_RA_DIR(0);
-   ra->direction=0x00;
+   ra->direction=FAST_RA_DIR;
    ADD_VALUE_TO_POS(-TICKS_P_STEP,ra->pos_hw);
    ra->next=FAST_RA_STEP;
    }
@@ -1917,7 +2014,7 @@ else if ( -temp >= TICKS_P_STEP )
    {
    // too long to complete !!set_digital_output(DO_RA_DIR,1); // go forward
    //FAST_SET_RA_DIR(1);
-   ra->direction=FAST_RA_DIR;
+   ra->direction=0x00;
    ADD_VALUE_TO_POS(TICKS_P_STEP,ra->pos_hw);
    ra->next=FAST_RA_STEP;
    }
@@ -2204,39 +2301,108 @@ motor_disable = 0;   // Stepper motor enabled...
 set_digital_output(DO_DISABLE  ,motor_disable);   
 
 // Corrected star positions with a polar error that I introduced
-// Recorded position: 00000001      
-// RA :F6479380                     
-// DEC:035D1742                     
-// ref:0000000A                     
-// Recorded position: 00000002      
-// RA :0E468E90                     
-// DEC:F3DC0290                     
-// ref:0000000B                     
-// Recorded position: 00000003      
-// RA :3CB12D08                     
-// DEC:05A475C9                     
-// ref:00000001                     
-// Recorded position: 00000004      
-// RA :3561ACB2                     
-// DEC:F23DC335                     
-// ref:00000002       
-// 
-saved[10].ra  = 0xF6479380;
-saved[10].dec = 0x035D1742;
-saved[10].ref_star  = 0x0A;
+/*
+Free Memory:00000226               
+Recorded position: 00000002        
+RA :F433C764                       
+DEC:031455D5                       
+ref:00000008                       
+Recorded position: 00000001        
+RA :0C77551F                       
+DEC:030A8BC5                       
+ref:00000009                       
+Recorded position: 00000003        
+RA :0C6BD457                       
+DEC:F35CD11C                       
+ref:0000000B                       
+Recorded position: 00000004        
+RA :F431271C                       
+DEC:F36EFB73                       
+ref:0000000C                       
+Recorded position: 00000007        
+RA :3C629AA5                       
+DEC:0510E764                       
+ref:00000001                       
+Recorded position: 00000008        
+RA :353C32E1                       
+DEC:F1A45541                       
+ref:00000002                       
+Recorded position: 00000009        
+RA :3739E783                       
+DEC:046A5F79                       
+ref:00000004                      
+*/
+saved[10].ra  = 0xF433C764;
+saved[10].dec = 0x031455D5;
+saved[10].ref_star  = 0x08;
 
-saved[11].ra  = 0x0E468E90;
-saved[11].dec = 0xF3DC0290;
-saved[11].ref_star  = 0x0B;
+saved[11].ra  = 0x0C77551F;
+saved[11].dec = 0x030A8BC5;
+saved[11].ref_star  = 0x09;
 
-saved[12].ra  = 0x3CB12D08;
-saved[12].dec = 0x05A475C9;
-saved[12].ref_star  = 0x01;
+saved[12].ra  = 0x0C6BD457;
+saved[12].dec = 0xF35CD11C;
+saved[12].ref_star  = 0x0B;
 
-saved[13].ra  = 0x3561ACB2;
-saved[13].dec = 0xF23DC335;
-saved[13].ref_star  = 0x02;
+saved[13].ra  = 0xF431271C;
+saved[13].dec = 0xF36EFB73;
+saved[13].ref_star  = 0x0C;
 
+saved[14].ra  = 0x3C629AA5;
+saved[14].dec = 0x0510E764;
+saved[14].ref_star  = 0x01;
+
+saved[15].ra  = 0x353C32E1;
+saved[15].dec = 0xF1A45541;
+saved[15].ref_star  = 0x02;
+
+saved[16].ra  = 0x3739E783;
+saved[16].dec = 0x046A5F79;
+saved[16].ref_star  = 0x04;
+
+/*
+Polar Correction Matrix:
+Pass #:+001                         
+Error :006D4CA2                     
+Hour   :00h00m00.00s                
+Declin :(N) 01°00'00.0"             
+Hour   :01h00m00.00s                
+Declin :(N) 01°00'00.0"             
+Pass #:+002                         
+Error :006C3772                     
+Hour   :00h37m30.00s                
+Declin :(N) 01°07'30.0"             
+Hour   :00h07m30.00s                
+Declin :(N) 00°07'30.0"             
+Pass #:+003                         
+Error :006C3356                     
+Hour   :00h36m33.75s                
+Declin :(N) 01°06'33.7"             
+Hour   :00h00m56.25s                
+Declin :(N) 00°00'56.2"             
+Pass #:+004                         
+Error :006C331E                     
+Hour   :00h35m51.56s                
+Declin :(N) 01°06'19.6"             
+Hour   :00h00m07.03s                
+Declin :(N) 00°00'07.0"             
+Pass #:+005                         
+Error :006C331A                     
+Hour   :00h35m54.19s                
+Declin :(N) 01°06'20.5"             
+Hour   :00h00m00.87s                
+Declin :(N) 00°00'00.8"             
+Polar Matrix: 7FFFD9F4  0.99999546  
+Polar Matrix: 0000F0B9  0.00002869  
+Polar Matrix: 0062A78D  0.00301069  
+Polar Matrix: 0000F0B9  0.00002869  
+Polar Matrix: 7FFA0BF8  0.99981832  
+Polar Matrix: FD8F6A37  -.01906082  
+Polar Matrix: FF9D5873  -.00301069  
+Polar Matrix: 027095C9  0.01906082  
+Polar Matrix: 7FF9E5F8  0.99981379  
+FFFF73B4  00037818  FFEA3660 
+*/
 
 #ifdef ASFAS 
    dd_v[DDS_DEBUG + 0x0E]=0x4444;
@@ -2305,6 +2471,10 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.40  2011/12/31 21:09:17  pmichel
+Polar Error seems to start working
+I need to change the way I scan for the solution
+
 Revision 1.39  2011/12/31 18:23:25  pmichel
 Before starting FMT_FP
 
