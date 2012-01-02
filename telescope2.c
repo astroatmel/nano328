@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/02 20:26:48 $
-$Id: telescope.c,v 1.41 2012/01/02 20:26:48 pmichel Exp pmichel $
+$Date: 2012/01/02 21:05:31 $
+$Id: telescope.c,v 1.42 2012/01/02 21:05:31 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.41 $
+$Revision: 1.42 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -20,6 +20,7 @@ TODO:
 - reduce the amount of ram that the sin() cos() functions use
 */
 #define AP0_DISPLAY 0    // ca plante asse souvent si j'essaye de rouller avec AP)
+#define TEST_POLAR  1
 
 // This is a Little Endian CPU
 // Notes
@@ -510,6 +511,9 @@ PROGMEM const char display_define_scrolling[] = "\033[r\033[0;20r";         // e
 PROGMEM const char display_sa[]               = "\033[20;0H";                           // this is the last scrooling line
 PROGMEM const char display_ns_line[]          = "\033[21;0H_______________________________________________________________________________________________________";
 
+PROGMEM const char display_main[]={"short"};
+
+/*
 PROGMEM const char display_main[]={"\012\015\
           DATE/TIME: \012\015\
    CURRENT LOCATION: \012\015\
@@ -535,6 +539,7 @@ ________________________________________________________________________________
     IR-PLUS> \012\015\
  RS232-PLUS> \012\015\
 "};
+*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////// TABLE THAT DEFINES WHAT,WHERE and HOW TO PRINT ///////////////////
@@ -1011,30 +1016,29 @@ VVV->y  = fp_mult(fp_sin(*RA),cos_dec);
 
 // Generate a rotation matrix R from the polar RA and DEC
 PROGMEM const char pgm_polar_matrix     []="Polar Matrix: ";
-void generate_polar_matrix(MATRIX *R,unsigned long *RA,unsigned long *DEC,unsigned PRINT)
+void generate_polar_matrix(MATRIX *R,unsigned long *pol_ra,unsigned long *pol_dec,unsigned long *shift_ra,unsigned PRINT)
 {
-long cos_ra  = fp_cos(*RA);
-long sin_ra  = fp_sin(*RA);
-long cos_dec = fp_cos(*DEC);
-long sin_dec = fp_sin(*DEC);
+long cos_pol_ra   = fp_cos(*pol_ra);
+long sin_pol_ra   =-fp_sin(*pol_ra);   // reversed direction . . .
+long cos_pol_dec  = fp_cos(*pol_dec);
+long sin_pol_dec  =-fp_sin(*pol_dec);  // reversed direction . . .
+long cos_shift_ra = fp_cos(*shift_ra);
+long sin_shift_ra =-fp_sin(*shift_ra); // reversed direction . . .
 
-long cos2_ra  = fp_mult(cos_ra ,cos_ra);
-long sin2_ra  = fp_mult(sin_ra ,sin_ra);
-long tmp      = 0x7FFFFFFF - cos_dec;     //  1 - COS(DEC)
+// long tmp      = 0x7FFFFFFF - cos_dec;     //  1 - COS(DEC)
 
 // Dont worry, even I dont understand this...
-R->m11 =  cos2_ra + fp_mult(sin2_ra,cos_dec);
-R->m21 =  fp_mult(cos_ra ,sin_ra);
-R->m21 =  fp_mult(R->m21 ,tmp);
-R->m31 =  fp_mult(sin_ra,sin_dec);
+R->m11 =  fp_mult(sin_pol_ra, sin_shift_ra) + fp_mult(fp_mult(cos_pol_ra,cos_pol_dec),cos_shift_ra) ;
+R->m21 =  fp_mult(cos_pol_ra, sin_shift_ra) - fp_mult(fp_mult(sin_pol_ra,cos_pol_dec),cos_shift_ra) ;
+R->m31 = -fp_mult(sin_pol_dec,cos_shift_ra)                                                         ;
 
-R->m12 =  R->m21;
-R->m22 =  fp_mult(cos2_ra ,cos_dec) + sin2_ra;
-R->m32 = -fp_mult(cos_ra ,sin_dec);
+R->m12 =  fp_mult(sin_pol_ra,cos_shift_ra) - fp_mult(fp_mult(cos_pol_ra,cos_pol_dec),sin_shift_ra) ;
+R->m22 =  fp_mult(cos_pol_ra,cos_shift_ra) + fp_mult(fp_mult(sin_pol_ra,cos_pol_dec),sin_shift_ra) ;
+R->m32 =  fp_mult(sin_pol_dec,sin_shift_ra)                                                        ;
 
-R->m13 = -R->m31;
-R->m23 = -R->m32;
-R->m33 =  cos_dec;
+R->m13 =  fp_mult(cos_pol_ra,sin_pol_dec)                                                          ;
+R->m23 = -fp_mult(sin_pol_ra,sin_pol_dec)                                                          ;  
+R->m33 =  cos_pol_dec                                                                              ;
 
 if ( PRINT )
    {
@@ -1065,14 +1069,14 @@ S->z = z;
 }
 
 PROGMEM const char pgm_polar_pass       []="Pass #:";
-PROGMEM const char pgm_polar_line       []="_______________________";
+PROGMEM const char pgm_polar_line       []="_________";
 PROGMEM const char pgm_polar_case       []="Case #:";
 PROGMEM const char pgm_polar_hour       []="Hour   :";
 PROGMEM const char pgm_polar_dec        []="Declin :";
 PROGMEM const char pgm_polar_star       []="Star #:";
 PROGMEM const char pgm_polar_error      []="Error :";
-PROGMEM const char pgm_polar_sum        []="Sum Errors ==== ";
-PROGMEM const char pgm_recorded_pos     []="Recorded position: ";
+PROGMEM const char pgm_polar_sum        []="Sum = ";
+PROGMEM const char pgm_recorded_pos     []="Rec pos: ";
 PROGMEM const char pgm_recorded_pos_ra  []="RA :";
 PROGMEM const char pgm_recorded_pos_dec []="DEC:";
 PROGMEM const char pgm_recorded_pos_ref []="ref:";
@@ -1081,18 +1085,21 @@ Error  :
 Hour   : 
 Declin : 
 */
-        
+     
+#if(TEST_POLAR)   
 PROGMEM const char pgm_polar_x      []="X :";
 PROGMEM const char pgm_polar_y      []="Y :";
 PROGMEM const char pgm_polar_z      []="Z :";
 
-void test_polar(unsigned long hour,unsigned long deg)
+void test_polar(unsigned long hour,unsigned long deg,unsigned long shift)
 {
 unsigned long test_ra;
 unsigned long test_dec;
+long sum;
 VECTOR star;
 
-generate_polar_matrix(&PoleMatrix,&hour, &deg,1);
+generate_polar_matrix(&PoleMatrix,&hour, &deg, &shift,1);
+
 while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL,8);  console_go = 1;
 while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL,8);  console_go = 1;
 while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,hour     ,FMT_RA    ,8);  console_go = 1;
@@ -1115,12 +1122,23 @@ for ( test_dec = 0 ; test_dec <= 90*TICKS_P_DEG ; test_dec += 45*TICKS_P_DEG )
       while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_x ,star.x ,FMT_FP    ,8);  console_go = 1;
       while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_y ,star.y ,FMT_FP    ,8);  console_go = 1;
       while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_z ,star.z ,FMT_FP    ,8);  console_go = 1;
+
+   sum = fp_mult(star.x,star.x) + fp_mult(star.y,star.y) + fp_mult(star.z,star.z);
+   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_sum ,sum ,FMT_FP    ,8);  console_go = 1;
+
       if ( test_dec == 90*TICKS_P_DEG ) return;
       }
    }
 }
+#endif
                                                                                                                                                                                                                               
 // find our polar error based on the corrected star positions
+// Note:
+// there are two things to correct
+// 1- The polar error 
+// 2- The RA timeshift
+// To do so, I will first try to find the polar adjustment that brings the Z error to the minimum
+//     then, I will adjust RA timeshift to find the lowest total error
 void do_polar(void)
 {
 unsigned long next_ra  = 12 * TICKS_P_HOUR;     // start midpoint   scan +/- 12 steps   // 2073600000   which is 12h / 180 deg
@@ -1156,7 +1174,7 @@ for ( span_idx = 1 ; span_idx < 6 ; span_idx++ )  // do 6 passes   >> 3 each tim
 //-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,hour     ,FMT_RA    ,8);  console_go = 1;
 //-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,deg      ,FMT_NS    ,8);  console_go = 1;
    
-         generate_polar_matrix(&PoleMatrix,&hour, &deg,0);
+         generate_polar_matrix(&PoleMatrix,&hour, &deg, &hour, 0);
         
          for ( star_idx=error=0 ; star_idx<10 ; star_idx++ )
 //-   //for ( star_idx=error=0 ; star_idx<4  ; star_idx++ )
@@ -1229,7 +1247,7 @@ Declin :(N) 00°00'00.0"
 */
 
    }
-generate_polar_matrix(&PoleMatrix,&best_ra, &best_dec,0);
+generate_polar_matrix(&PoleMatrix,&best_ra, &best_dec, &best_ra,0);
 
 while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m11 ,FMT_FP    ,8);  console_go = 1;
 while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m21 ,FMT_FP    ,8);  console_go = 1;
@@ -2402,9 +2420,12 @@ saved[16].ra  = 0x3739E783;
 saved[16].dec = 0x046A5F79;
 saved[16].ref_star  = 0x04;
 
-//         RA            DEC
-test_polar(45*TICKS_P_DEG,10*TICKS_P_DEG);
-
+#if(TEST_POLAR)
+//            POLAR_RA      POLAR_DEC      TIME_SHIFT_RA
+// test_polar(0*TICKS_P_DEG,10*TICKS_P_DEG,0*TICKS_P_DEG);
+// test_polar(45*TICKS_P_DEG,10*TICKS_P_DEG,45*TICKS_P_DEG);
+   test_polar(10*TICKS_P_DEG,10*TICKS_P_DEG,10*TICKS_P_DEG);
+#endif
 
 
 /*
@@ -2518,6 +2539,13 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.42  2012/01/02 21:05:31  pmichel
+Milestone:
+Matrix seems to be ok
+Note:
+The rotation is about the X axis,
+and turns from Y axis towards Z axis
+
 Revision 1.41  2012/01/02 20:26:48  pmichel
 Polar correction in progress, about to test rotation matrix to be sure
 
