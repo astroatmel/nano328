@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/02 21:05:31 $
-$Id: telescope.c,v 1.42 2012/01/02 21:05:31 pmichel Exp pmichel $
+$Date: 2012/01/02 22:47:24 $
+$Id: telescope.c,v 1.43 2012/01/02 22:47:24 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.42 $
+$Revision: 1.43 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -20,7 +20,8 @@ TODO:
 - reduce the amount of ram that the sin() cos() functions use
 */
 #define AP0_DISPLAY 0    // ca plante asse souvent si j'essaye de rouller avec AP)
-#define TEST_POLAR  1
+#define TEST_POLAR  0
+#define FULL_DISPLAY  0
 
 // This is a Little Endian CPU
 // Notes
@@ -156,6 +157,7 @@ void apply_polar_correction(MATRIX *R,VECTOR *S);
 unsigned char use_polar=0;
 unsigned long ra_correction=0;   // local RA correction from polar error
 unsigned long dec_correction=0;  // local DEC correction from polar error
+unsigned char last_antena=0;
 
 // I define: 
 // A step is a pure step from the motor (only one coil is 100% ON at a time)        200 steps = 1 full turn ... with the gear ratio : 1000 steps = 1 full turn = 3 deg (ra) = 12 minutes  
@@ -511,9 +513,7 @@ PROGMEM const char display_define_scrolling[] = "\033[r\033[0;20r";         // e
 PROGMEM const char display_sa[]               = "\033[20;0H";                           // this is the last scrooling line
 PROGMEM const char display_ns_line[]          = "\033[21;0H_______________________________________________________________________________________________________";
 
-PROGMEM const char display_main[]={"short"};
-
-/*
+#if(FULL_DISPLAY)
 PROGMEM const char display_main[]={"\012\015\
           DATE/TIME: \012\015\
    CURRENT LOCATION: \012\015\
@@ -539,7 +539,9 @@ ________________________________________________________________________________
     IR-PLUS> \012\015\
  RS232-PLUS> \012\015\
 "};
-*/
+#else
+PROGMEM const char display_main[]={"short"};   // I'm too close to the 32K limit
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////// TABLE THAT DEFINES WHAT,WHERE and HOW TO PRINT ///////////////////
@@ -1016,7 +1018,7 @@ VVV->y  = fp_mult(fp_sin(*RA),cos_dec);
 
 // Generate a rotation matrix R from the polar RA and DEC
 PROGMEM const char pgm_polar_matrix     []="Polar Matrix: ";
-void generate_polar_matrix(MATRIX *R,unsigned long *pol_ra,unsigned long *pol_dec,unsigned long *shift_ra,unsigned PRINT)
+void generate_polar_matrix(MATRIX *R,unsigned long *pol_ra,unsigned long *pol_dec,unsigned long *shift_ra,unsigned char PRINT)
 {
 long cos_pol_ra   = fp_cos(*pol_ra);
 long sin_pol_ra   =-fp_sin(*pol_ra);   // reversed direction . . .
@@ -1040,7 +1042,7 @@ R->m13 =  fp_mult(cos_pol_ra,sin_pol_dec)                                       
 R->m23 = -fp_mult(sin_pol_ra,sin_pol_dec)                                                          ;  
 R->m33 =  cos_pol_dec                                                                              ;
 
-if ( PRINT )
+if ( PRINT !=0  )
    {
    while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m11 ,FMT_FP    ,8);  console_go = 1;
    while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m21 ,FMT_FP    ,8);  console_go = 1;
@@ -1069,7 +1071,6 @@ S->z = z;
 }
 
 PROGMEM const char pgm_polar_pass       []="Pass #:";
-PROGMEM const char pgm_polar_line       []="_________";
 PROGMEM const char pgm_polar_case       []="Case #:";
 PROGMEM const char pgm_polar_hour       []="Hour   :";
 PROGMEM const char pgm_polar_dec        []="Declin :";
@@ -1087,6 +1088,7 @@ Declin :
 */
      
 #if(TEST_POLAR)   
+PROGMEM const char pgm_polar_line       []="_________";
 PROGMEM const char pgm_polar_x      []="X :";
 PROGMEM const char pgm_polar_y      []="Y :";
 PROGMEM const char pgm_polar_z      []="Z :";
@@ -1098,7 +1100,7 @@ unsigned long test_dec;
 long sum;
 VECTOR star;
 
-generate_polar_matrix(&PoleMatrix,&hour, &deg, &shift,1);
+generate_polar_matrix(&PoleMatrix,&hour, &deg, &shift,0);
 
 while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL,8);  console_go = 1;
 while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL,8);  console_go = 1;
@@ -1141,114 +1143,123 @@ for ( test_dec = 0 ; test_dec <= 90*TICKS_P_DEG ; test_dec += 45*TICKS_P_DEG )
 //     then, I will adjust RA timeshift to find the lowest total error
 void do_polar(void)
 {
-unsigned long next_ra  = 12 * TICKS_P_HOUR;     // start midpoint   scan +/- 12 steps   // 2073600000   which is 12h / 180 deg
-         long ra_span  =      TICKS_P_HOUR;     // 172800000
-unsigned long next_dec =  5 * TICKS_P_DEG;      // start midpoint, scan 10 degrees              
-         long dec_span =      TICKS_P_DEG;     
+unsigned long next_ra;                          // start midpoint   scan +/- 12 steps   // 2073600000   which is 12h / 180 deg
+         long ra_span;                          // 172800000
+unsigned long next_dec;                         // start midpoint, scan 10 degrees              
+         long dec_span;                        
 unsigned long best_ra,best_dec;
 short    dec_idx,ra_idx,span_idx;               // scan indexes
-unsigned long best_error=0x7FFFFFFF;
+unsigned long best_error;
 unsigned short star_idx,ref;
-unsigned long hour,dec,ra,deg;
+unsigned long shift,dec,ra,deg;
+unsigned long polar_ra,polar_dec;               // polar shift
 unsigned long error_sum,error;
+unsigned char pass;
 VECTOR star,real_star;
 
 use_polar=0;
 
-best_ra = next_ra;
-best_dec = next_dec;
-
-for ( span_idx = 1 ; span_idx < 6 ; span_idx++ )  // do 6 passes   >> 3 each time to divide the span
+for ( pass = 1 ; pass <=2 ; pass ++ )
    {
-   for ( dec_idx = -5 ; dec_idx <= 5 ; dec_idx++)
-      {
-      deg = next_dec + dec_idx * dec_span;
-   
-      for ( ra_idx = -12 ; ra_idx <= 12 ; ra_idx++)
-         {
-         hour = next_ra + ra_idx * ra_span;
+   best_ra  = next_ra = 12 * TICKS_P_HOUR;
+   ra_span  =                TICKS_P_HOUR;
+   best_dec = next_dec = 5 * TICKS_P_DEG; 
+   dec_span =                TICKS_P_DEG;
+   best_error=0x7FFFFFFF;
 
-         error_sum=0;
-   
-//-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL,8);  console_go = 1;
-//-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,hour     ,FMT_RA    ,8);  console_go = 1;
-//-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,deg      ,FMT_NS    ,8);  console_go = 1;
-   
-         generate_polar_matrix(&PoleMatrix,&hour, &deg, &hour, 0);
-        
-         for ( star_idx=error=0 ; star_idx<10 ; star_idx++ )
-//-   //for ( star_idx=error=0 ; star_idx<4  ; star_idx++ )
-            { // here the magic happens... for each registered star, calculate the error: delta_x^2 + delta_y^2 + delta_z^2
-            ref = saved[star_idx+10].ref_star;
-//-   //ref = star_idx; // temp for tests
-            if ( ref !=0 )  // foe every star with a corrected position
-               {
-               display_next();
-//-   //             while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_star ,star_idx ,FMT_DEC   ,4);  console_go = 1;
-               ra  = pgm_read_dword(&pgm_stars_pos[ref*2+0]);
-               dec = pgm_read_dword(&pgm_stars_pos[ref*2+1]);
-               set_vector(     &star, &ra, &dec);
-//-   //set_vector(&real_star, &ra, &dec);
-               apply_polar_correction(&PoleMatrix,&star);
-   
-               set_vector(&real_star, &saved[star_idx+10].ra, &saved[star_idx+10].dec);
-   
-               error = star.x - real_star.x;
-//-   //             while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_FP    ,8);  console_go = 1;
-               error = fp_mult(error,error);
-//-   //          while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_HEX   ,8);  console_go = 1;
-               ra = error_sum + (error);                      // use temp label to bake sure error only goes up
-               if (ra > error_sum ) error_sum = ra;
-   
-               error = star.y - real_star.y;
-//-   //             while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_FP    ,8);  console_go = 1;
-               error = fp_mult(error,error);
-//-   //          while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_HEX   ,8);  console_go = 1;
-               ra = error_sum + (error);                      // use temp label to bake sure error only goes up
-               if (ra > error_sum ) error_sum = ra;
-   
-               error = star.z - real_star.z;
-//-   //             while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_FP    ,8);  console_go = 1;
-               error = fp_mult(error,error);
-//-   //          while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,error    ,FMT_HEX   ,8);  console_go = 1;
-               ra = error_sum + (error);                      // use temp label to bake sure error only goes up
-               if (ra > error_sum ) error_sum = ra;
-               }
-            } 
-   
-//-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_sum ,error_sum,FMT_FP    ,8);  console_go = 1;
-         if ( error_sum < best_error )
+   for ( span_idx = 1 ; span_idx < 6 ; span_idx++ )  // do 6 passes   >> 3 each time to divide the span
+      {
+      for ( dec_idx = -5 ; ((pass==1)&&(dec_idx <= 5)) || ((pass==2)&&(dec_idx <= -5)) ; dec_idx++)
+         {
+         deg = next_dec + dec_idx * dec_span;
+         for ( ra_idx = -12 ; ra_idx <= 12 ; ra_idx++)
             {
-            best_error = error_sum;
-            best_ra    = hour;
-            best_dec   = deg;
+            shift = next_ra + ra_idx * ra_span;
+            if ( pass == 1 ) 
+               {
+               generate_polar_matrix(&PoleMatrix,&shift,&deg, &shift, 0);
+               }
+            else  // best ra and best dec found already
+               {
+               generate_polar_matrix(&PoleMatrix,&polar_ra,&polar_dec, &shift, 0);
+               }
+ 
+            error_sum=0;
+     
+           
+            for ( star_idx=error=0 ; star_idx<10 ; star_idx++ )
+               { // here the magic happens... for each registered star, calculate the error: delta_x^2 + delta_y^2 + delta_z^2
+               ref = saved[star_idx+10].ref_star;
+               if ( ref !=0 )  // foe every star with a corrected position
+                  {
+                  display_next();
+                  ra  = pgm_read_dword(&pgm_stars_pos[ref*2+0]);
+                  dec = pgm_read_dword(&pgm_stars_pos[ref*2+1]);
+                  set_vector(     &star, &ra, &dec);
+                  set_vector(&real_star, &saved[star_idx+10].ra, &saved[star_idx+10].dec);
+                  apply_polar_correction(&PoleMatrix,&star);
+      
+                  if ( pass == 2 )  // calculate full error only in second pass
+                     { 
+                     error = star.x - real_star.x;
+                     error = fp_mult(error,error);
+                     ra = error_sum + (error);                      // use temp label to bake sure error only goes up
+                     if (ra > error_sum ) error_sum = ra;
+      
+                     error = star.y - real_star.y;
+                     error = fp_mult(error,error);
+                     ra = error_sum + (error);                      // use temp label to bake sure error only goes up
+                     if (ra > error_sum ) error_sum = ra;
+                     }
+      
+                  error = star.z - real_star.z;
+                  error = fp_mult(error,error);
+                  ra = error_sum + (error);                      // use temp label to bake sure error only goes up
+                  if (ra > error_sum ) error_sum = ra;
+                  }
+               } 
+      
+   //-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_sum ,error_sum,FMT_FP    ,8);  console_go = 1;
+            if ( error_sum < best_error )
+               {
+               best_error = error_sum;
+               best_ra    = shift;
+               best_dec   = deg;
+               }
             }
          }
+      next_ra  = best_ra;
+      next_dec = best_dec;
+      if ( pass==1)
+         {
+         polar_ra  = best_ra;
+         polar_dec = best_dec;
+         }
+
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_pass,span_idx    ,FMT_DEC   ,4);  console_go = 1;
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,best_error ,FMT_HEX   ,8);  console_go = 1;
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,polar_ra    ,FMT_RA    ,8);  console_go = 1;
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,polar_dec   ,FMT_NS    ,8);  console_go = 1;
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,best_ra     ,FMT_RA    ,8);  console_go = 1;
+   
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,ra_span     ,FMT_RA    ,8);  console_go = 1;
+      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,dec_span    ,FMT_NS    ,8);  console_go = 1;
+   
+      dec_span = dec_span >> 3; // reduce span to slowly converge towards the solution
+      ra_span  = ra_span  >> 3; // reduce span to slowly converge towards the solution
+   /*
+   Pass #:+011                 
+   Error :005160A2             
+   Hour   :22h10m41.71s        
+   Declin :(N) 01°37'11.6"     
+   Hour   :00h00m00.00s        
+   Declin :(N) 00°00'00.0"    
+   */
+   
       }
-   next_ra  = best_ra;
-   next_dec = best_dec;
-   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_pass,span_idx    ,FMT_DEC   ,4);  console_go = 1;
-   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,best_error ,FMT_HEX   ,8);  console_go = 1;
-   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,best_ra     ,FMT_RA    ,8);  console_go = 1;
-   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,best_dec    ,FMT_NS    ,8);  console_go = 1;
-
-   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,ra_span     ,FMT_RA    ,8);  console_go = 1;
-   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,dec_span    ,FMT_NS    ,8);  console_go = 1;
-
-   dec_span = dec_span >> 3; // reduce span to slowly converge towards the solution
-   ra_span  = ra_span  >> 3; // reduce span to slowly converge towards the solution
-/*
-Pass #:+011                 
-Error :005160A2             
-Hour   :22h10m41.71s        
-Declin :(N) 01°37'11.6"     
-Hour   :00h00m00.00s        
-Declin :(N) 00°00'00.0"    
-*/
-
    }
-generate_polar_matrix(&PoleMatrix,&best_ra, &best_dec, &best_ra,0);
-
+generate_polar_matrix(&PoleMatrix,&polar_ra, &polar_dec, &shift,1);
+   
 while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m11 ,FMT_FP    ,8);  console_go = 1;
 while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m21 ,FMT_FP    ,8);  console_go = 1;
 while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m31 ,FMT_FP    ,8);  console_go = 1;
@@ -1260,6 +1271,7 @@ while (console_go) display_next(); /* wait for ready */ display_data((char*)cons
 while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m13 ,FMT_FP    ,8);  console_go = 1;
 while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m23 ,FMT_FP    ,8);  console_go = 1;
 while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m33 ,FMT_FP    ,8);  console_go = 1;
+
 use_polar=1;
 }
    
@@ -1447,10 +1459,10 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
       if ( cmd_state==101 ) // PLAY INPUT X : goto user position X
          { goto_pos(jjj); }
       if ( cmd_state==102 ) // PLAY ANTENA X : goto star corrected position X
-         { goto_pos(10+jjj); }
+         { goto_pos(10+jjj);  last_antena=10+jjj;}
       if ( cmd_state==103 ) // RECORD INPUT X : record user position X
          { 
-         record_pos(jjj); 
+         record_pos(jjj);  
          while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_recorded_pos   ,jjj   ,FMT_HEX   ,8);  console_go = 1;
          }
       if ( cmd_state==104 ) // RECORD ANTENA X : record star corrected position X
@@ -1714,30 +1726,46 @@ if ( use_polar )
    if ( last_sec != dd_v[DDS_SECONDS] ) 
       {
       long error,sum=0;
+      long tmp_ra,tmp_dec;
       last_sec = dd_v[DDS_SECONDS];
-      set_vector(&before, (unsigned long * ) &ra->pos, (unsigned long * ) &dec->pos);
+
+      tmp_ra  =  saved[last_antena].ra;
+      tmp_dec =  saved[last_antena].dec;
+      set_vector(&before, (unsigned long * ) &tmp_ra , (unsigned long * ) &tmp_dec );
       set_vector(&after , (unsigned long * ) &ra->pos, (unsigned long * ) &dec->pos);
+
+      dd_v[DDS_DEBUG + 0x08]=after.x;
+      dd_v[DDS_DEBUG + 0x09]=after.y;
+      dd_v[DDS_DEBUG + 0x0A]=after.z;
       apply_polar_correction(&PoleMatrix,&after);
+      dd_v[DDS_DEBUG + 0x10]=after.x;
+      dd_v[DDS_DEBUG + 0x11]=after.y;
+      dd_v[DDS_DEBUG + 0x12]=after.z;
+
+      dd_v[DDS_DEBUG + 0x13]=last_antena+0x100;
+
+      dd_v[DDS_DEBUG + 0x18]=before.x;
+      dd_v[DDS_DEBUG + 0x19]=before.y;
+      dd_v[DDS_DEBUG + 0x1A]=before.z;
 
       error = after.x-before.x;
-      dd_v[DDS_DEBUG + 0x18]=error;
       error = fp_mult(error,error);
       dd_v[DDS_DEBUG + 0x1C]=error;
       sum+=error;
   
       error = after.y-before.y;
-      dd_v[DDS_DEBUG + 0x19]=error;
       error = fp_mult(error,error);
       dd_v[DDS_DEBUG + 0x1D]=error;
       sum+=error;
 
       error = after.z-before.z;
-      dd_v[DDS_DEBUG + 0x1A]=error;
       error = fp_mult(error,error);
       dd_v[DDS_DEBUG + 0x1E]=error;
       sum+=error;
 
       dd_v[DDS_DEBUG + 0x1B]=sum;
+
+
       }
    }
 }
@@ -2394,7 +2422,7 @@ ref:00000004
 */
 saved[10].ra  = 0xF433C764;
 saved[10].dec = 0x031455D5;
-saved[10].ref_star  = 0x08;
+saved[10].ref_star  = 0x08;  // 19 psc
 
 saved[11].ra  = 0x0C77551F;
 saved[11].dec = 0x030A8BC5;
@@ -2539,6 +2567,10 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.43  2012/01/02 22:47:24  pmichel
+Matrix tested ok,
+now even better I fix 2 issues properly, and at the same time
+
 Revision 1.42  2012/01/02 21:05:31  pmichel
 Milestone:
 Matrix seems to be ok
