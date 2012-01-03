@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/03 07:16:26 $
-$Id: telescope.c,v 1.46 2012/01/03 07:16:26 pmichel Exp pmichel $
+$Date: 2012/01/03 21:07:05 $
+$Id: telescope.c,v 1.47 2012/01/03 21:07:05 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.46 $
+$Revision: 1.47 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -50,6 +50,9 @@ TODO:
 #define FAST_DEC_STEP    0x04
 #define FAST_DEC_DIR     0x08
 
+void wait(long time,long mult);
+#define SEC 10000
+#define MSEC 10
 
 char fast_portc=0;
 // Use all pins of PORTB for fast outputs  ... B0 B1 cant be used, and B4 B5 causes problem at download time
@@ -1336,6 +1339,7 @@ use_polar=1;
 #define PROSCAN_VCR1_8      0x021C7E38
 #define PROSCAN_VCR1_9      0x021C6E39
 
+char standby_goto;
 
 void goto_pgm_pos(short pos)
 {
@@ -1344,6 +1348,10 @@ if ( ! ( moving || goto_cmd ) )
    {
    ra->pos_target  = pgm_read_dword(&pgm_stars_pos[pos*2+0]);
    dec->pos_target = pgm_read_dword(&pgm_stars_pos[pos*2+1]);
+   standby_goto = 1;   // ask to fix the error
+   while ( standby_goto > 0 ) display_next();   // wait until we are corrected
+   wait(1,SEC);
+   standby_goto = 0;
    goto_cmd = 1;
    dd_v[DDS_CUR_STAR] = pos;
    }
@@ -1356,6 +1364,9 @@ if ( ! ( moving || goto_cmd ) )
    {
    ra->pos_target  = saved[pos].ra;
    dec->pos_target = saved[pos].dec;
+   standby_goto = 1;   // ask to fix the error
+   while ( standby_goto > 0 ) display_next();   // wait until we are corrected
+   standby_goto = 0;
    goto_cmd = 1;
    }
 }
@@ -1560,14 +1571,9 @@ else if ( dd_v[DDS_RX_IDX]==1 )  // check if it's a single key command
       }
    else if ( rs232_rx_buf[0] == '*')
       {
-      if ( ! ( moving || goto_cmd ) ) 
-         {
-         ra->pos_target  = pgm_read_dword(&pgm_stars_pos[dd_v[DDS_CUR_STAR]*2+0]);
-         dec->pos_target = pgm_read_dword(&pgm_stars_pos[dd_v[DDS_CUR_STAR]*2+1]);
-         goto_cmd = 1;
-         rs232_rx_buf[0] = 0;
-         dd_v[DDS_RX_IDX]=0;
-         }
+      goto_pgm_pos(dd_v[DDS_CUR_STAR]);  // goto active star
+      rs232_rx_buf[0] = 0;
+      dd_v[DDS_RX_IDX]=0;
       }
    else if ( rs232_rx_buf[0] == '[' || rs232_rx_buf[0] == '[')
       {
@@ -1603,8 +1609,6 @@ if ( dd_v[DDS_CUR_STAR] >= NB_PGM_STARS ) dd_v[DDS_CUR_STAR]=0; // we reached th
 if ( dd_v[DDS_CUR_STAR] <  0            ) dd_v[DDS_CUR_STAR] = NB_PGM_STARS-1;
 }
 
-#define SEC 10000
-#define MSEC 10
 void wait(long time,long mult)
 {
 long d_now = d_TIMER1;
@@ -1760,8 +1764,18 @@ if ( use_polar )
       {
       if      ( polar_state == 1 ) 
          { 
-         ref_ra = ra->pos;
-         ref_dec = dec->pos;
+         if ( standby_goto )
+            {
+            ref_ra = ra->pos_target;    // use target position so that any goto will bring us right away to the propoer position  
+            ref_dec = dec->pos_target;  // use target position so that any goto will bring us right away to the propoer position;
+            if ( standby_goto == 1 ) standby_goto = 2;
+            }
+         else
+            {
+            ref_ra = ra->pos; 
+            ref_dec = dec->pos;
+            }
+
          set_vector(&work, (unsigned long * ) &ref_ra, (unsigned long * ) &ref_dec); 
          }
       else if ( polar_state == 2 )
@@ -1839,10 +1853,10 @@ if ( use_polar )
       } 
    else if ( polar_state<90 )  // states [80..89] final, generate the delta RA and delta DEC
       {
-      dd_v[DDS_DEBUG + 0x18]=ref_ra;
-      dd_v[DDS_DEBUG + 0x19]=desired_ra;
-      dd_v[DDS_DEBUG + 0x1A]=ref_dec;
-      dd_v[DDS_DEBUG + 0x1B]=desired_dec;
+//      dd_v[DDS_DEBUG + 0x18]=ref_ra;
+//      dd_v[DDS_DEBUG + 0x19]=desired_ra;
+//      dd_v[DDS_DEBUG + 0x1A]=ref_dec;
+//      dd_v[DDS_DEBUG + 0x1B]=desired_dec;
       loc_ra_correction  = desired_ra  - ref_ra;
       loc_dec_correction = desired_dec - ref_dec;
       if      ( desired_ra  >= 0 && ref_ra  <  0 ) loc_ra_correction  -= DEAD_BAND; 
@@ -1851,18 +1865,30 @@ if ( use_polar )
       else if ( desired_dec <  0 && ref_dec >= 0 ) loc_dec_correction += DEAD_BAND; 
 
       polar_state = 0;
+
+      if ( standby_goto == 2 )
+         {
+         if ( ra_correction > loc_ra_correction )   { if ( ra_correction      - loc_ra_correction  < 200 ) standby_goto =3; }
+         else                                       { if ( loc_ra_correction  - ra_correction      < 200 ) standby_goto =3; }
+         }
+      else if ( standby_goto == 3 )
+         {
+         if ( dec_correction > loc_dec_correction ) { if ( dec_correction     - loc_dec_correction < 200 ) standby_goto =-1; }
+         else                                       { if ( loc_dec_correction - dec_correction     < 200 ) standby_goto =-1; }
+         }
       }
    else polar_state=0;
 
    polar_state++;
 
-   dd_v[DDS_DEBUG + 0x17]=0x1700 + use_x_instead_of_y;
+//   dd_v[DDS_DEBUG + 0x17]=0x1700 + use_x_instead_of_y;
    }
-
-   dd_v[DDS_DEBUG + 0x1C]=ra_correction;
-   dd_v[DDS_DEBUG + 0x1D]=dec_correction;
-   dd_v[DDS_DEBUG + 0x14]=loc_ra_correction;
-   dd_v[DDS_DEBUG + 0x15]=loc_dec_correction;
+else if ( standby_goto == 1 ) standby_goto = -1;  // no wait in this case
+dd_v[DDS_DEBUG + 0x18]=standby_goto;
+//   dd_v[DDS_DEBUG + 0x1C]=ra_correction;
+//   dd_v[DDS_DEBUG + 0x1D]=dec_correction;
+//   dd_v[DDS_DEBUG + 0x14]=loc_ra_correction;
+//   dd_v[DDS_DEBUG + 0x15]=loc_dec_correction;
 }
 
 
@@ -2660,6 +2686,19 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.47  2012/01/03 21:07:05  pmichel
+### DONE ###
+It finally works
+New star positions can be entered
+Polar error is calculated
+Polar is used to correct demanded position
+############
+The only drawback is that the correction is done off-line
+and inhibitted while GOTO are in progress
+so the friction removal of the GOTO has no effect when the correction takes effect after the move
+the only solution is to calculate the correction before the move, apply the correction, then start the GOTO
+....Or change the position method completely and work in h/w position all the time...correct only displayed position
+
 Revision 1.46  2012/01/03 07:16:26  pmichel
 I think the delta RA/DEC parameter will work well
 remains:
