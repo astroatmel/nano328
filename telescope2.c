@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/03 00:41:11 $
-$Id: telescope.c,v 1.44 2012/01/03 00:41:11 pmichel Exp $
-$Locker:  $
-$Revision: 1.44 $
+$Date: 2012/01/03 05:15:44 $
+$Id: telescope.c,v 1.45 2012/01/03 05:15:44 pmichel Exp pmichel $
+$Locker: pmichel $
+$Revision: 1.45 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -118,15 +118,16 @@ char fast_portc=0;
 
 #define MAX_SPEED        (TICKS_P_STEP-TICKS_P_STEP/EARTH_COMP-2)
 
-// This macro makes sure we never stay in the dead band
-#define ADD_VALUE_TO_POS(VALUE,POS)                                         \
-{                                                                           \
-POS += VALUE;                                                               \
-if ( (unsigned long)(POS) >= TICKS_P_DAY )   /* we are in the dead band */  \
-   {                                                                        \
-   if ( VALUE > 0 ) POS += DEAD_BAND; /* step over the dead band */         \
-   else             POS -= DEAD_BAND; /* step over the dead band */         \
-   }                                                                        \
+// This function makes sure we never stay in the dead band
+// using pointers to save space
+void add_value_to_pos(long value,long *pos)
+{
+*pos+=value;
+if ( (unsigned long)(*pos) >= TICKS_P_DAY )   /* we are in the dead band */  
+   {                                                                        
+   if ( value > 0 ) *pos += DEAD_BAND; /* step over the dead band */         
+   else             *pos -= DEAD_BAND; /* step over the dead band */         
+   }                                                                        
 }
 
 #define NB_SAVED 20
@@ -1024,8 +1025,8 @@ void set_vector(VECTOR *VVV,unsigned long *RA,unsigned long *DEC)
 long cos_dec;
 VVV->z  = fp_sin(*DEC);
 cos_dec = fp_cos(*DEC);
-VVV->x  = fp_mult(fp_cos(*RA),cos_dec);
-VVV->y  = fp_mult(fp_sin(*RA),cos_dec);
+VVV->x  = fp_mult(fp_cos(*RA),cos_dec);    // Other function uses subset of the math here, if
+VVV->y  = fp_mult(fp_sin(*RA),cos_dec);    // any of the equation here changes, pls search for set_vector() in comments and change s/w 
 }
 
 // Generate a rotation matrix R from the polar RA and DEC
@@ -1147,8 +1148,8 @@ for ( test_dec = 0 ; test_dec <= 90*TICKS_P_DEG ; test_dec += 45*TICKS_P_DEG )
       //to_console(pgm_polar_z,star.z,FMT_FP,8);
 
 
-   sum = fp_mult(star.x,star.x) + fp_mult(star.y,star.y) + fp_mult(star.z,star.z);
-   display_data((char*)console_buf,0,20,pgm_polar_sum ,sum ,FMT_FP + FMT_CONSOLE + 8);
+      sum = fp_mult(star.x,star.x) + fp_mult(star.y,star.y) + fp_mult(star.z,star.z);
+      display_data((char*)console_buf,0,20,pgm_polar_sum ,sum ,FMT_FP + FMT_CONSOLE + 8);
 
       if ( test_dec == 90*TICKS_P_DEG ) return;
       }
@@ -1199,11 +1200,11 @@ for ( pass = 1 ; pass <=2 ; pass ++ )
             shift = next_ra + ra_idx * ra_span;
             if ( pass == 1 ) 
                {
-               generate_polar_matrix(&PoleMatrix,&shift,&deg, &shift, 0);
+               generate_polar_matrix(& PoleMatrix,&shift,&deg, &shift, 0);
                }
             else  // best ra and best dec found already
                {
-               generate_polar_matrix(&PoleMatrix,&polar_ra,&polar_dec, &shift, 0);
+               generate_polar_matrix(& PoleMatrix,&polar_ra,&polar_dec, &shift, 0);
                }
  
             error_sum=0;
@@ -1280,20 +1281,8 @@ for ( pass = 1 ; pass <=2 ; pass ++ )
    
       }
    }
-generate_polar_matrix(&PoleMatrix,&polar_ra, &polar_dec, &shift,1);
+generate_polar_matrix(& PoleMatrix,&polar_ra, &polar_dec, &shift,1);
    
-display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m11 ,FMT_FP + FMT_CONSOLE + 8);
-display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m21 ,FMT_FP + FMT_CONSOLE + 8);
-display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m31 ,FMT_FP + FMT_CONSOLE + 8);
-
-display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m12 ,FMT_FP + FMT_CONSOLE + 8);
-display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m22 ,FMT_FP + FMT_CONSOLE + 8);
-display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m32 ,FMT_FP + FMT_CONSOLE + 8);
-
-display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m13 ,FMT_FP + FMT_CONSOLE + 8);
-display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m23 ,FMT_FP + FMT_CONSOLE + 8);
-display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m33 ,FMT_FP + FMT_CONSOLE + 8);
-
 use_polar=1;
 }
   
@@ -1629,13 +1618,13 @@ static unsigned short d_idx=0;
 unsigned char Next=0;
 unsigned char CCC;
 
-dd_v[DDS_DEBUG + 0x03]=ra->pos;
-dd_v[DDS_DEBUG + 0x04]=fp_sin(ra->pos);
-dd_v[DDS_DEBUG + 0x05]=ra->pos;
-dd_v[DDS_DEBUG + 0x06]=ra->pos_dem;
-dd_v[DDS_DEBUG + 0x07]=dec->state;
-dd_v[DDS_DEBUG + 0x0D]=goto_cmd + 0x100*moving;
-dd_v[DDS_DEBUG + 0x0F]=ra->state;
+//dd_v[DDS_DEBUG + 0x03]=ra->pos;
+//dd_v[DDS_DEBUG + 0x04]=fp_sin(ra->pos);
+//dd_v[DDS_DEBUG + 0x05]=ra->pos;
+//dd_v[DDS_DEBUG + 0x06]=ra->pos_dem;
+//dd_v[DDS_DEBUG + 0x07]=dec->state;
+//dd_v[DDS_DEBUG + 0x0D]=goto_cmd + 0x100*moving;
+//dd_v[DDS_DEBUG + 0x0F]=ra->state;
 
 if ( redraw ) 
    {
@@ -1743,53 +1732,104 @@ if ( Next != 0 ) UDR0 = Next;
 
 if ( use_polar )
    {
-   static long last_sec;
-   VECTOR before, after;
+   static VECTOR work;  
+   static VECTOR desired;
+   static unsigned char polar_state=0;  // use states to spread the work into many little chunks...mainly because I can have AP0 with SP0
+   static unsigned char use_x_instead_of_y=0;  //
+   static long desired_dec;
+   static long desired_ra;
+   static long test_bit;
+   static long cos_dec;   // temp label
 
-   if ( last_sec != dd_v[DDS_SECONDS] ) 
+   if ( polar_state<10 )  // states [0..9] used to calculate desired X Y Z position
       {
-      long error,sum=0;
-      long tmp_ra,tmp_dec;
-      last_sec = dd_v[DDS_SECONDS];
-
-      tmp_ra  =  saved[last_antena].ra;
-      tmp_dec =  saved[last_antena].dec;
-      set_vector(&before, (unsigned long * ) &tmp_ra , (unsigned long * ) &tmp_dec );
-      set_vector(&after , (unsigned long * ) &ra->pos, (unsigned long * ) &dec->pos);
-
-      dd_v[DDS_DEBUG + 0x08]=after.x;
-      dd_v[DDS_DEBUG + 0x09]=after.y;
-      dd_v[DDS_DEBUG + 0x0A]=after.z;
-      apply_polar_correction(&PoleMatrix,&after);
-      dd_v[DDS_DEBUG + 0x10]=after.x;
-      dd_v[DDS_DEBUG + 0x11]=after.y;
-      dd_v[DDS_DEBUG + 0x12]=after.z;
-
-      dd_v[DDS_DEBUG + 0x13]=last_antena+0x100;
-
-      dd_v[DDS_DEBUG + 0x18]=before.x;
-      dd_v[DDS_DEBUG + 0x19]=before.y;
-      dd_v[DDS_DEBUG + 0x1A]=before.z;
-
-      error = after.x-before.x;
-      error = fp_mult(error,error);
-      dd_v[DDS_DEBUG + 0x1C]=error;
-      sum+=error;
-  
-      error = after.y-before.y;
-      error = fp_mult(error,error);
-      dd_v[DDS_DEBUG + 0x1D]=error;
-      sum+=error;
-
-      error = after.z-before.z;
-      error = fp_mult(error,error);
-      dd_v[DDS_DEBUG + 0x1E]=error;
-      sum+=error;
-
-      dd_v[DDS_DEBUG + 0x1B]=sum;
-
-
+      if      ( polar_state == 1 ) { set_vector(&work, (unsigned long * ) &ra->pos, (unsigned long * ) &dec->pos); }
+      else if ( polar_state == 2 )
+         {
+         dd_v[DDS_DEBUG + 0x08]=work.x;  // Actual value
+         dd_v[DDS_DEBUG + 0x09]=work.y;  // Actual value
+         dd_v[DDS_DEBUG + 0x0A]=work.z;  // Actual value
+         }
+      else if ( polar_state == 3 ) { set_vector(&desired , (unsigned long * ) &ra->pos, (unsigned long * ) &dec->pos); } 
+      else if ( polar_state == 4 ) { apply_polar_correction(&PoleMatrix,&desired); } 
+      else if ( polar_state == 5 )
+         {
+         dd_v[DDS_DEBUG + 0x10]=desired.x;
+         dd_v[DDS_DEBUG + 0x11]=desired.y;
+         dd_v[DDS_DEBUG + 0x12]=desired.z;
+         } 
+      else polar_state = 10;   // go to next stage
       }
+   else if ( polar_state<40 )  // states [10..39] where we find the required DEC to get the same Z as the desired Z
+      {
+      if      ( polar_state == 11 ) // setup
+         {
+         if ( desired.z & 0x80000000 ) desired_dec=0x80000000; // negative DEC
+         else                          desired_dec=0x00000000;
+         test_bit = 0x40000000; 
+         }
+      else if ( test_bit >= 0x00000400 ) // while this is true, polar_state will go from 11 to .... 31 
+         {
+         work.z = fp_sin(desired_dec | test_bit);  // try this bit    // Short version of set_vector() function
+         if ( work.z < desired.z ) desired_dec |= test_bit; // ok, still under, set the bit
+         test_bit = test_bit >> 1;
+         }
+      else  // go to next stage
+         {
+         long abs_x,abs_y;
+         if ( desired.x < 0 ) abs_x = -desired.x;
+         else                 abs_x =  desired.x;
+         if ( desired.y < 0 ) abs_y = -desired.y;
+         else                 abs_y =  desired.y;
+         if ( abs_x > abs_y ) use_x_instead_of_y = 0;    // use Y to converge
+         else                 use_x_instead_of_y = 1;    // use X to converge
+         polar_state = 40;    // use X to converge
+         cos_dec = fp_cos(desired_dec);            // Required for the next stages
+         }
+      }
+   else if ( polar_state<80 )  // states [40..79] where we find the required RA to get the same Y as the desired Y    (because abs(x) > abs(y)
+      {
+      if      ( polar_state == 41 ) // setup
+         {
+         if ( desired.y & 0x80000000 ) desired_ra=0x80000000; // negative RA
+         else                          desired_ra=0x00000000;
+         test_bit = 0x40000000; 
+         }
+      else if ( test_bit >= 0x00000400 ) // while this is true, polar_state will go from 11 to .... 31 
+         {
+         if ( use_x_instead_of_y )
+            {
+            work.x  = fp_mult(fp_cos(desired_ra | test_bit),cos_dec);  // try this bit     // Short version of set_vector() function
+            if ( desired.y > 0) 
+               { if (work.x < desired.x)  desired_ra |= test_bit; } // ok, still under, set the bit
+            else
+               { if ( work.x > desired.x) desired_ra |= test_bit; } // ok, still under, set the bit
+            }
+         else
+            {
+            work.y  = fp_mult(fp_sin(desired_ra | test_bit),cos_dec);  // try this bit     // Short version of set_vector() function
+            if ( desired.x > 0) 
+               { if ( work.y < desired.y ) desired_ra |= test_bit; } // ok, still under, set the bit
+            else
+               { if ( work.y > desired.y ) desired_ra |= test_bit; } // ok, still under, set the bit
+            }
+         test_bit = test_bit >> 1;
+         }
+      else polar_state = 80; // go to next stage
+      } 
+   else if ( polar_state<90 )  // states [80..89] final, generate the delta RA and delta DEC
+      {
+      dd_v[DDS_DEBUG + 0x18]=ra->pos;
+      dd_v[DDS_DEBUG + 0x19]=desired_ra;
+      dd_v[DDS_DEBUG + 0x1A]=dec->pos;
+      dd_v[DDS_DEBUG + 0x1B]=desired_dec;
+      polar_state = 0;
+      }
+   else polar_state=0;
+
+   polar_state++;
+   // apply_polar_correction(&PoleMatrix,&after);
+   // dd_v[DDS_DEBUG + 0x04]=fp_sin(ra->pos);
    }
 }
 
@@ -2023,11 +2063,11 @@ if ( axis->accel_seq > ACCEL_PERIOD )
       if ( -axis->speed > MAX_SPEED )                    axis->speed = -MAX_SPEED;
       }
    }
-ADD_VALUE_TO_POS(axis->speed,axis->pos);
+add_value_to_pos(axis->speed,&axis->pos);
 axis->pos_displ += axis->speed;            // Use a parallel pos counter that is independent from the DEADBAND
 
 axis->pos_dem = axis->pos;
-if ( ra_axis ) ADD_VALUE_TO_POS(axis->pos_earth,axis->pos_dem);   // add the earth's rotation only on the RA axis
+if ( ra_axis ) add_value_to_pos(axis->pos_earth,&axis->pos_dem);   // add the earth's rotation only on the RA axis
 
 axis->pos_cor = axis->pos_dem;
 
@@ -2117,7 +2157,7 @@ if ( temp >= TICKS_P_STEP )
    // too long to complete !!set_digital_output(DO_RA_DIR,0); // go backward
    //FAST_SET_RA_DIR(0);
    ra->direction=FAST_RA_DIR;
-   ADD_VALUE_TO_POS(-TICKS_P_STEP,ra->pos_hw);
+   add_value_to_pos(-TICKS_P_STEP,&ra->pos_hw);
    ra->next=FAST_RA_STEP;
    }
 else if ( -temp >= TICKS_P_STEP )
@@ -2125,7 +2165,7 @@ else if ( -temp >= TICKS_P_STEP )
    // too long to complete !!set_digital_output(DO_RA_DIR,1); // go forward
    //FAST_SET_RA_DIR(1);
    ra->direction=0x00;
-   ADD_VALUE_TO_POS(TICKS_P_STEP,ra->pos_hw);
+   add_value_to_pos(TICKS_P_STEP,&ra->pos_hw);
    ra->next=FAST_RA_STEP;
    }
 else { ra->next=0; }
@@ -2136,7 +2176,7 @@ if ( temp >= (2*TICKS_P_STEP) )      // The DEC axis has 2 times less teeths
    // too long to complete !!set_digital_output(DO_DEC_DIR,0); // go backward
    //FAST_SET_DEC_DIR(0);
    dec->direction=0x00;
-   ADD_VALUE_TO_POS(-(2*TICKS_P_STEP),dec->pos_hw);
+   add_value_to_pos(-(2*TICKS_P_STEP),&dec->pos_hw);
    dec->next=FAST_DEC_STEP;
    }
 else if ( -temp >= (2*TICKS_P_STEP) )
@@ -2144,7 +2184,7 @@ else if ( -temp >= (2*TICKS_P_STEP) )
    // too long to complete !!set_digital_output(DO_DEC_DIR,1); // go forward
    //FAST_SET_DEC_DIR(1);
    dec->direction=FAST_DEC_DIR;
-   ADD_VALUE_TO_POS( (2*TICKS_P_STEP),dec->pos_hw);
+   add_value_to_pos( (2*TICKS_P_STEP),&dec->pos_hw);
    dec->next=FAST_DEC_STEP;
    }
 else { dec->next=0; }
@@ -2232,7 +2272,7 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
    ///////////// Process earth compensation
    // this takes a lot of time . . . .:earth_comp = (earth_comp+1)%EARTH_COMP;
    earth_comp++ ; if ( earth_comp == EARTH_COMP ) earth_comp = 0;
-   if ( earth_comp == 0 && earth_tracking !=0 ) ADD_VALUE_TO_POS(TICKS_P_STEP,ra->pos_earth);    // Correct for the Earth's rotation
+   if ( earth_comp == 0 && earth_tracking !=0 ) add_value_to_pos(TICKS_P_STEP,&ra->pos_earth);    // Correct for the Earth's rotation
    
    ///////////// Process goto
 
@@ -2573,6 +2613,9 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.45  2012/01/03 05:15:44  pmichel
+saved 1K if Flash by optimizing the display() function calls that sends to sonsole
+
 Revision 1.44  2012/01/03 00:41:11  pmichel
 I think the Polar correction works now
 But,
