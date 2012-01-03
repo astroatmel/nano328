@@ -1,13 +1,15 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/03 05:15:44 $
-$Id: telescope.c,v 1.45 2012/01/03 05:15:44 pmichel Exp pmichel $
+$Date: 2012/01/03 07:16:26 $
+$Id: telescope.c,v 1.46 2012/01/03 07:16:26 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.45 $
+$Revision: 1.46 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
 ** when clearing corrected stars positions, ALSO reset the polar vector to 0,0,1
+- Key to disable use_polar
+- ramp up/down the polar correction
 - show current polar X/Y displacement required (in steps)
 - show total error with current polar correction calculation using the stores corrected star position
 - show x and y of polar correction (good indication of direction and amplitude)
@@ -122,12 +124,23 @@ char fast_portc=0;
 // using pointers to save space
 void add_value_to_pos(long value,long *pos)
 {
+//unsigned char was_positive = *pos>=0;
+//unsigned char now_positive;
 *pos+=value;
 if ( (unsigned long)(*pos) >= TICKS_P_DAY )   /* we are in the dead band */  
    {                                                                        
    if ( value > 0 ) *pos += DEAD_BAND; /* step over the dead band */         
    else             *pos -= DEAD_BAND; /* step over the dead band */         
-   }                                                                        
+   }
+//else  // we are not in the dead band, but check to see if we changes side
+//   {
+//   now_positive = *pos>=0;
+//   if (now_positive != was_positive)  // yes we changed side
+//      {
+//      if ( value > 0 ) *pos += DEAD_BAND;
+//      else             *pos -= DEAD_BAND;
+//      }
+//   }
 }
 
 #define NB_SAVED 20
@@ -156,8 +169,8 @@ MATRIX PoleMatrix;
 void set_vector(VECTOR *VVV,unsigned long *RA,unsigned long *DEC);
 void apply_polar_correction(MATRIX *R,VECTOR *S);
 unsigned char use_polar=0;
-unsigned long ra_correction=0;   // local RA correction from polar error
-unsigned long dec_correction=0;  // local DEC correction from polar error
+long loc_ra_correction,ra_correction;   // local RA correction from polar error
+long loc_dec_correction,dec_correction;  // local DEC correction from polar error
 unsigned char last_antena=0;
 
 // I define: 
@@ -1181,6 +1194,7 @@ unsigned char pass;
 VECTOR star,real_star;
 
 use_polar=0;
+motor_disable = 1; // get all the CPU time we can
 
 for ( pass = 1 ; pass <=2 ; pass ++ )
    {
@@ -1421,7 +1435,7 @@ PROGMEM char cmd_states[] = {   0,   1,   6,   9,   0,  11,  10        //   0 re
                             ,   0,   0,   0,   0,   7,   8,   0        //   6 RECORD INPUT / RECORD ANTENA
                             , 103,   0,   0,   0,   0,   0,   0        //   7 RECORD INPUT X
                             , 104,   0,   0,   0,   0,   0,   0        //   8 RECORD ANTENA X
-                            ,   0,   0,   0,   0, 105, 106,   0        //   9 CLEAR ? INPUT / ANTENA / INFO / 
+                            ,   0,   0,   0,   0, 105, 106, 107        //   9 CLEAR ? INPUT / ANTENA / INFO / 
                             ,  10,   0,   0,   0,   0,   0, 108        //  10 GOTO MANUAL POSITION ?
                             ,   0,   0,   0,   0,   0,   0, 109        //  11 ANTENA SEARCH ?
                             };
@@ -1491,8 +1505,9 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
          { for(iii=0;iii<10;iii++) saved[10+iii].ra = saved[10+iii].dec = saved[10+iii].ref_star=0; }
       if ( cmd_state==107 ) // CLEAR ? : clear something else !
          { 
-         if ( code == PROSCAN_VCR1_INFO ) for(iii=0;iii<16;iii++) dd_v[DDS_HISTO+iii]=0; 
-         if ( code == PROSCAN_VCR1_OK ) redraw   = 1;       // redraw everything
+         if ( code == PROSCAN_VCR1_INFO )   for(iii=0;iii<16;iii++) dd_v[DDS_HISTO+iii]=0; 
+         if ( code == PROSCAN_VCR1_OK )     redraw   = 1;       // redraw everything
+         if ( code == PROSCAN_VCR1_SEARCH ) loc_dec_correction=loc_ra_correction=use_polar=0; // Disable polar correction
          cmd_state = 0;
          }
       if ( cmd_state==108 ) // COMPLEX GOTO MANUAL POSITION
@@ -1736,21 +1751,26 @@ if ( use_polar )
    static VECTOR desired;
    static unsigned char polar_state=0;  // use states to spread the work into many little chunks...mainly because I can have AP0 with SP0
    static unsigned char use_x_instead_of_y=0;  //
-   static long desired_dec;
-   static long desired_ra;
+   static long desired_dec,ref_dec;
+   static long desired_ra,ref_ra;
    static long test_bit;
    static long cos_dec;   // temp label
 
    if ( polar_state<10 )  // states [0..9] used to calculate desired X Y Z position
       {
-      if      ( polar_state == 1 ) { set_vector(&work, (unsigned long * ) &ra->pos, (unsigned long * ) &dec->pos); }
+      if      ( polar_state == 1 ) 
+         { 
+         ref_ra = ra->pos;
+         ref_dec = dec->pos;
+         set_vector(&work, (unsigned long * ) &ref_ra, (unsigned long * ) &ref_dec); 
+         }
       else if ( polar_state == 2 )
          {
          dd_v[DDS_DEBUG + 0x08]=work.x;  // Actual value
          dd_v[DDS_DEBUG + 0x09]=work.y;  // Actual value
          dd_v[DDS_DEBUG + 0x0A]=work.z;  // Actual value
          }
-      else if ( polar_state == 3 ) { set_vector(&desired , (unsigned long * ) &ra->pos, (unsigned long * ) &dec->pos); } 
+      else if ( polar_state == 3 ) { set_vector(&desired , (unsigned long * ) &ref_ra, (unsigned long * ) &ref_dec); } 
       else if ( polar_state == 4 ) { apply_polar_correction(&PoleMatrix,&desired); } 
       else if ( polar_state == 5 )
          {
@@ -1801,9 +1821,9 @@ if ( use_polar )
             {
             work.x  = fp_mult(fp_cos(desired_ra | test_bit),cos_dec);  // try this bit     // Short version of set_vector() function
             if ( desired.y > 0) 
-               { if (work.x < desired.x)  desired_ra |= test_bit; } // ok, still under, set the bit
+               { if (work.x > desired.x)  desired_ra |= test_bit; } // ok, still under, set the bit
             else
-               { if ( work.x > desired.x) desired_ra |= test_bit; } // ok, still under, set the bit
+               { if ( work.x < desired.x) desired_ra |= test_bit; } // ok, still under, set the bit
             }
          else
             {
@@ -1819,18 +1839,30 @@ if ( use_polar )
       } 
    else if ( polar_state<90 )  // states [80..89] final, generate the delta RA and delta DEC
       {
-      dd_v[DDS_DEBUG + 0x18]=ra->pos;
+      dd_v[DDS_DEBUG + 0x18]=ref_ra;
       dd_v[DDS_DEBUG + 0x19]=desired_ra;
-      dd_v[DDS_DEBUG + 0x1A]=dec->pos;
+      dd_v[DDS_DEBUG + 0x1A]=ref_dec;
       dd_v[DDS_DEBUG + 0x1B]=desired_dec;
+      loc_ra_correction  = desired_ra  - ref_ra;
+      loc_dec_correction = desired_dec - ref_dec;
+      if      ( desired_ra  >= 0 && ref_ra  <  0 ) loc_ra_correction  -= DEAD_BAND; 
+      else if ( desired_ra  <  0 && ref_ra  >= 0 ) loc_ra_correction  += DEAD_BAND; 
+      if      ( desired_dec >= 0 && ref_dec <  0 ) loc_dec_correction -= DEAD_BAND; 
+      else if ( desired_dec <  0 && ref_dec >= 0 ) loc_dec_correction += DEAD_BAND; 
+
       polar_state = 0;
       }
    else polar_state=0;
 
    polar_state++;
-   // apply_polar_correction(&PoleMatrix,&after);
-   // dd_v[DDS_DEBUG + 0x04]=fp_sin(ra->pos);
+
+   dd_v[DDS_DEBUG + 0x17]=0x1700 + use_x_instead_of_y;
    }
+
+   dd_v[DDS_DEBUG + 0x1C]=ra_correction;
+   dd_v[DDS_DEBUG + 0x1D]=dec_correction;
+   dd_v[DDS_DEBUG + 0x14]=loc_ra_correction;
+   dd_v[DDS_DEBUG + 0x15]=loc_dec_correction;
 }
 
 
@@ -2067,9 +2099,18 @@ add_value_to_pos(axis->speed,&axis->pos);
 axis->pos_displ += axis->speed;            // Use a parallel pos counter that is independent from the DEADBAND
 
 axis->pos_dem = axis->pos;
-if ( ra_axis ) add_value_to_pos(axis->pos_earth,&axis->pos_dem);   // add the earth's rotation only on the RA axis
+if ( ra_axis ) 
+   {
+   add_value_to_pos(axis->pos_earth,&axis->pos_dem);   // add the earth's rotation only on the RA axis
+   axis->pos_cor = axis->pos_dem;
+   add_value_to_pos(ra_correction,&axis->pos_cor);     // add the local polar correction
+   }
+else
+   {
+   axis->pos_cor = axis->pos_dem;
+   add_value_to_pos(dec_correction,&axis->pos_cor);     // add the local polar correction
+   }
 
-axis->pos_cor = axis->pos_dem;
 
 //ra->pos_dem = ra->pos_earth + ra->pos;
 //ra->pos_cor = ra->pos_dem;  // for now, no correction
@@ -2306,7 +2347,13 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
 //   dd_v[DDS_DEBUG + 0x1A]=moving;
 
    if ( moving ) slew_cmd=goto_cmd=0;                   // command received
-   
+   else
+      { // also to avoid overruns
+      if ( ra_correction > loc_ra_correction )   { if ( ra_correction      - loc_ra_correction  > 200 ) ra_correction  -=200; }
+      else                                       { if ( loc_ra_correction  - ra_correction      > 200 ) ra_correction  +=200; }
+      if ( dec_correction > loc_dec_correction ) { if ( dec_correction     - loc_dec_correction > 200 ) dec_correction -=200; }
+      else                                       { if ( loc_dec_correction - dec_correction     > 200 ) dec_correction +=200; }
+      }
    }
 
 close_loop();
@@ -2613,6 +2660,12 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.46  2012/01/03 07:16:26  pmichel
+I think the delta RA/DEC parameter will work well
+remains:
+mode to disactivate polar correction
+methor to slowly activate/disactivate polar
+
 Revision 1.45  2012/01/03 05:15:44  pmichel
 saved 1K if Flash by optimizing the display() function calls that sends to sonsole
 
