@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/02 22:47:24 $
-$Id: telescope.c,v 1.43 2012/01/02 22:47:24 pmichel Exp pmichel $
-$Locker: pmichel $
-$Revision: 1.43 $
+$Date: 2012/01/03 00:41:11 $
+$Id: telescope.c,v 1.44 2012/01/03 00:41:11 pmichel Exp $
+$Locker:  $
+$Revision: 1.44 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -321,7 +321,9 @@ volatile char slew_cmd=0;            //     slew position
 volatile char stop_cmd=0;            // Stop any movement or slew
 volatile char earth_tracking=0;      // Stop earth tracking
 
-void display_data(char *str,short xxx,short yyy,const char *pgm_str,unsigned long value,unsigned char fmt,unsigned char size);
+
+void to_console(const char *pgm_str,unsigned long value,unsigned char fmt,unsigned char size);
+void display_data(char *str,short xxx,short yyy,const char *pgm_str,unsigned long value,unsigned char fmt_size);
 
 ////////////////////////////////////////////// SIN COS /////////////////////////////////////////////////////////////   (uses 3K if flash)
 
@@ -556,22 +558,27 @@ PROGMEM const char display_main[]={"short"};   // I'm too close to the 32K limit
 // I did a check-in before this change, the .HEX size was: 81451 bytes (28K)  free ram was: 0x044D
 //              after the optimization, the .HEX size is : 57061 bytes (20K)  free ram is:  0x0311
 
-// enum
-#define   FMT_NO_VAL    0x00
-#define   FMT_HEX       0x10
-#define   FMT_DEC       0x20
-#define   FMT_HMS       0x30
-#define   FMT_NS        0x40
-#define   FMT_EW        0x50
-#define   FMT_RA        0x60
-#define   FMT_STR       0x70
-#define   FMT_ASC       0x80
-#define   PGM_POLOLU    0x90
-#define   PGM_DIPA328P  0xA0
-#define   PGM_STR       0xB0
-#define   FMT_FP        0xC0
+#define   FMT_MASK_CONSOLE 0x01
+#define   FMT_MASK_FMT     0xF0
+#define   FMT_MASK_SIZE    0x0E    // valid sizes are 2 4 6 8 10 12 14 
 
-#define   DD_FIELDS     0x60
+// enum
+#define   FMT_CONSOLE      0x01
+#define   FMT_NO_VAL       0x00
+#define   FMT_HEX          0x10
+#define   FMT_DEC          0x20
+#define   FMT_HMS          0x30
+#define   FMT_NS           0x40
+#define   FMT_EW           0x50
+#define   FMT_RA           0x60
+#define   FMT_STR          0x70
+#define   FMT_ASC          0x80
+#define   PGM_POLOLU       0x90
+#define   PGM_DIPA328P     0xA0
+#define   PGM_STR          0xB0
+#define   FMT_FP           0xC0
+
+#define   DD_FIELDS        0x60
 volatile long dd_v[DD_FIELDS]; 
 volatile long dd_p[DD_FIELDS];
 
@@ -593,8 +600,8 @@ PROGMEM const unsigned char dd_y[DD_FIELDS]={ 36 , 36 , 36 , 36 , 36 , 36 , 36 ,
 PROGMEM const unsigned char dd_f[DD_FIELDS]={0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18    // 0x00: DEBUG  0->15      all HEX 8 bytes
                                             ,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18    // 0x10: DEBUG 16->31      all HEX 8 bytes
                                             ,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14    // 0x20: Histogram 0->15   all HEX 4 bytes
-                                            ,0x50,0x50,0x50,0x26,0x23,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x30: RA structure values
-                                            ,0x40,0x40,0x40,0x26,0x23,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x40: DEC structure values 
+                                            ,0x50,0x50,0x50,0x26,0x24,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x30: RA structure values
+                                            ,0x40,0x40,0x40,0x26,0x24,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x40: DEC structure values 
                                             ,0x60,0x60,0x60,0x38,0x40,0x50,0x60,0x14,0x18,0x18,0xB0,0x70,0x00,0x00,0x00,0x00    // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
                                             };  
 // define the Start of each variable in the array
@@ -625,9 +632,9 @@ if ( dd_p[task] != dd_v[task] || first)
 
    if ( (XXX == 0) && (YYY == 0) ) return 0; // found nothing to display
 
-   if ( task == DDS_CUR_STAR )     display_data((char*)rs232_tx_buf,XXX,YYY,pgm_stars_name + dd_v[DDS_CUR_STAR] * STAR_NAME_LEN ,0,FMT&0xF0,FMT&0x0F);   // special cases strings stored in FLASH
-   else if ( task == DDS_RX_IDX )  display_data((char*)rs232_tx_buf,XXX,YYY,0,(short)rs232_rx_buf,FMT&0xF0,FMT&0x0F); 
-   else                            display_data((char*)rs232_tx_buf,XXX,YYY,0,dd_v[task],FMT&0xF0,FMT&0x0F);
+   if ( task == DDS_CUR_STAR )     display_data((char*)rs232_tx_buf,XXX,YYY,pgm_stars_name + dd_v[DDS_CUR_STAR] * STAR_NAME_LEN ,0,FMT);   // special cases strings stored in FLASH
+   else if ( task == DDS_RX_IDX )  display_data((char*)rs232_tx_buf,XXX,YYY,0,(short)rs232_rx_buf                                 ,FMT);   // special cases strings stored in FLASH
+   else                            display_data((char*)rs232_tx_buf,XXX,YYY,0,dd_v[task]                                          ,FMT);   // special cases strings stored in FLASH
 
    dd_p[task] = dd_v[task];
    return 1;
@@ -813,13 +820,24 @@ ps(s_send);
 if ( nl ) pgm_ps(NLNL);
 }
 
+
 // Main function to print data in various format
-void display_data(char *str,short xxx,short yyy,const char *pgm_str,unsigned long value,unsigned char fmt,unsigned char size)
+void display_data(char *str,short xxx,short yyy,const char *pgm_str,unsigned long value,unsigned char size)
 {
 short iii=0;
 unsigned long  jjj=0;
 short svalue=(short)value;
+unsigned char fmt;
 char  ccc;
+
+if ( (size & FMT_MASK_CONSOLE) !=0 )  // a bit ugly, but it saves FLASH space
+   {                                // combine the format, the size and the to_console bit
+   while (console_go) display_next(); /* wait for ready */
+   console_go = 1;
+   }
+fmt  = size & FMT_MASK_FMT;       // a bit ugly, but it saves FLASH space
+size = size & FMT_MASK_SIZE;      // combine the format, the size and the to_console bit
+
 // "\033[20;0H" pgm_str value
 str[iii++] = 27;
 str[iii++] = '[';
@@ -911,10 +929,7 @@ else if ( fmt == FMT_NS || fmt == FMT_EW )  // North South / East Weast     > (N
    str[iii++] = '"';  
    str[iii]   = 0;  
 
-   if ( prob ) 
-      {
-      if(console_go==0) {display_data((char*)console_buf,0,20,pgm_display_bug,prob,FMT_HEX,8);  console_go = 1;}
-      }
+   if ( (prob!=0) && (console_go==0)) display_data((char*)console_buf,0,20,pgm_display_bug,prob,FMT_HEX+8);
 
    }
 else if ( fmt == FMT_RA )  // Right Assention    23h59m59.000s
@@ -950,10 +965,7 @@ else if ( fmt == FMT_RA )  // Right Assention    23h59m59.000s
    str[iii++] = 's';  
    str[iii]   = 0;  
 
-   if ( prob ) 
-      {
-      if(console_go==0) {display_data((char*)console_buf,0,20,pgm_display_bug_ra,prob,FMT_HEX,8);  console_go = 1;}
-      }
+   if ( (prob!=0) && (console_go==0)) display_data((char*)console_buf,0,20,pgm_display_bug_ra,prob,FMT_HEX+8);
    }
 else if ( fmt == FMT_DEC )  // Decimal value
    {
@@ -1044,17 +1056,17 @@ R->m33 =  cos_pol_dec                                                           
 
 if ( PRINT !=0  )
    {
-   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m11 ,FMT_FP    ,8);  console_go = 1;
-   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m21 ,FMT_FP    ,8);  console_go = 1;
-   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m31 ,FMT_FP    ,8);  console_go = 1;
+   display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m11 ,FMT_FP + FMT_CONSOLE + 8);
+   display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m21 ,FMT_FP + FMT_CONSOLE + 8);
+   display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m31 ,FMT_FP + FMT_CONSOLE + 8);
    
-   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m12 ,FMT_FP    ,8);  console_go = 1;
-   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m22 ,FMT_FP    ,8);  console_go = 1;
-   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m32 ,FMT_FP    ,8);  console_go = 1;
+   display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m12 ,FMT_FP + FMT_CONSOLE + 8);
+   display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m22 ,FMT_FP + FMT_CONSOLE + 8);
+   display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m32 ,FMT_FP + FMT_CONSOLE + 8);
    
-   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m13 ,FMT_FP    ,8);  console_go = 1;
-   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m23 ,FMT_FP    ,8);  console_go = 1;
-   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m33 ,FMT_FP    ,8);  console_go = 1;
+   display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m13 ,FMT_FP + FMT_CONSOLE + 8);
+   display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m23 ,FMT_FP + FMT_CONSOLE + 8);
+   display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m33 ,FMT_FP + FMT_CONSOLE + 8);
    }
 }
 // use rotation matrix to rotate the star...
@@ -1102,31 +1114,41 @@ VECTOR star;
 
 generate_polar_matrix(&PoleMatrix,&hour, &deg, &shift,0);
 
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL,8);  console_go = 1;
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL,8);  console_go = 1;
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,hour     ,FMT_RA    ,8);  console_go = 1;
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,deg      ,FMT_NS    ,8);  console_go = 1;
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL + FMT_CONSOLE + 8);
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL + FMT_CONSOLE + 8);
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,hour     ,FMT_RA     + FMT_CONSOLE + 8);
+while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,deg      ,FMT_NS     + FMT_CONSOLE + 8);
 
 for ( test_dec = 0 ; test_dec <= 90*TICKS_P_DEG ; test_dec += 45*TICKS_P_DEG )
    {
    for ( test_ra = 0 ; test_ra < 24*TICKS_P_HOUR ; test_ra += 3*TICKS_P_HOUR )
       {
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL,8);  console_go = 1;
+      display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL + FMT_CONSOLE + 8);
+      //to_console(pgm_polar_line,test_ra,FMT_NO_VAL,8);
       set_vector(&star, &test_ra, &test_dec);
 
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,test_ra     ,FMT_RA    ,8);  console_go = 1;
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,test_dec      ,FMT_NS    ,8);  console_go = 1;
+      display_data((char*)console_buf,0,20,pgm_polar_hour,test_ra  ,FMT_RA + FMT_CONSOLE + 8);
+      display_data((char*)console_buf,0,20,pgm_polar_dec ,test_dec ,FMT_NS + FMT_CONSOLE + 8);
+      //to_console(pgm_polar_hour,test_ra,FMT_RA,8);
+      //to_console(pgm_polar_dec,test_dec,FMT_NS,8);
 
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_x ,star.x ,FMT_FP    ,8);  console_go = 1;
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_y ,star.y ,FMT_FP    ,8);  console_go = 1;
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_z ,star.z ,FMT_FP    ,8);  console_go = 1;
+      display_data((char*)console_buf,0,20,pgm_polar_x ,star.x ,FMT_FP + FMT_CONSOLE + 8);
+      display_data((char*)console_buf,0,20,pgm_polar_y ,star.y ,FMT_FP + FMT_CONSOLE + 8);
+      display_data((char*)console_buf,0,20,pgm_polar_z ,star.z ,FMT_FP + FMT_CONSOLE + 8);
+      //to_console(pgm_polar_x,star.x,FMT_FP,8);
+      //to_console(pgm_polar_y,star.y,FMT_FP,8);
+      //to_console(pgm_polar_z,star.z,FMT_FP,8);
       apply_polar_correction(&PoleMatrix,&star);
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_x ,star.x ,FMT_FP    ,8);  console_go = 1;
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_y ,star.y ,FMT_FP    ,8);  console_go = 1;
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_z ,star.z ,FMT_FP    ,8);  console_go = 1;
+      display_data((char*)console_buf,0,20,pgm_polar_x ,star.x ,FMT_FP + FMT_CONSOLE + 8);
+      display_data((char*)console_buf,0,20,pgm_polar_y ,star.y ,FMT_FP + FMT_CONSOLE + 8);
+      display_data((char*)console_buf,0,20,pgm_polar_z ,star.z ,FMT_FP + FMT_CONSOLE + 8);
+      //to_console(pgm_polar_x,star.x,FMT_FP,8);
+      //to_console(pgm_polar_y,star.y,FMT_FP,8);
+      //to_console(pgm_polar_z,star.z,FMT_FP,8);
+
 
    sum = fp_mult(star.x,star.x) + fp_mult(star.y,star.y) + fp_mult(star.z,star.z);
-   while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_sum ,sum ,FMT_FP    ,8);  console_go = 1;
+   display_data((char*)console_buf,0,20,pgm_polar_sum ,sum ,FMT_FP + FMT_CONSOLE + 8);
 
       if ( test_dec == 90*TICKS_P_DEG ) return;
       }
@@ -1236,14 +1258,14 @@ for ( pass = 1 ; pass <=2 ; pass ++ )
          polar_dec = best_dec;
          }
 
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_pass,span_idx    ,FMT_DEC   ,4);  console_go = 1;
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_error,best_error ,FMT_HEX   ,8);  console_go = 1;
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,polar_ra    ,FMT_RA    ,8);  console_go = 1;
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,polar_dec   ,FMT_NS    ,8);  console_go = 1;
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,best_ra     ,FMT_RA    ,8);  console_go = 1;
+      display_data((char*)console_buf,0,20,pgm_polar_pass,span_idx    ,FMT_DEC + FMT_CONSOLE + 4);
+      display_data((char*)console_buf,0,20,pgm_polar_error,best_error ,FMT_HEX + FMT_CONSOLE + 8);
+      display_data((char*)console_buf,0,20,pgm_polar_hour,polar_ra    ,FMT_RA  + FMT_CONSOLE + 8);
+      display_data((char*)console_buf,0,20,pgm_polar_dec ,polar_dec   ,FMT_NS  + FMT_CONSOLE + 8);
+      display_data((char*)console_buf,0,20,pgm_polar_hour,best_ra     ,FMT_RA  + FMT_CONSOLE + 8);
    
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_hour,ra_span     ,FMT_RA    ,8);  console_go = 1;
-      while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_dec ,dec_span    ,FMT_NS    ,8);  console_go = 1;
+      display_data((char*)console_buf,0,20,pgm_polar_hour,ra_span     ,FMT_RA  + FMT_CONSOLE + 8);
+      display_data((char*)console_buf,0,20,pgm_polar_dec ,dec_span    ,FMT_NS  + FMT_CONSOLE + 8);
    
       dec_span = dec_span >> 3; // reduce span to slowly converge towards the solution
       ra_span  = ra_span  >> 3; // reduce span to slowly converge towards the solution
@@ -1260,21 +1282,22 @@ for ( pass = 1 ; pass <=2 ; pass ++ )
    }
 generate_polar_matrix(&PoleMatrix,&polar_ra, &polar_dec, &shift,1);
    
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m11 ,FMT_FP    ,8);  console_go = 1;
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m21 ,FMT_FP    ,8);  console_go = 1;
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m31 ,FMT_FP    ,8);  console_go = 1;
+display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m11 ,FMT_FP + FMT_CONSOLE + 8);
+display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m21 ,FMT_FP + FMT_CONSOLE + 8);
+display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m31 ,FMT_FP + FMT_CONSOLE + 8);
 
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m12 ,FMT_FP    ,8);  console_go = 1;
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m22 ,FMT_FP    ,8);  console_go = 1;
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m32 ,FMT_FP    ,8);  console_go = 1;
+display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m12 ,FMT_FP + FMT_CONSOLE + 8);
+display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m22 ,FMT_FP + FMT_CONSOLE + 8);
+display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m32 ,FMT_FP + FMT_CONSOLE + 8);
 
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m13 ,FMT_FP    ,8);  console_go = 1;
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m23 ,FMT_FP    ,8);  console_go = 1;
-while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m33 ,FMT_FP    ,8);  console_go = 1;
+display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m13 ,FMT_FP + FMT_CONSOLE + 8);
+display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m23 ,FMT_FP + FMT_CONSOLE + 8);
+display_data((char*)console_buf,0,20,pgm_polar_matrix ,PoleMatrix.m33 ,FMT_FP + FMT_CONSOLE + 8);
 
 use_polar=1;
 }
-   
+  
+ 
 #define PROSCAN_VCR1_CH_P   0x021D2E2D
 #define PROSCAN_VCR1_CH_M   0x021D3E2C
 #define PROSCAN_VCR1_VOL_P  0x023D0C2F
@@ -1463,15 +1486,15 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
       if ( cmd_state==103 ) // RECORD INPUT X : record user position X
          { 
          record_pos(jjj);  
-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_recorded_pos   ,jjj   ,FMT_HEX   ,8);  console_go = 1;
+         display_data((char*)console_buf,0,20,pgm_recorded_pos   ,jjj   ,FMT_HEX + FMT_CONSOLE + 8);
          }
       if ( cmd_state==104 ) // RECORD ANTENA X : record star corrected position X
          { 
          record_pos(10+jjj); 
-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_recorded_pos    ,jjj   ,FMT_HEX   ,8);  console_go = 1;
-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_recorded_pos_ra ,saved[10+jjj].ra        ,FMT_HEX   ,8);  console_go = 1;
-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_recorded_pos_dec,saved[10+jjj].dec       ,FMT_HEX   ,8);  console_go = 1;
-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_recorded_pos_ref,saved[10+jjj].ref_star  ,FMT_HEX   ,8);  console_go = 1;
+         display_data((char*)console_buf,0,20,pgm_recorded_pos    ,jjj   ,FMT_HEX + FMT_CONSOLE + 8);
+         display_data((char*)console_buf,0,20,pgm_recorded_pos_ra ,saved[10+jjj].ra        ,FMT_HEX + FMT_CONSOLE + 8);
+         display_data((char*)console_buf,0,20,pgm_recorded_pos_dec,saved[10+jjj].dec       ,FMT_HEX + FMT_CONSOLE + 8);
+         display_data((char*)console_buf,0,20,pgm_recorded_pos_ref,saved[10+jjj].ref_star  ,FMT_HEX + FMT_CONSOLE + 8);
          }
       if ( cmd_state==105 ) // CLEAR INPUT : clear all user positinos
          { for(iii=0;iii<10;iii++) saved[iii].ra = saved[iii].dec = saved[iii].ref_star=0; }
@@ -1705,7 +1728,7 @@ else // print field data
             {
             console_idx = 0;
             console_special_started = 1; 
-            display_data((char*)console_buf,0,20,0,0,FMT_NO_VAL,0);
+            display_data((char*)console_buf,0,20,0,0,FMT_NO_VAL);
             return;
             }
    
@@ -2333,7 +2356,7 @@ unsigned long d_state;
 
 
 
-int main_telescope(void)
+int main(void)
 {
 long iii;
 ///////////////////////////////// Init /////////////////////////////////////////
@@ -2360,8 +2383,7 @@ set_digital_input (DI_REMOTE   ,PULL_UP_ENABLED);
 d_ram = get_free_memory();
 sei();         //enable global interrupts
 
-wait(1,SEC);
-while (console_go) display_next_bg(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_starting,d_ram,FMT_NO_VAL,8);  console_go = 1;
+display_data((char*)console_buf,0,20,pgm_starting,d_ram,FMT_NO_VAL + FMT_CONSOLE + 8);
 
 #ifdef DISPLAY_HELP
    #ifdef POLOLU
@@ -2371,12 +2393,10 @@ while (console_go) display_next_bg(); /* wait for ready */ display_data((char*)c
    #endif
 #endif
 
-while (console_go) display_next_bg(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_free_mem,d_ram,FMT_HEX,8);  console_go = 1;
-while (console_go) display_next_bg();
+display_data((char*)console_buf,0,20,pgm_free_mem,d_ram,FMT_HEX + FMT_CONSOLE + 8);
 
 for ( iii=0 ; iii<31 ; iii++ ) dd_v[DDS_DEBUG + iii] = iii * 0x100;
 
-wait(1,SEC);
 
 dd_v[DDS_DEBUG + 0x0E]=0x3333;
 wait(2,SEC);
@@ -2544,29 +2564,21 @@ wait(5,SEC);
 
 while (1 )
    {
-   dd_v[DDS_DEBUG + 0x0E]=0xAAAA;
-   d_now   = d_TIMER1;
-   wait(1,SEC);
-   dd_v[DDS_DEBUG + 0x0E]=0xBBBB;
-   d_now   = d_TIMER1;
    wait(1,SEC);
    }
 
-d_state = 0;       // simple state machine to test some logic
-   
-while(1);
-
 return 0;
 }
 
-int main(void)
-{
-main_telescope(); 
-return 0;
-}
 
 /*
 $Log: telescope.c,v $
+Revision 1.44  2012/01/03 00:41:11  pmichel
+I think the Polar correction works now
+But,
+I'm stuck with no FLASH left and a result in X Y Z
+I need to convert in delta-TICKS on both axis
+
 Revision 1.43  2012/01/02 22:47:24  pmichel
 Matrix tested ok,
 now even better I fix 2 issues properly, and at the same time
