@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/03 21:07:05 $
-$Id: telescope.c,v 1.47 2012/01/03 21:07:05 pmichel Exp pmichel $
+$Date: 2012/01/03 22:18:20 $
+$Id: telescope.c,v 1.48 2012/01/03 22:18:20 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.47 $
+$Revision: 1.48 $
 $Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
 
 TODO:
@@ -23,12 +23,12 @@ TODO:
 */
 #define AP0_DISPLAY 0    // ca plante asse souvent si j'essaye de rouller avec AP)
 #define TEST_POLAR  0
-#define FULL_DISPLAY  0
+#define FULL_DISPLAY  1
 
 // This is a Little Endian CPU
 // Notes
 // in minicom, to see the degree character, call minicom: minicom -t VT100 
-#include <pololu/orangutan.h>
+//#include <pololu/orangutan.h>
 #include <avr/pgmspace.h>
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -37,8 +37,8 @@ TODO:
 #define AI_BATTERY       ADC6C
 
 #define DO_10KHZ         IO_B2
-#define DI_REMOTE        IO_D2
-#define DO_DISABLE       IO_D4
+#define DI_REMOTE        (1<<2) // IO_D2   PORTD BIT 2
+#define DO_DISABLE       (1<<4) // IO_D4   PORTD BIT 4
 
 #define DO_DEC_DIR       IO_C3  // 0x11   17
 #define DO_DEC_STEP      IO_C2  // 0x10   16
@@ -56,32 +56,32 @@ void wait(long time,long mult);
 
 char fast_portc=0;
 // Use all pins of PORTB for fast outputs  ... B0 B1 cant be used, and B4 B5 causes problem at download time
-#define FAST_SET_RA_DIR_(VAL)                   \
-   {                                           \
-   set_digital_output(DO_RA_DIR  ,VAL    );    \
-   }
-#define FAST_SET_RA_STEP_(VAL)                  \
-   {                                           \
-   set_digital_output(DO_RA_STEP ,VAL    );    \
-   }
-#define FAST_SET_RA_DIR(VAL)                   \
-   {                                           \
-   if ( VAL ) PORTC |= (1<<DO_RA_DIR);      /* Set   C3 */   \
-   else       PORTC &= 255-(1<<DO_RA_DIR);  /* Reset C3 */   \
-   }
-#define FAST_SET_RA_STEP(VAL)                  \
-   {                                           \
-   if ( VAL ) PORTC |= (1<<DO_RA_STEP);      /* Set   C2 */   \
-   else       PORTC &= 255-(1<<DO_RA_STEP);  /* Reset C2 */   \
-   }
-#define FAST_SET_DEC_DIR(VAL)                  \
-   {                                           \
-   set_digital_output(DO_DEC_DIR  ,VAL    );   \
-   }
-#define FAST_SET_DEC_STEP(VAL)                 \
-   {                                           \
-   set_digital_output(DO_DEC_STEP ,VAL    );   \
-   }
+///- #define FAST_SET_RA_DIR_(VAL)                   
+///-    {                                           
+///-    set_digital_output(DO_RA_DIR  ,VAL    );    
+///-    }
+///- #define FAST_SET_RA_STEP_(VAL)                  
+///-    {                                           
+///-    set_digital_output(DO_RA_STEP ,VAL    );    
+///-    }
+///- #define FAST_SET_RA_DIR(VAL)                  
+///-    {                                           
+///-    if ( VAL ) PORTC |= (1<<DO_RA_DIR);      /* Set   C3 */   
+///-    else       PORTC &= 255-(1<<DO_RA_DIR);  /* Reset C3 */   
+///-    }
+///- #define FAST_SET_RA_STEP(VAL)                  
+///-    {                                          
+///-    if ( VAL ) PORTC |= (1<<DO_RA_STEP);      /* Set   C2 */   
+///-    else       PORTC &= 255-(1<<DO_RA_STEP);  /* Reset C2 */   
+///-    }
+///- #define FAST_SET_DEC_DIR(VAL)                  
+///-    {                                           
+///-    set_digital_output(DO_DEC_DIR  ,VAL    );   
+///-    }
+///- #define FAST_SET_DEC_STEP(VAL)                 
+///-    {                                           
+///-    set_digital_output(DO_DEC_STEP ,VAL    );   
+///-    }
  
 ////////////////////////////////// DEFINES /////////////////////////////////////   TICKS_P_STEP * 16 * GEAR_BIG/GEAR_SMALL * STEP_P_REV / RA_DEG_P_REV
 #define F_CPU_K          20000
@@ -226,7 +226,7 @@ PROGMEM const char NLNL[]="\012\015";
               PB4  < 06   IO         AI/IO   19 >  PC4 (ADC4/SDA)\012\015\
               PB5  < 07   IO         AI/IO   18 >  PC3 (ADC3) DO  DEC DIR\012\015\
    DI RX232   PD0  < 08   IO         AI/IO   17 >  PC2 (ADC2) DO  DEC STEP\012\015\
-   DO TX232   PD1  < 09   IO         AI/IO   16 >  PC1 (ADC1) DO  RA DIR\012\015\
+   DO RX232   PD1  < 09   IO         AI/IO   16 >  PC1 (ADC1) DO  RA DIR\012\015\
    IR REMOTE  PD2  < 10   IO         AI/IO   15 >  PC0 (ADC0) DO  RA STEP\012\015\
    DO DISABLE PD4  < 11   IO         AI      14 >      (ADC6) AIP BATTERY MONITOR\012\015\
               PD7  < 12   IO                 13 >  PC6 (RESET)                      * PD7 cant be used as DIP !\012\015\
@@ -314,7 +314,15 @@ PROGMEM const unsigned long pgm_stars_pos[] =    // Note, the positions below mu
 #define NB_PGM_STARS (sizeof(pgm_stars_pos)/8)
 
 PROGMEM const char pgm_free_mem[]="Free Memory:";
-PROGMEM const char pgm_starting[]="Telescope Starting...";
+#ifdef AT_MASTER
+PROGMEM const char pgm_starting[]="Telescope Master Starting...";
+#else
+   #ifdef AT_SLAVE
+   PROGMEM const char pgm_starting[]="Telescope Slave Starting...";
+   #else
+   PROGMEM const char pgm_starting[]="Telescope Starting...";
+   #endif
+#endif
 PROGMEM const char pgm_display_bug[]="Display routines problem with value (FMT_NE/EW):";
 PROGMEM const char pgm_display_bug_ra[]="Display routines problem with value (FMT_RA):";
 volatile unsigned long d_TIMER0;
@@ -364,6 +372,16 @@ sum += (tbh * tal + 0x8000) >> 15;
 
 return sum;
 }
+
+///#ifndef AT_SLAVE
+#ifndef DISABLE_SINCOS
+long fp_sin_low(long fp_45_e1,char COS)
+{ return 0; }
+long fp_sin(unsigned long tick_angle)
+{ return 0; }
+long fp_cos(unsigned long tick_angle)
+{ return 0; }
+#else
 
 // Fixed point representation of the first factorials 1/n!
 #define FAC_2 ((long)0x40000000) // 1/2!  = 1/2     
@@ -473,6 +491,7 @@ else if ( tick_angle > TICKS_P_45_DEG * 3 ) return -fp_sin_low(rad,1);          
 else if ( tick_angle > TICKS_P_45_DEG * 1 ) return -fp_sin_low(rad,0);                    // then -sin(x)
 else                                        return  fp_sin_low(rad,1);                    // then  cos(x)
 }  
+#endif
 
 /////////////////////////////////////////// RMOTE INPUTS ///////////////////////////////////////////////////////////
 // long ir_code,l_ir_code,ll_ir_code,ll_l_ir_code;
@@ -1045,6 +1064,14 @@ VVV->x  = fp_mult(fp_cos(*RA),cos_dec);    // Other function uses subset of the 
 VVV->y  = fp_mult(fp_sin(*RA),cos_dec);    // any of the equation here changes, pls search for set_vector() in comments and change s/w 
 }
 
+//#ifndef DISABLE_SLAVE
+#ifndef DISABLE_MATRIX
+void generate_polar_matrix(MATRIX *R,unsigned long *pol_ra,unsigned long *pol_dec,unsigned long *shift_ra,unsigned char PRINT)
+{ return; }
+void do_polar(void)
+{ return; }
+#else
+
 // Generate a rotation matrix R from the polar RA and DEC
 PROGMEM const char pgm_polar_matrix     []="Polar Matrix: ";
 void generate_polar_matrix(MATRIX *R,unsigned long *pol_ra,unsigned long *pol_dec,unsigned long *shift_ra,unsigned char PRINT)
@@ -1086,36 +1113,7 @@ if ( PRINT !=0  )
    display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m33 ,FMT_FP + FMT_CONSOLE + 8);
    }
 }
-// use rotation matrix to rotate the star...
-void apply_polar_correction(MATRIX *R,VECTOR *S)
-{
-unsigned long x,y,z;
 
-x = fp_mult(R->m11,S->x) + fp_mult(R->m21,S->y) + fp_mult(R->m31,S->z);
-y = fp_mult(R->m12,S->x) + fp_mult(R->m22,S->y) + fp_mult(R->m32,S->z);
-z = fp_mult(R->m13,S->x) + fp_mult(R->m23,S->y) + fp_mult(R->m33,S->z);
-S->x = x;
-S->y = y;
-S->z = z;
-}
-
-PROGMEM const char pgm_polar_pass       []="Pass #:";
-PROGMEM const char pgm_polar_case       []="Case #:";
-PROGMEM const char pgm_polar_hour       []="Hour   :";
-PROGMEM const char pgm_polar_dec        []="Declin :";
-PROGMEM const char pgm_polar_star       []="Star #:";
-PROGMEM const char pgm_polar_error      []="Error :";
-PROGMEM const char pgm_polar_sum        []="Sum = ";
-PROGMEM const char pgm_recorded_pos     []="Rec pos: ";
-PROGMEM const char pgm_recorded_pos_ra  []="RA :";
-PROGMEM const char pgm_recorded_pos_dec []="DEC:";
-PROGMEM const char pgm_recorded_pos_ref []="ref:";
-/*
-Error  : 
-Hour   : 
-Declin : 
-*/
-     
 #if(TEST_POLAR)   
 PROGMEM const char pgm_polar_line       []="_________";
 PROGMEM const char pgm_polar_x      []="X :";
@@ -1302,7 +1300,39 @@ generate_polar_matrix(& PoleMatrix,&polar_ra, &polar_dec, &shift,1);
    
 use_polar=1;
 }
+#endif
+
   
+// use rotation matrix to rotate the star...
+void apply_polar_correction(MATRIX *R,VECTOR *S)
+{
+unsigned long x,y,z;
+
+x = fp_mult(R->m11,S->x) + fp_mult(R->m21,S->y) + fp_mult(R->m31,S->z);
+y = fp_mult(R->m12,S->x) + fp_mult(R->m22,S->y) + fp_mult(R->m32,S->z);
+z = fp_mult(R->m13,S->x) + fp_mult(R->m23,S->y) + fp_mult(R->m33,S->z);
+S->x = x;
+S->y = y;
+S->z = z;
+}
+
+PROGMEM const char pgm_polar_pass       []="Pass #:";
+PROGMEM const char pgm_polar_case       []="Case #:";
+PROGMEM const char pgm_polar_hour       []="Hour   :";
+PROGMEM const char pgm_polar_dec        []="Declin :";
+PROGMEM const char pgm_polar_star       []="Star #:";
+PROGMEM const char pgm_polar_error      []="Error :";
+PROGMEM const char pgm_polar_sum        []="Sum = ";
+PROGMEM const char pgm_recorded_pos     []="Rec pos: ";
+PROGMEM const char pgm_recorded_pos_ra  []="RA :";
+PROGMEM const char pgm_recorded_pos_dec []="DEC:";
+PROGMEM const char pgm_recorded_pos_ref []="ref:";
+/*
+Error  : 
+Hour   : 
+Declin : 
+*/
+     
  
 #define PROSCAN_VCR1_CH_P   0x021D2E2D
 #define PROSCAN_VCR1_CH_M   0x021D3E2C
@@ -1350,7 +1380,6 @@ if ( ! ( moving || goto_cmd ) )
    dec->pos_target = pgm_read_dword(&pgm_stars_pos[pos*2+1]);
    standby_goto = 1;   // ask to fix the error
    while ( standby_goto > 0 ) display_next();   // wait until we are corrected
-   wait(1,SEC);
    standby_goto = 0;
    goto_cmd = 1;
    dd_v[DDS_CUR_STAR] = pos;
@@ -1542,7 +1571,11 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
       else if ( code == PROSCAN_VCR1_POWER   ) 
          {
          motor_disable = !motor_disable;
-         set_digital_output(DO_DISABLE  ,motor_disable);
+         //set_digital_output(DO_DISABLE  ,motor_disable);
+         //if ( motor_disable ) set_digital_output(DO_DISABLE  ,2);  // see: include/pololu/digital.h, it seems that using constants makes the code very efficiant
+         //else                 set_digital_output(DO_DISABLE  ,0);
+         if ( motor_disable ) PORTD |=  DO_DISABLE;
+         else                 PORTD &= ~DO_DISABLE;
          }
       else if ( code == PROSCAN_VCR1_FWD     ) 
          {
@@ -2144,6 +2177,179 @@ else
 return axis->state;
 }
 
+static unsigned char twi_enable=0;
+// Two Wire Interface Telescope Tricks
+void twitt(void)
+{
+static unsigned char twi_state=0;
+static unsigned char wait=0;
+static unsigned char cnt=0x30;
+static unsigned char sequence=8;   // what to request from slave : 1- current selected catalog star, 2- polar correction ... 
+static unsigned char time;
+static unsigned char time_out;
+static unsigned char target=0x20;
+static unsigned short *aa=(unsigned short*)&dd_v[DDS_DEBUG + 0x1C];
+unsigned char *p;
+
+#ifdef AT_MASTER
+time = (unsigned char)(dd_v[DDS_SECONDS]) + 0x55;
+#else
+time = (unsigned char)(dd_v[DDS_SECONDS]);
+#endif
+unsigned char twsr = TWSR&0xF8;  // flush the prescaler bits
+
+if ( !twi_enable ) return;
+
+#ifdef AT_MASTER
+if ( TWCR & wait )  
+   {
+   wait=0;
+
+   if ( sequence < 16 ) 
+      {
+      dd_v[DDS_DEBUG + sequence]=TWCR*0x10000 + twsr*0x100 + twi_state;
+      sequence++;
+      }
+   twi_state++;   // odd states are for wait state
+   }
+
+if      ( twi_state == 0 )  // ready to do a request
+   {
+   if ( twsr == 0xF8 )  // if free ?  I assume all 5 bits=1 means ready ?
+      {
+//dd_v[DDS_DEBUG + 0x01]=TWCR*0x10000 + twsr*0x100 + cnt;
+      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x01]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+      wait = 0x80;   // activate a wait
+      TWCR = 0xA4;   // send a start condition
+      twi_state++;
+      cnt++;
+      }
+   }
+else if ( twi_state == 2 )  // Wait for START SENT
+   {
+   if ( twsr == 0x08 ) // Start sent
+      {
+//dd_v[DDS_DEBUG + 0x02]=TWCR*0x10000 + twsr*0x100 + cnt;
+      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x02]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+      wait = 0x80;   // activate a wait
+//    TWDR = 0x21;   // SLA+R  0x20 + 0x01
+      TWDR = target;   // SLA+W  0x20 + 0x00
+      TWCR = 0x84;   // Send 
+      twi_state++;   // wait for free
+      }
+   }
+else if ( twi_state == 4 )  // Wait for Ack
+   {
+   if      ( twsr == 0x38 ) // Arbitration failled
+      { twi_state=150;  }
+   else if ( twsr == 0x40 ) // ACK received MASTER RECEIVE
+      { 
+      twi_state=105;  
+      }   // code to be written when slave present
+   else if ( twsr == 0x18 ) // ACK received MASTER TRANSMIT
+      { 
+//   dd_v[DDS_DEBUG + 0x03]=time*1000000 + ((unsigned char)TWCR)*0x10000 + twsr*0x100 + cnt;
+      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x03]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+      wait = 0x80;   // activate a wait
+      TWDR = time;   // General data
+      TWCR = 0x84;   // Send 
+      twi_state++;   // wait for free
+      }   // code to be written when slave present
+   else if ( twsr == 0x48 || twsr == 0x20 ) // NO ACK received   SLA+R SLA+W
+      {
+      wait = 0x80;   // activate a wait
+      TWCR = 0x94;   // Send STOP
+      twi_state=160; // we should die in state 200 or 201 repending
+      time_out = time + 1;
+      }
+   }
+else if ( twi_state == 6 )  // Wait for DATA sent
+   {
+   if ( twsr == 0x28 ) // byte transmitted
+      {
+//   dd_v[DDS_DEBUG + 0x03]=time*1000000 + ((unsigned char)TWCR)*0x10000 + twsr*0x100 + cnt;
+      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x04]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+      wait = 0x80;   // activate a wait
+      TWCR = 0x94;   // Send stop
+      twi_state++;   // wait for free
+      }
+   if ( twsr == 0x30 ) // byte transmitted no ack received
+      {
+//   dd_v[DDS_DEBUG + 0x03]=time*1000000 + ((unsigned char)TWCR)*0x10000 + twsr*0x100 + cnt;
+      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x04]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+      wait = 0x80;   // activate a wait
+      TWCR = 0x94;   // Send stop 
+      twi_state=0x6F;   // wait for free
+      }
+   }
+else if ( twi_state == 112 )  // Wait for stop
+   {
+   twi_state++;   // wait for free
+   }
+else if ( twi_state == 160 )  // Wait for stop
+   {
+   if ( time_out == time ) 
+      {
+      twi_state = 0;
+      //target +=2;
+      }
+   }
+p = (unsigned char*)&dd_v[DDS_DEBUG + 0x00]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+//dd_v[DDS_DEBUG + 0x00]=time*0x1000000 + TWCR*0x10000 + twsr*0x100 + twi_state;
+#endif
+
+#ifdef AT_SLAVE
+if ( TWCR & wait )
+   {
+   wait=0;
+   if ( sequence < 16 )
+      {
+      p = (unsigned char*)&dd_v[DDS_DEBUG + sequence]; p[3] = cnt; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+      //dd_v[DDS_DEBUG + sequence]=TWCR*0x10000 + twsr*0x100 + twi_state;
+      sequence++;
+      }
+   if ( twi_state < 16 ) twi_state++;   // odd states are for wait state
+   }
+
+if      ( twi_state == 0 )  // 
+   {
+   wait = 0x80;
+   }
+else if ( twi_state == 1 )  //  
+   {
+   if ( twsr == 0x60 )  // SLA+W
+      {
+p = (unsigned char*)&dd_v[DDS_DEBUG + 0x01]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+//dd_v[DDS_DEBUG + 0x01]=TWCR*0x10000 + twsr*0x100 + cnt;
+      TWCR = 0xC5;   // Got it
+      twi_state++;
+      wait = 0x80;
+      cnt++;
+      }
+   }
+else if ( twi_state == 3 )  // Wait for START SENT
+   {
+   if ( twsr == 0x80 )  // DATA
+      {
+      cnt = TWDR + 1;  // get the data
+      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x02]; p[3] = cnt; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+      TWCR = 0xC5;   // Got it
+      twi_state++;
+      wait = 0x80;
+//dd_v[DDS_DEBUG + 0x02]=TWCR*0x10000 + twsr*0x100 + cnt;
+      }
+   }
+else
+   {
+   //=TWCR = 0x05;   // Got it
+   }
+p = (unsigned char*)&dd_v[DDS_DEBUG + 0x00]; p[3] = cnt; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+//dd_v[DDS_DEBUG + 0x00]=time*0x1000000 + TWCR*0x10000 + twsr*0x100 + twi_state;
+#endif
+if ( (PINC & 0x20) == 0) aa[0]++;
+if ( (PINC & 0x10) == 0) aa[1]++;
+
+}
 
 ////////////////////////////////////////// INTERRUPT SECTION ////////////////////////////////////////////
 ////////////////////////////////////////// INTERRUPT SECTION ////////////////////////////////////////////
@@ -2259,10 +2465,17 @@ else { dec->next=0; }
 //dd_v[DDS_DEBUG + 0x02]=ra->direction;
 //dd_v[DDS_DEBUG + 0x0A]=dec->direction;
 
-PORTC = ra->direction | dec->direction;    // I do this to optimize execution time
+//~~PORTC = ra->direction | dec->direction;    // I do this to optimize execution time
 
 }
 
+#ifdef AT_SLAVE
+ISR(TWI_vect)    // The slave used the interrupt vector ... I think that without setting the vecter, the TWI does not start
+{
+//twitt();
+dd_v[DDS_DEBUG + 0x1D]++;
+}
+#endif
 //  IR CODE:
 //  The code is in the delay between "1"
 //  __-----__-__-_-_-__-__-__-   
@@ -2271,7 +2484,6 @@ PORTC = ra->direction | dec->direction;    // I do this to optimize execution ti
 //  Then goes to 0 for either 0x0B~0x0C : Logic 0    or either 0x15~0x16 : Logic 1
 //  The  Start bit is a "1" for ~ 0x2A then a "0" for !0x2A
 //  The code with Proscan is about 25 bits of information
-
 #define KEY_OFF 1000
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 10 KHz
 {
@@ -2284,13 +2496,19 @@ static unsigned short ir_key_off=0;  // limit the inputs to 4 per seconds
 
 // These takes too long to complete !!!  set_digital_output(DO_RA_STEP ,ra->next);     // eventually, I should use my routines...flush polopu...
 // These takes too long to complete !!!  set_digital_output(DO_DEC_STEP,dec->next);    // eventually, I should use my routines...flush polopu...
-PORTC = ra->next | dec->next | ra->direction | dec->direction;    // I do this to optimize execution time   activate the STEP CLOCK OUTPUT
+//~~PORTC = ra->next | dec->next | ra->direction | dec->direction;    // I do this to optimize execution time   activate the STEP CLOCK OUTPUT
+
+twitt();
+#ifdef AT_MASTER
+twitt();
+#endif
 
 //////////////////////// Process IR ///////////////////////
 
 IR2  = IR1;
 IR1  = IR0;
-IR0  = is_digital_input_high(DI_REMOTE);
+/// - IR0  = is_digital_input_high(DI_REMOTE);
+IR0  = (PIND & DI_REMOTE) !=0;
 IR   = IR0 & IR1 & IR2;
 if ( ir_key_off < KEY_OFF) ir_key_off++;
 if ( code_started!=0 || IR!=0 )
@@ -2443,6 +2661,10 @@ if ( AP0_DISPLAY == 1 )      // because only one interrupt can be active on the 
    OCR0A   = F_CPU_K/(10*8); // F_CPU_K/(10*8);     Clock divider set to 8, so F_CPU_K/10/8 is CLK / 1000 / 10 thus, every 10000 there will be an interrupt : 10Khz
    OCR0B   = F_CPU_K/(20*8); // By default, set the PWM to 50%
    }
+
+#ifdef AT_SLAVE
+
+#endif
 }
 
 extern void __bss_end;
@@ -2481,19 +2703,40 @@ init_disp();
 
 
 ps("\033[2J");
-ps("telescope starting...");
 
-set_digital_output(DO_DISABLE  ,motor_disable);   // Start disabled
-set_digital_output(DO_RA_DIR   ,PULL_UP_ENABLED);
-set_digital_output(DO_RA_STEP  ,PULL_UP_ENABLED);    
-set_digital_output(DO_DEC_DIR  ,PULL_UP_ENABLED);    
-set_digital_output(DO_DEC_STEP ,PULL_UP_ENABLED);    
-set_digital_output(DO_10KHZ    ,PULL_UP_ENABLED);    // Set 10 Khz pwm output of OC1B (from TIMER 1) used to control the steps
-set_digital_input (DI_REMOTE   ,PULL_UP_ENABLED);
-//DDRC = 0x00; // set pins 0 1 2 3 of port C as output
+//set_digital_output(DO_RA_STEP  ,PULL_UP_ENABLED);       // PORTC BIT 0
+//set_digital_output(DO_RA_DIR   ,PULL_UP_ENABLED);       // PORTC BIT 1
+//set_digital_output(DO_DEC_STEP ,PULL_UP_ENABLED);       // PORTC BIT 2
+//set_digital_output(DO_DEC_DIR  ,PULL_UP_ENABLED);       // PORTC BIT 3
+// set_digital_output(DO_10KHZ    ,PULL_UP_ENABLED);   // PORTB BIT 2  // Set 10 Khz pwm output of OC1B (from TIMER 1) used to control the steps
+// set_digital_input (DI_REMOTE   ,PULL_UP_ENABLED);   // PORTD BIT 2
+//set_digital_output(DO_DISABLE  ,motor_disable);   // Start disabled
+PORTD &= ~DO_DISABLE;  // Start with motor disabled disabled
+
+DDRB = 0x04; // set pins 2 of port B as output     (logic 1 = output)          >> 10KHZ out
+DDRC = 0x3F; // set pins 0 1 2 3 of port C as output     (logic 1 = output)    >> STEP AND DIR   plus TWI pins
+DDRD = 0x06; // set pins 1 and 2 of port D as output     (logic 1 = output)    >> RS232 TX and DO DISABLE
 
 //set_analog_mode(MODE_8_BIT);                         // 8-bit analog-to-digital conversions
 d_ram = get_free_memory();
+
+#ifdef AT_MASTER
+   PRR   = 0x00;  // enable TWI and all other systems
+   TWSR  = 0x01;  // Set the Prescaler to 64;
+   TWBR  = 23;   // 4 x 50 = 200 thus TWI clock is 100khz
+   TWAR  = 0x10;  // TWI Address 0x10 + 1 for General Call (Broadcasts)
+   TWCR  = 0x44;  // TWEA & TWEN -> activate the address
+#endif
+
+#ifdef AT_SLAVE
+   PRR   = 0x00;  // enable TWI and all other systems
+   TWSR  = 0x01;  // Set the Prescaler to 64;
+   TWBR  = 23;   // 4 x 50 = 200 thus TWI clock is 100khz
+//   TWAMR = 0xFE;  // TWI Address 0x20 + 1 for General Call (Broadcasts)
+   TWAR  = 0x20;  // TWI Address 0x20 + 1 for General Call (Broadcasts)
+   TWCR  = 0x45;  // TWEA & TWEN -> activate the address  +1 for interrupt enable
+#endif
+
 sei();         //enable global interrupts
 
 display_data((char*)console_buf,0,20,pgm_starting,d_ram,FMT_NO_VAL + FMT_CONSOLE + 8);
@@ -2509,10 +2752,33 @@ display_data((char*)console_buf,0,20,pgm_starting,d_ram,FMT_NO_VAL + FMT_CONSOLE
 display_data((char*)console_buf,0,20,pgm_free_mem,d_ram,FMT_HEX + FMT_CONSOLE + 8);
 
 for ( iii=0 ; iii<31 ; iii++ ) dd_v[DDS_DEBUG + iii] = iii * 0x100;
+motor_disable = 1;
+         if ( motor_disable ) PORTD |=  DO_DISABLE;
+         else                 PORTD &= ~DO_DISABLE;
 
 
 dd_v[DDS_DEBUG + 0x0E]=0x3333;
+
 wait(2,SEC);
+#ifdef AT_SLAVE
+twi_enable = 1;  // slave starts first
+#else
+wait(2,SEC);  // make sure the master starts after the slave
+twi_enable = 1;  // Master starts later
+#endif
+
+#ifdef AT_SLAVE
+wait(1,SEC);
+   TWAR  = 0x20;  // TWI Address 0x20 + 1 for General Call (Broadcasts)
+   TWCR  = 0x44;  // TWEA & TWEN -> activate the address
+wait(1,SEC);
+   TWAR  = 0x20;  // TWI Address 0x20 + 1 for General Call (Broadcasts)
+   TWCR  = 0x84;  // TWEA & TWEN -> activate the address
+wait(1,SEC);
+   TWAR  = 0x20;  // TWI Address 0x20 + 1 for General Call (Broadcasts)
+   TWCR  = 0x44;  // TWEA & TWEN -> activate the address
+
+#endif
 
 d_now   = d_TIMER1;
 //for(iii=0;iii<16;iii++) dd_v[DDS_HISTO + iii]=0;
@@ -2686,6 +2952,9 @@ return 0;
 
 /*
 $Log: telescope.c,v $
+Revision 1.48  2012/01/03 22:18:20  pmichel
+Small patch to correct the polar error before the goto
+
 Revision 1.47  2012/01/03 21:07:05  pmichel
 ### DONE ###
 It finally works
