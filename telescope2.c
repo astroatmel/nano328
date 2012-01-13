@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/13 20:50:21 $
-$Id: telescope2.c,v 1.49 2012/01/13 20:50:21 pmichel Exp pmichel $
+$Date: 2012/01/13 21:30:55 $
+$Id: telescope2.c,v 1.50 2012/01/13 21:30:55 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.49 $
+$Revision: 1.50 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -2295,6 +2295,7 @@ p = (unsigned char*)&dd_v[DDS_DEBUG + 0x00]; p[3] = time; p[2] = TWCR; p[1] = tw
 
 if      ( twi_state == 0 )  // 
    {
+   p = (unsigned char*)&dd_v[DDS_DEBUG + 0x01]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
    wait = 0x80;
    twi_state++;
    }
@@ -2302,8 +2303,8 @@ else if ( twi_state == 1 )  //
    {
    if ( twsr == 0x60 )  // SLA+W
       {
-      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x01]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
-      TWCR = 0xC5;   // Got it
+      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x02]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+      TWCR = 0xC4;   // Got it
       twi_state++;
       wait = 0x80;
       cnt++;
@@ -2314,8 +2315,8 @@ else if ( twi_state == 2 )  // Wait for START SENT
    if ( twsr == 0x80 )  // DATA
       {
       cnt = TWDR + 1;  // get the data
-      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x02]; p[3] = cnt; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
-      TWCR = 0xC5;   // Got it
+      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x03]; p[3] = cnt; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+      TWCR = 0xC4;   // Got it
       twi_state++;
       wait = 0x80;
       }
@@ -2451,12 +2452,14 @@ else { dec->next=0; }
 }
 
 #ifdef AT_SLAVE
-ISR(TWI_vect)    // The slave used the interrupt vector ... I think that without setting the vecter, the TWI does not start
-{
+//ISR(TWI_vect)    // The slave used the interrupt vector ... I think that without setting the vecter, the TWI does not start
+//{
 //twitt();
-dd_v[DDS_DEBUG + 0x1D]++;
-}
+//dd_v[DDS_DEBUG + 0x1D]++;
+//}
 #endif
+
+
 //  IR CODE:
 //  The code is in the delay between "1"
 //  __-----__-__-_-_-__-__-__-   
@@ -2479,8 +2482,9 @@ static unsigned short ir_key_off=0;  // limit the inputs to 4 per seconds
 // These takes too long to complete !!!  set_digital_output(DO_DEC_STEP,dec->next);    // eventually, I should use my routines...flush polopu...
 //~~PORTC = ra->next | dec->next | ra->direction | dec->direction;    // I do this to optimize execution time   activate the STEP CLOCK OUTPUT
 
-twitt();
 #ifdef AT_MASTER
+twitt();
+#else
 twitt();
 #endif
 
@@ -2715,7 +2719,7 @@ d_ram = get_free_memory();
    TWBR  = 23;   // 4 x 50 = 200 thus TWI clock is 100khz
 //   TWAMR = 0xFE;  // TWI Address 0x20 + 1 for General Call (Broadcasts)
    TWAR  = 0x20;  // TWI Address 0x20 + 1 for General Call (Broadcasts)
-   TWCR  = 0x45;  // TWEA & TWEN -> activate the address  +1 for interrupt enable
+   TWCR  = 0x44;  // TWEA & TWEN -> activate the address  +1 for interrupt enable - in which case ISR(TWI_vect) must be defined
 #endif
 
 sei();         //enable global interrupts
@@ -2933,6 +2937,9 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.50  2012/01/13 21:30:55  pmichel
+small improvement
+
 Revision 1.49  2012/01/13 20:50:21  pmichel
 First BYTE transmitted via TWI
 ouf...
