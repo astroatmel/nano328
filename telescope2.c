@@ -1,10 +1,10 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/03 22:18:20 $
-$Id: telescope.c,v 1.48 2012/01/03 22:18:20 pmichel Exp pmichel $
+$Date: 2012/01/13 20:50:21 $
+$Id: telescope2.c,v 1.49 2012/01/13 20:50:21 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.48 $
-$Source: /home/pmichel/project/telescope/RCS/telescope.c,v $
+$Revision: 1.49 $
+$Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
 ** when clearing corrected stars positions, ALSO reset the polar vector to 0,0,1
@@ -2200,24 +2200,23 @@ unsigned char twsr = TWSR&0xF8;  // flush the prescaler bits
 
 if ( !twi_enable ) return;
 
-#ifdef AT_MASTER
 if ( TWCR & wait )  
    {
    wait=0;
-
    if ( sequence < 16 ) 
       {
-      dd_v[DDS_DEBUG + sequence]=TWCR*0x10000 + twsr*0x100 + twi_state;
+      p = (unsigned char*)&dd_v[DDS_DEBUG + sequence]; p[3] = cnt; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       sequence++;
       }
-   twi_state++;   // odd states are for wait state
+   // if ( twi_state < 16 ) twi_state++;   // odd states are for wait state
    }
+else if (wait) return;  // still waiting
 
+#ifdef AT_MASTER
 if      ( twi_state == 0 )  // ready to do a request
    {
    if ( twsr == 0xF8 )  // if free ?  I assume all 5 bits=1 means ready ?
       {
-//dd_v[DDS_DEBUG + 0x01]=TWCR*0x10000 + twsr*0x100 + cnt;
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x01]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       wait = 0x80;   // activate a wait
       TWCR = 0xA4;   // send a start condition
@@ -2225,11 +2224,10 @@ if      ( twi_state == 0 )  // ready to do a request
       cnt++;
       }
    }
-else if ( twi_state == 2 )  // Wait for START SENT
+else if ( twi_state == 1 )  // Wait for START SENT
    {
    if ( twsr == 0x08 ) // Start sent
       {
-//dd_v[DDS_DEBUG + 0x02]=TWCR*0x10000 + twsr*0x100 + cnt;
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x02]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       wait = 0x80;   // activate a wait
 //    TWDR = 0x21;   // SLA+R  0x20 + 0x01
@@ -2238,7 +2236,7 @@ else if ( twi_state == 2 )  // Wait for START SENT
       twi_state++;   // wait for free
       }
    }
-else if ( twi_state == 4 )  // Wait for Ack
+else if ( twi_state == 2 )  // Wait for Ack
    {
    if      ( twsr == 0x38 ) // Arbitration failled
       { twi_state=150;  }
@@ -2248,7 +2246,6 @@ else if ( twi_state == 4 )  // Wait for Ack
       }   // code to be written when slave present
    else if ( twsr == 0x18 ) // ACK received MASTER TRANSMIT
       { 
-//   dd_v[DDS_DEBUG + 0x03]=time*1000000 + ((unsigned char)TWCR)*0x10000 + twsr*0x100 + cnt;
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x03]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       wait = 0x80;   // activate a wait
       TWDR = time;   // General data
@@ -2263,11 +2260,10 @@ else if ( twi_state == 4 )  // Wait for Ack
       time_out = time + 1;
       }
    }
-else if ( twi_state == 6 )  // Wait for DATA sent
+else if ( twi_state == 3 )  // Wait for DATA sent
    {
    if ( twsr == 0x28 ) // byte transmitted
       {
-//   dd_v[DDS_DEBUG + 0x03]=time*1000000 + ((unsigned char)TWCR)*0x10000 + twsr*0x100 + cnt;
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x04]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       wait = 0x80;   // activate a wait
       TWCR = 0x94;   // Send stop
@@ -2275,7 +2271,6 @@ else if ( twi_state == 6 )  // Wait for DATA sent
       }
    if ( twsr == 0x30 ) // byte transmitted no ack received
       {
-//   dd_v[DDS_DEBUG + 0x03]=time*1000000 + ((unsigned char)TWCR)*0x10000 + twsr*0x100 + cnt;
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x04]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       wait = 0x80;   // activate a wait
       TWCR = 0x94;   // Send stop 
@@ -2291,43 +2286,30 @@ else if ( twi_state == 160 )  // Wait for stop
    if ( time_out == time ) 
       {
       twi_state = 0;
-      //target +=2;
       }
    }
 p = (unsigned char*)&dd_v[DDS_DEBUG + 0x00]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
-//dd_v[DDS_DEBUG + 0x00]=time*0x1000000 + TWCR*0x10000 + twsr*0x100 + twi_state;
 #endif
 
 #ifdef AT_SLAVE
-if ( TWCR & wait )
-   {
-   wait=0;
-   if ( sequence < 16 )
-      {
-      p = (unsigned char*)&dd_v[DDS_DEBUG + sequence]; p[3] = cnt; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
-      //dd_v[DDS_DEBUG + sequence]=TWCR*0x10000 + twsr*0x100 + twi_state;
-      sequence++;
-      }
-   if ( twi_state < 16 ) twi_state++;   // odd states are for wait state
-   }
 
 if      ( twi_state == 0 )  // 
    {
    wait = 0x80;
+   twi_state++;
    }
 else if ( twi_state == 1 )  //  
    {
    if ( twsr == 0x60 )  // SLA+W
       {
-p = (unsigned char*)&dd_v[DDS_DEBUG + 0x01]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
-//dd_v[DDS_DEBUG + 0x01]=TWCR*0x10000 + twsr*0x100 + cnt;
+      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x01]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       TWCR = 0xC5;   // Got it
       twi_state++;
       wait = 0x80;
       cnt++;
       }
    }
-else if ( twi_state == 3 )  // Wait for START SENT
+else if ( twi_state == 2 )  // Wait for START SENT
    {
    if ( twsr == 0x80 )  // DATA
       {
@@ -2336,7 +2318,6 @@ else if ( twi_state == 3 )  // Wait for START SENT
       TWCR = 0xC5;   // Got it
       twi_state++;
       wait = 0x80;
-//dd_v[DDS_DEBUG + 0x02]=TWCR*0x10000 + twsr*0x100 + cnt;
       }
    }
 else
@@ -2951,7 +2932,11 @@ return 0;
 
 
 /*
-$Log: telescope.c,v $
+$Log: telescope2.c,v $
+Revision 1.49  2012/01/13 20:50:21  pmichel
+First BYTE transmitted via TWI
+ouf...
+
 Revision 1.48  2012/01/03 22:18:20  pmichel
 Small patch to correct the polar error before the goto
 
