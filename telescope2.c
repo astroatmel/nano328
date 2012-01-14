@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/13 21:48:28 $
-$Id: telescope2.c,v 1.51 2012/01/13 21:48:28 pmichel Exp pmichel $
+$Date: 2012/01/14 05:00:29 $
+$Id: telescope2.c,v 1.52 2012/01/14 05:00:29 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.51 $
+$Revision: 1.52 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -2211,6 +2211,7 @@ unsigned char twsr = TWSR&0xF8;  // flush the prescaler bits
 if ( !twi_enable ) return;
 
 p = (unsigned char*)&dd_v[DDS_DEBUG + 0x00]; p[3] = cnt; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+dd_v[DDS_HISTO +  0] = wait;
 
 if ( TWCR & wait )  
    {
@@ -2234,6 +2235,12 @@ if      ( twi_state == 0 )  // ready to do a request
       twi_state++;
       dta++;
       }
+//   if ( twsr == 0x00 ) 
+//      {
+//      TWCR = 0x94;   // Send STOP
+//      twi_state=0x05; 
+//      ddll = 10;
+//      }
    }
 else if ( twi_state == 1 )  // Wait for START SENT
    {
@@ -2244,6 +2251,10 @@ else if ( twi_state == 1 )  // Wait for START SENT
       TWDR = target;   // SLA+W  0x20 + 0x00
       TWCR = 0x84;   // Send 
       twi_state++;   // wait for free
+      }
+   else
+      {
+      dd_v[DDS_HISTO + 8]--;
       }
    }
 else if ( twi_state == 2 )  // Wait for Ack
@@ -2269,9 +2280,13 @@ else if ( twi_state == 2 )  // Wait for Ack
       {
       TWCR = 0x94;   // Send STOP
       twi_state=0x05; 
-      ddll = 10;
+      ddll = 5;
       aa[1]++;  // High part
       dd_v[DDS_HISTO + 15]--;
+      }
+   else
+      {
+      dd_v[DDS_HISTO + 9]--;
       }
    }
 else if ( twi_state == 3 )  // Wait for DATA sent
@@ -2287,11 +2302,15 @@ else if ( twi_state == 3 )  // Wait for DATA sent
 //      twi_state=0xA0;
       twi_state++;
       }
-   if ( twsr == 0x30 ) // byte transmitted no ack received
+   else if ( twsr == 0x30 ) // byte transmitted no ack received
       {
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x04]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       TWCR = 0x94;   // Send stop 
       twi_state=0x6F;   // wait for free
+      }
+   else
+      {
+      dd_v[DDS_HISTO + 10]--;
       }
    }
 else if ( twi_state == 4 )  // Stop
@@ -2303,13 +2322,18 @@ else if ( twi_state == 4 )  // Stop
 //      time_out = time + 1;
 //      twi_state=0xA0;
       twi_state++;
-      ddll = 3;  // wait 0.3ms    // this value is dependant on the device, the EEPROM requires 5ms : ddll=50
+      dd_v[DDS_HISTO + 14]--;
+      ddll = 4;  // wait 0.3ms    // this value is dependant on the device, the EEPROM requires 5ms : ddll=50
       }
-   if ( twsr == 0x30 ) // byte transmitted no ack received
+   else if ( twsr == 0x30 ) // byte transmitted no ack received
       {
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x04]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       TWCR = 0x94;   // Send stop 
       twi_state=0x6F;   // wait for free
+      }
+   else
+      {
+      dd_v[DDS_HISTO + 11]--;
       }
    }
 else if ( twi_state == 0x05 )  // Wait for stop
@@ -2327,6 +2351,9 @@ else if ( twi_state == 0xA0 )  // Wait for stop
 #endif
 
 #ifdef AT_SLAVE
+// For the slave mode, it's very bad to put values in TWCR when we are in bizzare states
+// it's best to ignore those states because writing in TWCR, might cause the slave to drive the SDA low
+// and cause a false start case...
 
 if      ( twi_state == 0 )  // 
    {
@@ -2343,10 +2370,15 @@ else if ( twi_state == 1 )  //
       twi_state++;
       wait = 0x80;
       }
+   else // other failures
+      { 
+      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x03]; p[3] = dta; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+      dd_v[DDS_HISTO + 14]--;
+      }
    }
 else if ( twi_state == 2 )  // Wait for START SENT
    {
-   p = (unsigned char*)&dd_v[DDS_DEBUG + 0x03]; p[3] = dta; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+   p = (unsigned char*)&dd_v[DDS_DEBUG + 0x04]; p[3] = dta; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
    if ( twsr == 0x80 )  // DATA
       {
       cnt++;
@@ -2356,12 +2388,18 @@ else if ( twi_state == 2 )  // Wait for START SENT
       //twi_state++;
       wait = 0x80;
       }
-   if ( twsr == 0xA0 )  // Done
+   else if ( twsr == 0xA0 )  // Done
       { 
+      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x05]; p[3] = dta; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       wait = 0x80;
       twi_state = 1;
-      dta = TWDR;  // get the data
+      dta = TWDR;  // get the data ... though I dont think there is anything valid in this case
       TWCR = 0xC4;   // Got it
+      }
+   else // other failures
+      { 
+      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x06]; p[3] = dta; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+      dd_v[DDS_HISTO + 15]--;
       }
    }
 else
@@ -2973,6 +3011,11 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.52  2012/01/14 05:00:29  pmichel
+Quite fast version
+sending ~ 0x1000 bytes per second
+sometimes I get stuck in state 6F
+
 Revision 1.51  2012/01/13 21:48:28  pmichel
 TWI working in polling
 
