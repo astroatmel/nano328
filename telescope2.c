@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/14 05:00:29 $
-$Id: telescope2.c,v 1.52 2012/01/14 05:00:29 pmichel Exp pmichel $
+$Date: 2012/01/14 21:00:28 $
+$Id: telescope2.c,v 1.53 2012/01/14 21:00:28 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.52 $
+$Revision: 1.53 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -2206,6 +2206,7 @@ time = (unsigned char)(dd_v[DDS_SECONDS]) + 0x55;
 #else
 time = (unsigned char)(dd_v[DDS_SECONDS]);
 #endif
+unsigned char twcr = TWCR & wait; 
 unsigned char twsr = TWSR&0xF8;  // flush the prescaler bits
 
 if ( !twi_enable ) return;
@@ -2213,9 +2214,10 @@ if ( !twi_enable ) return;
 p = (unsigned char*)&dd_v[DDS_DEBUG + 0x00]; p[3] = cnt; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
 dd_v[DDS_HISTO +  0] = wait;
 
-if ( TWCR & wait )  
+if ( twcr )    // I seem to get called with Status=0xF8 ... why ?  ... because I was reading TWCR after reading twsr ... so I could get premature statuses
    {
    wait=0;
+   twsr = TWSR&0xF8;  // flush the prescaler bits
    if ( sequence < 31 ) 
       {
       sequence++;
@@ -2224,6 +2226,7 @@ if ( TWCR & wait )
    }
 else if (wait) return;  // still waiting
 
+
 #ifdef AT_MASTER
 if      ( twi_state == 0 )  // ready to do a request
    {
@@ -2231,6 +2234,7 @@ if      ( twi_state == 0 )  // ready to do a request
       {
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x01]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       wait = 0x80;   // activate a wait
+      TWDR = target;   // will this have an effect ?
       TWCR = 0xA4;   // send a start condition
       twi_state++;
       dta++;
@@ -2252,41 +2256,37 @@ else if ( twi_state == 1 )  // Wait for START SENT
       TWCR = 0x84;   // Send 
       twi_state++;   // wait for free
       }
-   else
+   else 
       {
-      dd_v[DDS_HISTO + 8]--;
+//      dd_v[DDS_HISTO + 8]--;
+      p = (unsigned char*)&dd_v[DDS_HISTO + 8];  p[1]++; p[0] = twsr;
       }
    }
 else if ( twi_state == 2 )  // Wait for Ack
    {
-   if      ( twsr == 0x38 ) // Arbitration failled
-      { twi_state=150;  }
-   else if ( twsr == 0x40 ) // ACK received MASTER RECEIVE
-      { 
-      twi_state=105;  
-      }   // code to be written when slave present
-   else if ( twsr == 0x18 ) // ACK received MASTER TRANSMIT
+   if ( twsr == 0x18 ) // ACK received MASTER TRANSMIT
       { 
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x03]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       wait = 0x80;   // activate a wait
 //      TWDR = time;   // General data
-      TWDR = 0x55;   // General data
       cnt++;
       aa[0]++;
+      TWDR = 0x55;   // General data
       TWCR = 0x84;   // Send 
       twi_state++;   // wait for free
       }   // code to be written when slave present
    else if ( twsr == 0x48 || twsr == 0x20 ) // NO ACK received   SLA+R SLA+W
-      {
+      {  // required otherwise we can jam here
       TWCR = 0x94;   // Send STOP
       twi_state=0x05; 
-      ddll = 5;
+      ddll = 1;
       aa[1]++;  // High part
       dd_v[DDS_HISTO + 15]--;
       }
-   else
+   else 
       {
-      dd_v[DDS_HISTO + 9]--;
+//      dd_v[DDS_HISTO + 9]--;
+      p = (unsigned char*)&dd_v[DDS_HISTO + 9];  p[1]++; p[0] = twsr;
       }
    }
 else if ( twi_state == 3 )  // Wait for DATA sent
@@ -2294,23 +2294,25 @@ else if ( twi_state == 3 )  // Wait for DATA sent
    if ( twsr == 0x28 ) // byte transmitted
       {
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x04]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+               wait = 0x80;   // activate a wait
       cnt++;
       aa[0]++;
       TWDR = 0xAA;   // General data
       TWCR = 0x84;   // Send 
-//      time_out = time + 1;
-//      twi_state=0xA0;
       twi_state++;
       }
    else if ( twsr == 0x30 ) // byte transmitted no ack received
-      {
+      {  // required otherwise we can jam here
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x04]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
-      TWCR = 0x94;   // Send stop 
-      twi_state=0x6F;   // wait for free
+      TWCR = 0x94;   // Send STOP
+      twi_state=0x05; 
+      ddll = 1;
+      //dd_v[DDS_HISTO + 15]--;
       }
    else
       {
-      dd_v[DDS_HISTO + 10]--;
+//      dd_v[DDS_HISTO + 10]--;
+      p = (unsigned char*)&dd_v[DDS_HISTO + 10];  p[1]++; p[0] = twsr;
       }
    }
 else if ( twi_state == 4 )  // Stop
@@ -2323,17 +2325,19 @@ else if ( twi_state == 4 )  // Stop
 //      twi_state=0xA0;
       twi_state++;
       dd_v[DDS_HISTO + 14]--;
-      ddll = 4;  // wait 0.3ms    // this value is dependant on the device, the EEPROM requires 5ms : ddll=50
+//      ddll = 1;  // wait 0.3ms    // this value is dependant on the device, the EEPROM requires 5ms : ddll=50
       }
    else if ( twsr == 0x30 ) // byte transmitted no ack received
-      {
+      {  // required otherwise we can jam here
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x04]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
-      TWCR = 0x94;   // Send stop 
-      twi_state=0x6F;   // wait for free
+      TWCR = 0x94;   // Send STOP
+      twi_state=0x05; 
+      ddll = 1;
+      //dd_v[DDS_HISTO + 15]--;
       }
    else
-      {
-      dd_v[DDS_HISTO + 11]--;
+      { // no need to do anyhting on other codes
+      p = (unsigned char*)&dd_v[DDS_HISTO + 11];  p[1]++; p[0] = twsr;
       }
    }
 else if ( twi_state == 0x05 )  // Wait for stop
@@ -3011,6 +3015,11 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.53  2012/01/14 21:00:28  pmichel
+Second fast version,
+lots of glitches seems to remain
+but it's time to make a small state machine
+
 Revision 1.52  2012/01/14 05:00:29  pmichel
 Quite fast version
 sending ~ 0x1000 bytes per second
