@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/13 21:30:55 $
-$Id: telescope2.c,v 1.50 2012/01/13 21:30:55 pmichel Exp pmichel $
+$Date: 2012/01/13 21:48:28 $
+$Id: telescope2.c,v 1.51 2012/01/13 21:48:28 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.50 $
+$Revision: 1.51 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -50,6 +50,7 @@ TODO:
 #define FAST_DEC_STEP    0x04
 #define FAST_DEC_DIR     0x08
 
+void twitt(void);
 void wait(long time,long mult);
 #define SEC 10000
 #define MSEC 10
@@ -331,7 +332,6 @@ volatile unsigned long d_USART_RX;
 volatile unsigned long d_USART_TX;
 unsigned long d_now;
 short ssec=0;
-unsigned short histo_sp0=1; // place to store histogram of 10Khz interrupt routine
 
 long l_ra_pos1,l_ra_pos2,l_dec_pos,l_ra_pos_hw,l_ra_pos_hw1,l_ra_pos_hw2,l_dec_pos_hw;
 long l_ra_pos_cor1,l_ra_pos_cor2,l_dec_pos_cor;
@@ -1479,15 +1479,22 @@ PROGMEM char cmd_states[] = {   0,   1,   6,   9,   0,  11,  10        //   0 re
                             ,  10,   0,   0,   0,   0,   0, 108        //  10 GOTO MANUAL POSITION ?
                             ,   0,   0,   0,   0,   0,   0, 109        //  11 ANTENA SEARCH ?
                             };
+short ddll=0;
 
 void display_next_bg(void) 
 {
 short iii,jjj;
 
+#ifdef AT_SLAVE
+twitt();
+#else
+twitt();
+#endif
+
 if ( AP0_DISPLAY == 0 ) display_next();  // if not printing from AP0, then print here
 
 ///// Process IR commands
-dd_v[DDS_DEBUG + 0x0C] = cmd_state;
+//dd_v[DDS_DEBUG + 0x0C] = cmd_state;
 
 if ( l_ir_count != dd_v[DDS_IR_COUNT])
    {
@@ -2183,12 +2190,15 @@ void twitt(void)
 {
 static unsigned char twi_state=0;
 static unsigned char wait=0;
-static unsigned char cnt=0x30;
+static unsigned char cnt=0;
+static unsigned char dta;
 static unsigned char sequence=8;   // what to request from slave : 1- current selected catalog star, 2- polar correction ... 
 static unsigned char time;
+#ifdef AT_MASTER
 static unsigned char time_out;
 static unsigned char target=0x20;
-static unsigned short *aa=(unsigned short*)&dd_v[DDS_DEBUG + 0x1C];
+#endif
+static unsigned short *aa=(unsigned short*)&dd_v[DDS_DEBUG + 0x1F];
 unsigned char *p;
 
 #ifdef AT_MASTER
@@ -2200,15 +2210,16 @@ unsigned char twsr = TWSR&0xF8;  // flush the prescaler bits
 
 if ( !twi_enable ) return;
 
+p = (unsigned char*)&dd_v[DDS_DEBUG + 0x00]; p[3] = cnt; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+
 if ( TWCR & wait )  
    {
    wait=0;
-   if ( sequence < 16 ) 
+   if ( sequence < 31 ) 
       {
-      p = (unsigned char*)&dd_v[DDS_DEBUG + sequence]; p[3] = cnt; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       sequence++;
+      p = (unsigned char*)&dd_v[DDS_DEBUG + sequence]; p[3] = cnt; p[2] = dta ; p[1] = twsr; p[0] = twi_state;
       }
-   // if ( twi_state < 16 ) twi_state++;   // odd states are for wait state
    }
 else if (wait) return;  // still waiting
 
@@ -2221,7 +2232,7 @@ if      ( twi_state == 0 )  // ready to do a request
       wait = 0x80;   // activate a wait
       TWCR = 0xA4;   // send a start condition
       twi_state++;
-      cnt++;
+      dta++;
       }
    }
 else if ( twi_state == 1 )  // Wait for START SENT
@@ -2230,7 +2241,6 @@ else if ( twi_state == 1 )  // Wait for START SENT
       {
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x02]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       wait = 0x80;   // activate a wait
-//    TWDR = 0x21;   // SLA+R  0x20 + 0x01
       TWDR = target;   // SLA+W  0x20 + 0x00
       TWCR = 0x84;   // Send 
       twi_state++;   // wait for free
@@ -2248,16 +2258,20 @@ else if ( twi_state == 2 )  // Wait for Ack
       { 
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x03]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       wait = 0x80;   // activate a wait
-      TWDR = time;   // General data
+//      TWDR = time;   // General data
+      TWDR = 0x55;   // General data
+      cnt++;
+      aa[0]++;
       TWCR = 0x84;   // Send 
       twi_state++;   // wait for free
       }   // code to be written when slave present
    else if ( twsr == 0x48 || twsr == 0x20 ) // NO ACK received   SLA+R SLA+W
       {
-      wait = 0x80;   // activate a wait
       TWCR = 0x94;   // Send STOP
-      twi_state=160; // we should die in state 200 or 201 repending
-      time_out = time + 1;
+      twi_state=0x05; 
+      ddll = 10;
+      aa[1]++;  // High part
+      dd_v[DDS_HISTO + 15]--;
       }
    }
 else if ( twi_state == 3 )  // Wait for DATA sent
@@ -2265,30 +2279,51 @@ else if ( twi_state == 3 )  // Wait for DATA sent
    if ( twsr == 0x28 ) // byte transmitted
       {
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x04]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
-      wait = 0x80;   // activate a wait
-      TWCR = 0x94;   // Send stop
-      twi_state++;   // wait for free
+      cnt++;
+      aa[0]++;
+      TWDR = 0xAA;   // General data
+      TWCR = 0x84;   // Send 
+//      time_out = time + 1;
+//      twi_state=0xA0;
+      twi_state++;
       }
    if ( twsr == 0x30 ) // byte transmitted no ack received
       {
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x04]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
-      wait = 0x80;   // activate a wait
       TWCR = 0x94;   // Send stop 
       twi_state=0x6F;   // wait for free
       }
    }
-else if ( twi_state == 112 )  // Wait for stop
+else if ( twi_state == 4 )  // Stop
    {
-   twi_state++;   // wait for free
-   }
-else if ( twi_state == 160 )  // Wait for stop
-   {
-   if ( time_out == time ) 
+   if ( twsr == 0x28 ) // byte transmitted
       {
-      twi_state = 0;
+      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x04]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+      TWCR = 0x94;   // Send stop
+//      time_out = time + 1;
+//      twi_state=0xA0;
+      twi_state++;
+      ddll = 3;  // wait 0.3ms    // this value is dependant on the device, the EEPROM requires 5ms : ddll=50
+      }
+   if ( twsr == 0x30 ) // byte transmitted no ack received
+      {
+      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x04]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+      TWCR = 0x94;   // Send stop 
+      twi_state=0x6F;   // wait for free
       }
    }
-p = (unsigned char*)&dd_v[DDS_DEBUG + 0x00]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+else if ( twi_state == 0x05 )  // Wait for stop
+   {
+   if ( ddll == 0 ) twi_state=0; 
+   }
+else if ( twi_state == 0xA0 )  // Wait for stop
+   {
+   p = (unsigned char*)&dd_v[DDS_DEBUG + 0x05]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+   if ( time_out == time ) 
+      {
+//      twi_state = 0;
+      }
+   }
 #endif
 
 #ifdef AT_SLAVE
@@ -2301,35 +2336,42 @@ if      ( twi_state == 0 )  //
    }
 else if ( twi_state == 1 )  //  
    {
+   p = (unsigned char*)&dd_v[DDS_DEBUG + 0x02]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
    if ( twsr == 0x60 )  // SLA+W
       {
-      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x02]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       TWCR = 0xC4;   // Got it
       twi_state++;
       wait = 0x80;
-      cnt++;
       }
    }
 else if ( twi_state == 2 )  // Wait for START SENT
    {
+   p = (unsigned char*)&dd_v[DDS_DEBUG + 0x03]; p[3] = dta; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
    if ( twsr == 0x80 )  // DATA
       {
-      cnt = TWDR + 1;  // get the data
-      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x03]; p[3] = cnt; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
+      cnt++;
+      aa[0]++;
+      dta = TWDR;  // get the data
       TWCR = 0xC4;   // Got it
-      twi_state++;
+      //twi_state++;
       wait = 0x80;
+      }
+   if ( twsr == 0xA0 )  // Done
+      { 
+      wait = 0x80;
+      twi_state = 1;
+      dta = TWDR;  // get the data
+      TWCR = 0xC4;   // Got it
       }
    }
 else
    {
    //=TWCR = 0x05;   // Got it
    }
-p = (unsigned char*)&dd_v[DDS_DEBUG + 0x00]; p[3] = cnt; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
 //dd_v[DDS_DEBUG + 0x00]=time*0x1000000 + TWCR*0x10000 + twsr*0x100 + twi_state;
 #endif
-if ( (PINC & 0x20) == 0) aa[0]++;
-if ( (PINC & 0x10) == 0) aa[1]++;
+//if ( (PINC & 0x20) == 0) aa[0]++;
+//if ( (PINC & 0x10) == 0) aa[1]++;
 
 }
 
@@ -2370,26 +2412,12 @@ if ( (PINC & 0x10) == 0) aa[1]++;
 
 ISR(TIMER0_OVF_vect)     // AP0C0 ... process RS232 events
 {                       
-unsigned long histo;
 d_TIMER0++;
- 
 TIMSK0 = 0;     // timer0 interrupt disable (prevent re-entrant)
-
 sei();
 display_next();
-
 while ( TCNT1*100UL > F_CPU_K*9UL ) ; // if SP0 is about to start, wait... I dont want to be interruped in the next iterations  -> while(TCNT1 > 90% of target)
 TCNT0 = 0;                            // Make sure I'm not called in the next iterations by my own AP0 interrupt
-
-if ( histo_sp0 == 0 ) // if we are not monitoring SP0
-   {  
-   histo = TCNT0;
-   histo *= 15 * 10 * 8;  // TCNT0 counts from 0 to F_CPU_K/10/8 (see OCR0A) 
-   histo /= F_CPU_K;      // TCNT0 counts from 0 to F_CPU_K/10/8 (see OCR0A) 
-   if ( histo > 15 ) histo=15;
-   dd_v[DDS_HISTO + histo]++;
-   }
-
 TIMSK0 = 1;     // timer0 interrupt enable
 }
 
@@ -2447,7 +2475,7 @@ else { dec->next=0; }
 //dd_v[DDS_DEBUG + 0x02]=ra->direction;
 //dd_v[DDS_DEBUG + 0x0A]=dec->direction;
 
-//~~PORTC = ra->direction | dec->direction;    // I do this to optimize execution time
+PORTC = ra->direction | dec->direction;    // I do this to optimize execution time
 
 }
 
@@ -2480,13 +2508,21 @@ static unsigned short ir_key_off=0;  // limit the inputs to 4 per seconds
 
 // These takes too long to complete !!!  set_digital_output(DO_RA_STEP ,ra->next);     // eventually, I should use my routines...flush polopu...
 // These takes too long to complete !!!  set_digital_output(DO_DEC_STEP,dec->next);    // eventually, I should use my routines...flush polopu...
-//~~PORTC = ra->next | dec->next | ra->direction | dec->direction;    // I do this to optimize execution time   activate the STEP CLOCK OUTPUT
-
-#ifdef AT_MASTER
-twitt();
-#else
-twitt();
+PORTC = ra->next | dec->next | ra->direction | dec->direction;    // I do this to optimize execution time   activate the STEP CLOCK OUTPUT
+if ( ddll > 0 ) ddll--;  // test delay to reduce the responce speed of the slave
+#ifdef AT_SLAVE
+if (ddll==0) 
+   {
+//   twitt();
+   ddll = 3;
+   }
 #endif
+
+//#ifdef AT_MASTER
+//twitt();
+//#else
+//twitt();
+//#endif
 
 //////////////////////// Process IR ///////////////////////
 
@@ -2587,15 +2623,14 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
 
 close_loop();
 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // This section terminates the interrupt routine and will help identify how much CPU time we use in the real-time interrupt
-if ( histo_sp0 == 1 ) // if we are not monitoring SP0
-   {  
-   histo = TCNT1;
-   histo *= 15 * 10;  // TCNT1 counts from 0 to F_CPU_K/10 (see OCR1A) 
-   histo /= F_CPU_K;  // TCNT1 counts from 0 to F_CPU_K/10 (see OCR1A) 
-   if ( histo > 15 ) histo=15;
-   dd_v[DDS_HISTO + histo]++;
-   }
+//   histo = TCNT1; 
+//   histo *= 15 * 10;  // TCNT1 counts from 0 to F_CPU_K/10 (see OCR1A) 
+//   histo /= F_CPU_K;  // TCNT1 counts from 0 to F_CPU_K/10 (see OCR1A) 
+histo = TCNT1 >> 7;  // This is an approximation of the above because the division takes a lot of cycles ... about 40% of one iteration !
+if ( histo > 15 ) histo=15;
+dd_v[DDS_HISTO + histo]++;
 }
 
 ISR(USART_RX_vect)
@@ -2697,6 +2732,7 @@ ps("\033[2J");
 // set_digital_input (DI_REMOTE   ,PULL_UP_ENABLED);   // PORTD BIT 2
 //set_digital_output(DO_DISABLE  ,motor_disable);   // Start disabled
 PORTD &= ~DO_DISABLE;  // Start with motor disabled disabled
+PORTC  = 0x3F;         // Set outputs to 1...this is to avoid a glitch on the scope
 
 DDRB = 0x04; // set pins 2 of port B as output     (logic 1 = output)          >> 10KHZ out
 DDRC = 0x3F; // set pins 0 1 2 3 of port C as output     (logic 1 = output)    >> STEP AND DIR   plus TWI pins
@@ -2937,6 +2973,9 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.51  2012/01/13 21:48:28  pmichel
+TWI working in polling
+
 Revision 1.50  2012/01/13 21:30:55  pmichel
 small improvement
 
