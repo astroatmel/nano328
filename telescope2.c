@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/15 05:55:42 $
-$Id: telescope2.c,v 1.55 2012/01/15 05:55:42 pmichel Exp pmichel $
+$Date: 2012/01/15 20:44:55 $
+$Id: telescope2.c,v 1.56 2012/01/15 20:44:55 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.55 $
+$Revision: 1.56 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -2189,7 +2189,12 @@ return axis->state;
 // the background fills or decodes this buffer
 // command buffers ; format : TWI_TARGET_ADDRESS, DATA, DATA ..., CHECKSUM     (note BYTE_COUNT is the count of DATA bytes plus 2...the address and the checksum)
 //                  example : 0x20 , 0x0A, 0x12, 0x34, 0x56, 0x78 , 0x12, 0x34, 0x56, 0x78 , 0xCE   <- The sum of the checksum and the data = 0  (address is not part of the checksum)
+#ifdef AT_MASTER
 unsigned char twi_buf[40]={ 0x20 , 0x0A, 0x12, 0x34, 0x56, 0x78 , 0x12, 0x34, 0x56, 0x78 , 0xCE }, *twi_ptr;
+#endif
+#ifdef AT_SLAVE
+unsigned char twi_buf[40], *twi_ptr;
+#endif
 // As for the data, the format is the same for master and slave:
 // BYTE_COUNT, RXID, TX_ID, TXDATA, TXDATA ... from the master to the slave, TXID identifies that the data belongs to, and RXID asks the slave what to prepate
 // BYTE_COUNT, RXID, TX_ID, RXDATA, RXDATA ... from the slave to the master, RXID is the requested data ID, RXDATA is the requested data, and TXID is a confirmation of the last data that the slave received
@@ -2236,8 +2241,8 @@ PROGMEM char twi_states[] = {   0x01 , 0xFF , 0xF8 , 0xA4 , 0xC0 ,  0x00        
 // Special code contains:
 // 0x80 Wait request
 // 0x40 Reset pointer, get size and target
-// 0x20 update count, and if 0, then twi_state++
-// 0x10 
+// 0x20 SLA+W update count, and if 0, then twi_state++   (Master Transmits)
+// 0x10 SLA+R update count, and if 0, then twi_state++   (Slave Transmits)
 // 0x0F Identifies which index to imcrement (debug counter)  0..15
 
 static unsigned char twi_enable=0;
@@ -2251,11 +2256,12 @@ static unsigned char dta;
 static unsigned char sequence=8;   // what to request from slave : 1- current selected catalog star, 2- polar correction ... 
 static unsigned char time;
 #ifdef AT_MASTER
-static unsigned char time_out;
-static unsigned char target=0x20;
+#endif
+#ifdef AT_SLAVE
+unsigned char SR2;
+#endif
 static unsigned char twi_idx;
 unsigned char SR;
-#endif
 static unsigned short *aa=(unsigned short*)&dd_v[DDS_DEBUG + 0x1F];
 unsigned char *p;
 
@@ -2316,7 +2322,7 @@ else if (wait) return;  // still waiting
       }
 #endif
 
-#ifdef AT_SLAVE_NEW
+#ifdef AT_SLAVE
 SR  = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_SR ] );
 SR2 = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_SR2 ] );
 if ( (twsr == SR) || (twsr == SR2) || (SR == 0xFF) )   // TWI operation complete, check the status result
@@ -2339,69 +2345,10 @@ else                                  // we did not match the expected status re
    if ( ES !=0xFF ) twi_state = ES;   // if a valid new state, use it
    p = (unsigned char*)&dd_v[DDS_HISTO + 8 + twi_state];  p[1]++; p[0] = twsr;
    }
-#endif
-
-
-#ifdef AT_SLAVE
-// For the slave mode, it's very bad to put values in TWCR when we are in bizzare states
-// it's best to ignore those states because writing in TWCR, might cause the slave to drive the SDA low
-// and cause a false start case...
-
-if      ( twi_state == 0 )  // 
-   {
-   p = (unsigned char*)&dd_v[DDS_DEBUG + 0x01]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
-   twi_state++;
-   }
-else if ( twi_state == 1 )  //  Wait to be addressed
-   {
-   p = (unsigned char*)&dd_v[DDS_DEBUG + 0x02]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
-   if ( twsr == 0x60 )  // SLA+W
-      {
-      TWCR = 0xC4;   // Got it
-      twi_state++;
-      }
-   else if ( twsr == 0xA8 )  // SLA+R
-      {
-      TWCR = 0xC4;   // Got it
-      twi_state=10; //TBD
-      }
-   else // other failures
-      { 
-      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x03]; p[3] = dta; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
-      dd_v[DDS_HISTO + 14]--;
-      }
-   }
-else if ( twi_state == 2 )  // Wait for START SENT
-   {
-   p = (unsigned char*)&dd_v[DDS_DEBUG + 0x04]; p[3] = dta; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
-   if ( twsr == 0x80 )  // DATA
-      {
-      cnt++;
-      aa[0]++;
-      dta = TWDR;  // get the data
-      TWCR = 0xC4;   // Got it
-      //twi_state++;
-      }
-   else if ( twsr == 0xA0 )  // Done
-      { 
-      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x05]; p[3] = dta; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
-      dta = TWDR;  // get the data ... though I dont think there is anything valid in this case
-      TWCR = 0xC4;   // Got it
-      twi_state = 1;
-      }
-   else // other failures
-      { 
-      p = (unsigned char*)&dd_v[DDS_DEBUG + 0x06]; p[3] = dta; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
-      dd_v[DDS_HISTO + 15]--;
-      twi_state = 1;  // go back to wait mode
-      }
-   }
-else
-   {
-   //=TWCR = 0x05;   // Got it
-   }
-//dd_v[DDS_DEBUG + 0x00]=time*0x1000000 + TWCR*0x10000 + twsr*0x100 + twi_state;
 wait = 0x80;
+p = (unsigned char*)&dd_v[DDS_DEBUG + 0x19]; p[3] = twi_buf[0]; p[2] = twi_buf[1]; p[1] = twi_buf[2]; p[0] = twi_buf[3];
+p = (unsigned char*)&dd_v[DDS_DEBUG + 0x1A]; p[3] = twi_buf[4]; p[2] = twi_buf[5]; p[1] = twi_buf[6]; p[0] = twi_buf[7];
+p = (unsigned char*)&dd_v[DDS_DEBUG + 0x1B]; p[3] = twi_buf[8]; p[2] = twi_buf[9]; p[1] = twi_buf[10]; p[0] = twi_buf[11];
 #endif
 
 //if ( (PINC & 0x20) == 0) aa[0]++;
@@ -3006,6 +2953,10 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.56  2012/01/15 20:44:55  pmichel
+Corretions tested ok:
+first send the Byte count, then RXID, then TXID, then DATA, then Checksum
+
 Revision 1.55  2012/01/15 05:55:42  pmichel
 Hum, lots of success in a short time
 the Fucking short version works almost first shot
