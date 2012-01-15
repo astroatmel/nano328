@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/14 21:00:28 $
-$Id: telescope2.c,v 1.53 2012/01/14 21:00:28 pmichel Exp pmichel $
+$Date: 2012/01/14 22:28:09 $
+$Id: telescope2.c,v 1.54 2012/01/14 22:28:09 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.53 $
+$Revision: 1.54 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -2184,6 +2184,51 @@ else
 return axis->state;
 }
 
+
+///////////////////////////////////////////// TWI /////////////////////////////////////////////////////////////////////////////////
+// the background fills or decodes this buffer
+// command buffers ; format : BYTE_COUNT , TWI_TARGET_ADDRESS, DATA, DATA ..., CHECKSUM     (note BYTE_COUNT INCLUDES all fields)
+//                  example : 0x08 , 0x20 , 0x12, 0x34, 0x56, 0x78 , 0x12, 0x34, 0x56, 0x78 , 0xD8   <- 0xD8 plus the sum of the 8 bytes of data will result to 0x00 if everything is valid
+unsigned char twi_buf[40]={ 0x0B , 0x20 , 0x12, 0x34, 0x56, 0x78 , 0x12, 0x34, 0x56, 0x78 , 0xAD }, *twi_ptr;
+//                            CURR   NEXT   ON    DO     
+//                            STATE  STATE  TWSR  TWCR                            //   IDX   TWI SLAVE STATES
+#ifdef AT_SLAVE
+PROGMEM char twi_states[] = {   0  ,   0  , 0x60,   6 ,   9 ,   0                  //   0     0  SLA+W  we are receiving something
+                            ,   0  ,   0  , 0XA8,   0 ,   0 ,   0                  //   1     1  SLA+R  we are requected something 
+                            ,   3  ,   0  ,   0 ,   0 ,   0 ,   0                  //   2 
+                            ,   0  ,   0  , 0x00, 0x00, 0x00,   0                  //   0 
+                            ,   0  ,   0  , 0x00, 0x00, 0x00,   0                  //   0 
+                            ,   0  ,   0  , 0x00, 0x00, 0x00,   0                  //   0 
+                            ,   0  ,   0  , 0x00, 0x00, 0x00,   0                  //   0 
+                            };
+#else                
+//                              NEXT   ERROR  ON     DO     SPECIAL DELAY
+//                              STATE  STATE  TWSR   TWCR   CODE    TO WAIT                 //   TWI MASTER STATES
+PROGMEM char twi_states[] = {   0x01 , 0xFF , 0xF8 , 0xA4 , 0xC0 ,  0x00                    //   0  The bus is available ->  lets transmit a START , and initialize the count and pointer
+                            ,   0x02 , 0xFF , 0x08 , 0x84 , 0xA0 ,  0x00                    //   1  START sent -> Send SLA address
+                            ,   0x03 , 0x05 , 0x18 , 0x84 , 0xA0 ,  0x00                    //   2  SLA sent -> send data , decrement count
+                            ,   0x03 , 0x05 , 0x28 , 0x84 , 0xA0 ,  0x00                    //   3  data sent -> continue until count is zero in which case twi_state++
+                            ,   0x00 , 0x05 , 0x28 , 0x94 , 0x00 ,  0x03                    //   4  Reached the end of the bytes to transmit -> send STOP, no wait, then go to state 0
+                            ,   0x00 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x03                    //   5  On error, come here -> on any status, send a stop, no wait, then go to state 0
+                            ,   0x00 , 0x00 , 0x00 , 0x00 , 0xFF ,  0x00                    //   0 
+                            };
+#endif
+// OFFSETs to use in the s/w
+#define TWI_NS  0   // NEXT STATE
+#define TWI_ES  1   // ERROR STATE  (Where to go on error)
+#define TWI_SR  2   // STATUS REGISTE expected value
+#define TWI_CR  3   // COMMAND REGISTER value to put in
+#define TWI_SC  4   // SPECIAL CODE : WAIT / RESET COUNT / DECREMENT COUNT
+#define TWI_DL  5   // DELAY TO WAIT
+#define TWI_ROW 6   // 8 data per line
+
+
+// Special code contains:
+// 0x80 Wait request
+// 0x40 Reset pointer, get size and target
+// 0x20 decrement count, and if 0, then twi_state++
+// 0x10 decrement ddll, and if 0, goto next state
+
 static unsigned char twi_enable=0;
 // Two Wire Interface Telescope Tricks
 void twitt(void)
@@ -2197,12 +2242,15 @@ static unsigned char time;
 #ifdef AT_MASTER
 static unsigned char time_out;
 static unsigned char target=0x20;
+static unsigned char twi_count,twi_idx;
+unsigned char SR;
 #endif
 static unsigned short *aa=(unsigned short*)&dd_v[DDS_DEBUG + 0x1F];
 unsigned char *p;
 
 #ifdef AT_MASTER
 time = (unsigned char)(dd_v[DDS_SECONDS]) + 0x55;
+if ( ddll != 0 ) return ; 
 #else
 time = (unsigned char)(dd_v[DDS_SECONDS]);
 #endif
@@ -2218,7 +2266,7 @@ if ( twcr )    // I seem to get called with Status=0xF8 ... why ?  ... because I
    {
    wait=0;
    twsr = TWSR&0xF8;  // flush the prescaler bits
-   if ( sequence < 31 ) 
+   if ( sequence < 15 ) 
       {
       sequence++;
       p = (unsigned char*)&dd_v[DDS_DEBUG + sequence]; p[3] = cnt; p[2] = dta ; p[1] = twsr; p[0] = twi_state;
@@ -2226,8 +2274,43 @@ if ( twcr )    // I seem to get called with Status=0xF8 ... why ?  ... because I
    }
 else if (wait) return;  // still waiting
 
-
 #ifdef AT_MASTER
+   p = (unsigned char*)&dd_v[DDS_DEBUG + 0x10 + twi_state]; p[3] = cnt; p[2] = dta ; p[1] = twsr; p[0] = twi_state;
+   SR = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_SR ] );
+   if ( (twsr == SR) || (SR == 0xFF) )
+      {  // Matched the expected status register value for the current state 
+      unsigned char SC = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_SC ] );
+
+      wait = SC & 0x80 ;  // Set the wait value if one requested for the current state
+      if ( SC & 0x40 )  
+         {
+         twi_count = twi_buf[0];  // Init count for current command
+         twi_idx = 1;
+         }
+      if ( SC & 0x20 )
+         {
+         TWDR = twi_buf[twi_idx++];  // This is either SLA+? or simply data
+         cnt++;
+         aa[1]++;  // High part
+         }
+      TWCR = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_CR ] ); 
+      if ( (SC & 0x20)!=0 && (twi_idx==twi_count) )  twi_state++;
+      else                                           twi_state = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_NS ] );
+      }  
+   else  // we did not match the expected status register value for the current state, go to ERROR STATE
+      {  // required otherwise we can jam here
+      unsigned char ES = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_ES ] );
+      if ( ES !=0xFF ) 
+         {
+         twi_state = ES;   // if a valid new state, use it
+         ddll = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_DL ] );
+         }
+      p = (unsigned char*)&dd_v[DDS_HISTO + 8 + twi_state];  p[1]++; p[0] = twsr;
+      }
+#endif
+
+
+#ifdef AT_DISABLE_MASTER
 if      ( twi_state == 0 )  // ready to do a request
    {
    if ( twsr == 0xF8 )  // if free ?  I assume all 5 bits=1 means ready ?
@@ -2268,26 +2351,24 @@ else if ( twi_state == 2 )  // Wait for Ack
       { 
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x03]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       wait = 0x80;   // activate a wait
-//      TWDR = time;   // General data
       cnt++;
       aa[0]++;
       TWDR = 0x55;   // General data
       TWCR = 0x84;   // Send 
       twi_state++;   // wait for free
       }   // code to be written when slave present
-   else if ( twsr == 0x48 || twsr == 0x20 ) // NO ACK received   SLA+R SLA+W
+   else //@@ if ( twsr == 0x20 ) // NO ACK received   SLA+R SLA+W
       {  // required otherwise we can jam here
       TWCR = 0x94;   // Send STOP
       twi_state=0x05; 
-      ddll = 1;
+      ddll = 5;
       aa[1]++;  // High part
       dd_v[DDS_HISTO + 15]--;
       }
-   else 
-      {
-//      dd_v[DDS_HISTO + 9]--;
-      p = (unsigned char*)&dd_v[DDS_HISTO + 9];  p[1]++; p[0] = twsr;
-      }
+//@@    else 
+//@@       {
+//@@       p = (unsigned char*)&dd_v[DDS_HISTO + 9];  p[1]++; p[0] = twsr;
+//@@       }
    }
 else if ( twi_state == 3 )  // Wait for DATA sent
    {
@@ -2301,19 +2382,18 @@ else if ( twi_state == 3 )  // Wait for DATA sent
       TWCR = 0x84;   // Send 
       twi_state++;
       }
-   else if ( twsr == 0x30 ) // byte transmitted no ack received
+   else //@@ if ( twsr == 0x30 ) // byte transmitted no ack received
       {  // required otherwise we can jam here
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x04]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       TWCR = 0x94;   // Send STOP
       twi_state=0x05; 
-      ddll = 1;
-      //dd_v[DDS_HISTO + 15]--;
-      }
-   else
-      {
-//      dd_v[DDS_HISTO + 10]--;
+      ddll = 5;
       p = (unsigned char*)&dd_v[DDS_HISTO + 10];  p[1]++; p[0] = twsr;
       }
+//@@    else
+//@@       {
+//@@       p = (unsigned char*)&dd_v[DDS_HISTO + 10];  p[1]++; p[0] = twsr;
+//@@       }
    }
 else if ( twi_state == 4 )  // Stop
    {
@@ -2321,19 +2401,16 @@ else if ( twi_state == 4 )  // Stop
       {
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x04]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       TWCR = 0x94;   // Send stop
-//      time_out = time + 1;
-//      twi_state=0xA0;
       twi_state++;
       dd_v[DDS_HISTO + 14]--;
-//      ddll = 1;  // wait 0.3ms    // this value is dependant on the device, the EEPROM requires 5ms : ddll=50
+      ddll = 5;  // wait 0.3ms    // this value is dependant on the device, the EEPROM requires 5ms : ddll=50
       }
    else if ( twsr == 0x30 ) // byte transmitted no ack received
       {  // required otherwise we can jam here
       p = (unsigned char*)&dd_v[DDS_DEBUG + 0x04]; p[3] = time; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
       TWCR = 0x94;   // Send STOP
       twi_state=0x05; 
-      ddll = 1;
-      //dd_v[DDS_HISTO + 15]--;
+      ddll = 5;
       }
    else
       { // no need to do anyhting on other codes
@@ -3015,6 +3092,15 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.54  2012/01/14 22:28:09  pmichel
+Found big problem,
+I was storing the status before reading the TWI done flag
+so when operation done, the status I was using was old
+because by the time I stored the status and read the int
+the status changed
+#### Very good baseline ###
+ready to optimise
+
 Revision 1.53  2012/01/14 21:00:28  pmichel
 Second fast version,
 lots of glitches seems to remain
