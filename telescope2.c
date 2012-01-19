@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/15 20:44:55 $
-$Id: telescope2.c,v 1.56 2012/01/15 20:44:55 pmichel Exp pmichel $
+$Date: 2012/01/15 20:58:42 $
+$Id: telescope2.c,v 1.57 2012/01/15 20:58:42 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.56 $
+$Revision: 1.57 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -176,6 +176,13 @@ unsigned char use_polar=0;
 long loc_ra_correction,ra_correction;   // local RA correction from polar error
 long loc_dec_correction,dec_correction;  // local DEC correction from polar error
 unsigned char last_antena=0;
+
+// TWI exchanged data
+unsigned char twi_hold=0;      // tell foreground to not update the current pos
+long twi_pos[2];               // Current pos sent to Slave
+long twi_star_ra,twi_star_dec; // Currently Selected Star pos sent from Slave
+long twi_ra_corr,twi_dec_corr; // Polar correction calculated by Slave
+short twi_star;                // Current Star index
 
 // I define: 
 // A step is a pure step from the motor (only one coil is 100% ON at a time)        200 steps = 1 full turn ... with the gear ratio : 1000 steps = 1 full turn = 3 deg (ra) = 12 minutes  
@@ -1402,10 +1409,12 @@ if ( ! ( moving || goto_cmd ) )
 
 void record_pos(short pos)
 {
+twi_hold = 1;         // Tell foreground that if it interrupts us, it must not drive the twi position because we are reading them...
 if ( pos > NB_SAVED ) return;   // out of bound . . .
-saved[pos].ra  = ra->pos;
-saved[pos].dec = dec->pos;
+saved[pos].ra  = twi_pos[0]; // ra->pos;
+saved[pos].dec = twi_pos[1]; // dec->pos;
 saved[pos].ref_star = dd_v[DDS_CUR_STAR];
+twi_hold = 0;         // Tell foreground that if it interrupts us, it must not drive the twi position because we are reading them...
 }
 
 short is_search(long *code) // return true on PROSCAN_VCR1_NORTH/SOUTH/EAST/WEST and PROSCAN_VCR1_SEARCH
@@ -2186,11 +2195,29 @@ return axis->state;
 
 
 ///////////////////////////////////////////// TWI /////////////////////////////////////////////////////////////////////////////////
+
+// OFFSETs to use in the s/w
+#define TWI_NS  0   // NEXT STATE
+#define TWI_ES  1   // ERROR STATE  (Where to go on error)
+#define TWI_SR  2   // STATUS REGISTE expected value
+#define TWI_CR  3   // COMMAND REGISTER value to put in
+#define TWI_SC  4   // SPECIAL CODE : WAIT / RESET COUNT / DECREMENT COUNT
+#define TWI_DL  5   // DELAY TO WAIT
+#define TWI_NS2 5   // ALTENATE NEXT STATE
+#define TWI_SR2 6   // ALTENATE STATUS REGISTER
+
+///////////////////  Special code contains:
+// 0x80 Wait request
+// 0x40 Reset pointer, get size and target
+// 0x20 SLA+W update count, and if 0, then twi_state++   (Master Transmits)
+// 0x10 SLA+R update count, and if 0, then twi_state++   (Slave Transmits)
+// 0x0F Identifies which index to imcrement (debug counter)  0..15
+
 // the background fills or decodes this buffer
 // command buffers ; format : TWI_TARGET_ADDRESS, DATA, DATA ..., CHECKSUM     (note BYTE_COUNT is the count of DATA bytes plus 2...the address and the checksum)
-//                  example : 0x20 , 0x0A, 0x12, 0x34, 0x56, 0x78 , 0x12, 0x34, 0x56, 0x78 , 0xCE   <- The sum of the checksum and the data = 0  (address is not part of the checksum)
+//                  example : 0x20 , 0x0B, 0x12, 0x34, 0x56, 0x78 , 0x12, 0x34, 0x56, 0x78 , 0xCD   <- The sum of the checksum and the data = 0  (address is not part of the checksum)
 #ifdef AT_MASTER
-unsigned char twi_buf[40]={ 0x20 , 0x0A, 0x12, 0x34, 0x56, 0x78 , 0x12, 0x34, 0x56, 0x78 , 0xCE }, *twi_ptr;
+unsigned char twi_buf[40], *twi_ptr;
 #endif
 #ifdef AT_SLAVE
 unsigned char twi_buf[40], *twi_ptr;
@@ -2212,8 +2239,6 @@ PROGMEM char twi_states[] = {   0x01 , 0x00 , 0x60 , 0xC4 , 0x80 ,  0x05 , 0xA8 
                             ,   0x00 , 0x00 , 0x00 , 0x00 , 0x00 ,  0x00 , 0xFF             //   0 
                             };
    #define TWI_ROW 7   // 8 data per line
-
-
 #else                
 //                              NEXT   ERROR  ON     DO     SPECIAL DELAY
 //                              STATE  STATE  TWSR   TWCR   CODE    TO WAIT                 //   TWI MASTER STATES
@@ -2227,42 +2252,48 @@ PROGMEM char twi_states[] = {   0x01 , 0xFF , 0xF8 , 0xA4 , 0xC0 ,  0x00        
                             };
    #define TWI_ROW 6   // 8 data per line
 #endif
-// OFFSETs to use in the s/w
-#define TWI_NS  0   // NEXT STATE
-#define TWI_ES  1   // ERROR STATE  (Where to go on error)
-#define TWI_SR  2   // STATUS REGISTE expected value
-#define TWI_CR  3   // COMMAND REGISTER value to put in
-#define TWI_SC  4   // SPECIAL CODE : WAIT / RESET COUNT / DECREMENT COUNT
-#define TWI_DL  5   // DELAY TO WAIT
-#define TWI_NS2 5   // ALTENATE NEXT STATE
-#define TWI_SR2 6   // ALTENATE STATUS REGISTER
 
+// a full message with a valid checksum was received in twi_buf ...process it
+unsigned char twi_rq; // what is the last twi request from the master
+unsigned char twi_save; // what is the last twi request from the master
+void twi_rx(void)
+{
+}
 
-// Special code contains:
-// 0x80 Wait request
-// 0x40 Reset pointer, get size and target
-// 0x20 SLA+W update count, and if 0, then twi_state++   (Master Transmits)
-// 0x10 SLA+R update count, and if 0, then twi_state++   (Slave Transmits)
-// 0x0F Identifies which index to imcrement (debug counter)  0..15
+// Prepare the next message to transmit
+void twi_tx(void)
+{
+unsigned char *pc = (unsigned char*)&dd_v[DDS_CUR_STAR];
+unsigned char *pp = (unsigned char*)twi_pos;
+unsigned char iii,sum=0;
+#define TWI_C1 16
+twi_hold = 1;         // Tell foreground that if it interrupts us, it must not drive the twi position because we are reading them...
+twi_buf[0]  = 0x20;   // Slave address
+twi_buf[1]  = TWI_C1+1;     // Byte count
+twi_buf[2]  = 0xD0;   // Req Data : tell the Slave what we want to receive next  
+twi_buf[3]  = 0xC0;   // Sup Data : tell the Slave what we are about to supply in terms of data in this packet
+twi_buf[4]  = pc[0];   // Current Selected Star (LSB)
+twi_buf[5]  = pc[1];   // Current Selected Star (MSB)
+twi_buf[6]  = twi_save;   // Seq: sequence counter , incremented each time we record a new corrected star position
+twi_buf[7]  = 0x5A;   // Spare
+for ( iii=0 ; iii<8      ; iii++ ) twi_buf[8+iii] = pp[iii];
+for ( iii=1 ; iii<TWI_C1 ; iii++ ) sum +=twi_buf[iii];
+twi_buf[TWI_C1] = -sum;   // Checksum
+
+twi_hold = 0;         // Tell foreground that if it interrupts us, it must not drive the twi position because we are reading them...
+}
 
 static unsigned char twi_enable=0;
 // Two Wire Interface Telescope Tricks
 void twitt(void)
 {
-static unsigned char twi_state=0;
-static unsigned char wait=0;
-static unsigned char cnt=0;
-static unsigned char dta;
+static unsigned char twi_state=0, wait=0 , cnt=0 , dta , time, twi_idx;
 static unsigned char sequence=8;   // what to request from slave : 1- current selected catalog star, 2- polar correction ... 
-static unsigned char time;
-#ifdef AT_MASTER
-#endif
+static unsigned short *aa=(unsigned short*)&dd_v[DDS_DEBUG + 0x1F];
 #ifdef AT_SLAVE
 unsigned char SR2;
 #endif
-static unsigned char twi_idx;
-unsigned char SR;
-static unsigned short *aa=(unsigned short*)&dd_v[DDS_DEBUG + 0x1F];
+unsigned char SC=0,SR,ES;
 unsigned char *p;
 
 #ifdef AT_MASTER
@@ -2296,7 +2327,7 @@ else if (wait) return;  // still waiting
    SR = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_SR ] );
    if ( (twsr == SR) || (SR == 0xFF) )   // TWI operation complete, check the status result
       {                                  // Matched the expected status register value for the current state , perfom next operation
-      unsigned char SC = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_SC ] );
+      SC = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_SC ] );
 
       wait = SC & 0x80 ;                 // 0x80 : Set the wait flag if one requested for the current state
       if ( SC & 0x40 ) twi_idx = 0;      // 0x40 : Bit that ways that we should initialize the Counter
@@ -2307,12 +2338,16 @@ else if (wait) return;  // still waiting
          aa[1]++;  // High part          // Nb bytes sent so far...
          }
       TWCR = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_CR ] ); 
-      if ( (SC & 0x20)!=0 && (twi_idx==twi_buf[1]) )  twi_state++;     // when 0x20 (count mode) go to next state when count is reached
-      else                                            twi_state = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_NS ] );  // otherwise, go to specified next state
+      if ( (SC & 0x20)!=0 && (twi_idx==twi_buf[1]) )   // We sent everything, lets update the next package
+         {
+         twi_state++;     // when 0x20 (count mode) go to next state when count is reached
+         }
+      else 
+         twi_state = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_NS ] );  // otherwise, go to specified next state
       }  
    else                                  // we did not match the expected status register value for the current state, go to ERROR STATE
       {                                  // required otherwise we can jam here
-      unsigned char ES = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_ES ] );
+      ES = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_ES ] );
       if ( ES !=0xFF ) 
          {
          twi_state = ES;   // if a valid new state, use it
@@ -2320,6 +2355,7 @@ else if (wait) return;  // still waiting
          }
       p = (unsigned char*)&dd_v[DDS_HISTO + 8 + twi_state];  p[1]++; p[0] = twsr;
       }
+   if ( twi_state== 0 ) twi_tx();
 #endif
 
 #ifdef AT_SLAVE
@@ -2327,7 +2363,7 @@ SR  = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_SR ] );
 SR2 = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_SR2 ] );
 if ( (twsr == SR) || (twsr == SR2) || (SR == 0xFF) )   // TWI operation complete, check the status result
    {
-   unsigned char SC = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_SC ] );
+   SC = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_SC ] );
    if ( SC & 0x40 ) twi_idx = 1;      // 0x40 : Bit that ways that we should initialize the Counter
    if ( SC & 0x20 )                   // 0x20 : Bit that ways that we read TWDR and update the counter
       {
@@ -2336,19 +2372,32 @@ if ( (twsr == SR) || (twsr == SR2) || (SR == 0xFF) )   // TWI operation complete
       aa[1]++;  // High part          // Nb bytes received so far...
       }
    TWCR = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_CR ] );
-   if ( (SC & 0x20)!=0 && (twi_idx==twi_buf[0]) )  twi_state++;     // when 0x20 (count mode) go to next state when count is reached
-   else                                            twi_state = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_NS ] );  // otherwise, go to specified next state
+
+   if ( (SC & 0x20)!=0 && (twi_idx==twi_buf[1]) )  // Message complete
+      {
+      unsigned char sum=0,iii;
+      for ( iii=1 ; iii<=twi_buf[1] ; iii++ ) sum +=twi_buf[iii];  // Check for valid Checksum
+      /* DEBUG */ p = (unsigned char*)&dd_v[DDS_DEBUG + 0x1E]; 
+      /* DEBUG */ p[0] = sum;
+      /* DEBUG */ if ( sum == 0 ) p[1] ++;
+      /* DEBUG */ else            p[2] ++;
+
+      // if ( sum == 0 ) 
+      twi_rx();
+      twi_state++;     // when 0x20 (count mode) go to next state when count is reached
+      }
+   else twi_state = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_NS ] );  // otherwise, go to specified next state
    }
 else                                  // we did not match the expected status register value for the current state, go to ERROR STATE
    {                                  // required otherwise we can jam here
-   unsigned char ES = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_ES ] );
+   ES = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_ES ] );
    if ( ES !=0xFF ) twi_state = ES;   // if a valid new state, use it
    p = (unsigned char*)&dd_v[DDS_HISTO + 8 + twi_state];  p[1]++; p[0] = twsr;
    }
 wait = 0x80;
-p = (unsigned char*)&dd_v[DDS_DEBUG + 0x19]; p[3] = twi_buf[0]; p[2] = twi_buf[1]; p[1] = twi_buf[2]; p[0] = twi_buf[3];
-p = (unsigned char*)&dd_v[DDS_DEBUG + 0x1A]; p[3] = twi_buf[4]; p[2] = twi_buf[5]; p[1] = twi_buf[6]; p[0] = twi_buf[7];
-p = (unsigned char*)&dd_v[DDS_DEBUG + 0x1B]; p[3] = twi_buf[8]; p[2] = twi_buf[9]; p[1] = twi_buf[10]; p[0] = twi_buf[11];
+
+p = (unsigned char*)&dd_v[DDS_DEBUG + 0x19]; 
+for ( ES = 0 ; ES < 20 ; ES++ ) p[ES] = twi_buf[ES];
 #endif
 
 //if ( (PINC & 0x20) == 0) aa[0]++;
@@ -2601,6 +2650,12 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
       }
    }
 
+if ( ((ssec & 0x7FF) == 0x3FF ) && (twi_hold==0) )
+   { // 5 times per seconds: update the position so that the background can use a snapshot of the position
+   twi_pos[0]  = ra->pos;
+   twi_pos[1] = dec->pos;
+   }
+
 close_loop();
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2753,7 +2808,7 @@ display_data((char*)console_buf,0,20,pgm_starting,d_ram,FMT_NO_VAL + FMT_CONSOLE
 display_data((char*)console_buf,0,20,pgm_free_mem,d_ram,FMT_HEX + FMT_CONSOLE + 8);
 
 for ( iii=0 ; iii<31 ; iii++ ) dd_v[DDS_DEBUG + iii] = iii * 0x100;
-motor_disable = 1;
+motor_disable = 0;
          if ( motor_disable ) PORTD |=  DO_DISABLE;
          else                 PORTD &= ~DO_DISABLE;
 
@@ -2953,6 +3008,10 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.57  2012/01/15 20:58:42  pmichel
+Slave now uses a state machine aswell,
+Little tuning required, because the checksum does not come through
+
 Revision 1.56  2012/01/15 20:44:55  pmichel
 Corretions tested ok:
 first send the Byte count, then RXID, then TXID, then DATA, then Checksum
