@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/21 02:13:08 $
-$Id: telescope2.c,v 1.62 2012/01/21 02:13:08 pmichel Exp pmichel $
+$Date: 2012/01/21 02:47:33 $
+$Id: telescope2.c,v 1.63 2012/01/21 02:47:33 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.62 $
+$Revision: 1.63 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -2365,25 +2365,20 @@ unsigned char twsr = TWSR&0xF8;  // flush the prescaler bits
 
 if ( !twi_enable ) return;
 
-p = (unsigned char*)&dd_v[DDS_DEBUG + 0x00]; p[3] = twi_success_rx; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
-dd_v[DDS_HISTO + 15] = wait;
+p = (unsigned char*)&dd_v[DDS_DEBUG + 0x00]; p[3] = wait; p[2] = TWCR; p[1] = twsr; p[0] = twi_state;
 
 if ( twcr )    // I seem to get called with Status=0xF8 ... why ?  ... because I was reading TWCR after reading twsr ... so I could get premature statuses
    {
    wait=0;
    twsr = TWSR&0xF8;  // flush the prescaler bits
-   if ( sequence < 15 ) 
-      {
-      sequence++;
-//      p = (unsigned char*)&dd_v[DDS_DEBUG + sequence]; p[3] = cnt; p[2] = dta ; p[1] = twsr; p[0] = twi_state;
-      }
    }
 else if (wait) return;  // still waiting
 #ifdef AT_MASTER
 //if ( twi_success_rx > 2 && twi_state==0 ) return;   // To debug, stop after a few transmit
 #endif
 
-if ( debug_mode==0 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08 + twi_state]; p[3]=twi_state; p[2]=lstate; p[1]++; p[0] = twsr; } // Use DEBUG 0x10 through 0x08 to debug TWI states ############################################
+sequence++;
+if ( debug_mode==0 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08 + twi_state]; p[3]=sequence; p[2]=lstate; p[1]++; p[0] = twsr; } // Use DEBUG 0x10 through 0x08 to debug TWI states ############################################
 lstate = twi_state;
 
 #ifdef AT_MASTER
@@ -3095,6 +3090,11 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.63  2012/01/21 02:47:33  pmichel
+#################################3
+Master and Slave Write works in sequence
+Since this is becoming more and more complicated, added a "debug_mode" that decides what is shown in the debug section
+
 Revision 1.62  2012/01/21 02:13:08  pmichel
 Tested Master WRITE again
 
