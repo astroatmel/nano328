@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/21 03:10:27 $
-$Id: telescope2.c,v 1.64 2012/01/21 03:10:27 pmichel Exp pmichel $
+$Date: 2012/01/21 03:39:50 $
+$Id: telescope2.c,v 1.65 2012/01/21 03:39:50 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.64 $
+$Revision: 1.65 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -365,7 +365,6 @@ void to_console(const char *pgm_str,unsigned long value,unsigned char fmt,unsign
 void display_data(char *str,short xxx,short yyy,const char *pgm_str,unsigned long value,unsigned char fmt_size);
 
 ////////////////////////////////////////////// SIN COS /////////////////////////////////////////////////////////////   (uses 3K if flash)
-
 // mult two fixed point values
 // a = 0xMMMMLLLL = 0xMMMM0000 + 0x0000LLLL (a positive)   = 0xMMMM0000 + 0xFFFFLLLL (a negative) 
 // 
@@ -1067,6 +1066,20 @@ else if ( fmt == FMT_FP )  // Fixed point  fron -1.00000 to 1.000000
 }
 
 
+PROGMEM const char pgm_recorded_pos     []="Rec pos: ";
+PROGMEM const char pgm_recorded_pos_ra  []="RA :";
+PROGMEM const char pgm_recorded_pos_dec []="DEC:";
+PROGMEM const char pgm_recorded_pos_ref []="ref:";
+#ifdef AT_SLAVE
+PROGMEM const char pgm_polar_case       []="Case #:";
+PROGMEM const char pgm_polar_hour       []="Hour   :";
+PROGMEM const char pgm_polar_dec        []="Declin :";
+PROGMEM const char pgm_polar_star       []="Star #:";
+PROGMEM const char pgm_polar_error      []="Error :";
+PROGMEM const char pgm_polar_sum        []="Sum = ";
+PROGMEM const char pgm_polar_pass       []="Pass #:";
+
+
 // set the XYZ of a VECTOR from the RA and DEC values provided
 // RA and DEC are in TICK units
 void set_vector(VECTOR *VVV,unsigned long *RA,unsigned long *DEC)
@@ -1078,13 +1091,6 @@ VVV->x  = fp_mult(fp_cos(*RA),cos_dec);    // Other function uses subset of the 
 VVV->y  = fp_mult(fp_sin(*RA),cos_dec);    // any of the equation here changes, pls search for set_vector() in comments and change s/w 
 }
 
-//#ifndef DISABLE_SLAVE
-#ifndef DISABLE_MATRIX
-void generate_polar_matrix(MATRIX *R,unsigned long *pol_ra,unsigned long *pol_dec,unsigned long *shift_ra,unsigned char PRINT)
-{ return; }
-void do_polar(void)
-{ return; }
-#else
 
 // Generate a rotation matrix R from the polar RA and DEC
 PROGMEM const char pgm_polar_matrix     []="Polar Matrix: ";
@@ -1128,7 +1134,7 @@ if ( PRINT !=0  )
    }
 }
 
-#if(TEST_POLAR)   
+#if TEST_POLAR    
 PROGMEM const char pgm_polar_line       []="_________";
 PROGMEM const char pgm_polar_x      []="X :";
 PROGMEM const char pgm_polar_y      []="Y :";
@@ -1314,7 +1320,6 @@ generate_polar_matrix(& PoleMatrix,&polar_ra, &polar_dec, &shift,1);
    
 use_polar=1;
 }
-#endif
 
   
 // use rotation matrix to rotate the star...
@@ -1330,17 +1335,8 @@ S->y = y;
 S->z = z;
 }
 
-PROGMEM const char pgm_polar_pass       []="Pass #:";
-PROGMEM const char pgm_polar_case       []="Case #:";
-PROGMEM const char pgm_polar_hour       []="Hour   :";
-PROGMEM const char pgm_polar_dec        []="Declin :";
-PROGMEM const char pgm_polar_star       []="Star #:";
-PROGMEM const char pgm_polar_error      []="Error :";
-PROGMEM const char pgm_polar_sum        []="Sum = ";
-PROGMEM const char pgm_recorded_pos     []="Rec pos: ";
-PROGMEM const char pgm_recorded_pos_ra  []="RA :";
-PROGMEM const char pgm_recorded_pos_dec []="DEC:";
-PROGMEM const char pgm_recorded_pos_ref []="ref:";
+
+#endif // AT_SLAVE
 /*
 Error  : 
 Hour   : 
@@ -1424,6 +1420,7 @@ saved[pos].ref_star = dd_v[DDS_CUR_STAR];
 twi_hold = 0;         // Tell foreground that if it interrupts us, it must not drive the twi position because we are reading them...
 }
 
+#ifdef AT_MASTER
 short is_search(long *code) // return true on PROSCAN_VCR1_NORTH/SOUTH/EAST/WEST and PROSCAN_VCR1_SEARCH
 {
 //if ( (*code&0xFFFF0FF0) == 0x021A0E50 ) return 1;  
@@ -1441,6 +1438,7 @@ if ( *code == PROSCAN_VCR1_INFO ) return 0;
 if ( (*code&0xFFFF0FF0) == 0x021C0E30 ) return 1;  
 return 0;
 }
+#endif
 
 /*
 - redo proscan codes using #defines and VCR1
@@ -1476,6 +1474,7 @@ return 0;
 //  OA up      OD   left
 //  OB down    OC   right    OF
 
+#ifdef AT_MASTER
 unsigned char cmd_state=0;
 unsigned char cmd_val[10],cmd_val_idx;  //store the last byte of the last IR codes received
 
@@ -1495,25 +1494,24 @@ PROGMEM char cmd_states[] = {   0,   1,   6,   9,   0,  11,  10        //   0 re
                             ,  10,   0,   0,   0,   0,   0, 108        //  10 GOTO MANUAL POSITION ?
                             ,   0,   0,   0,   0,   0,   0, 109        //  11 ANTENA SEARCH ?
                             };
+#endif
 short ddll=0;
 
 void display_next_bg(void) 
 {
-short iii,jjj;
+short iii;
 
-#ifdef AT_SLAVE
 twitt();
-#else
-twitt();
-#endif
 
 if ( AP0_DISPLAY == 0 ) display_next();  // if not printing from AP0, then print here
 
 ///// Process IR commands
 //dd_v[DDS_DEBUG + 0x0C] = cmd_state;
 
+#ifdef AT_MASTER
 if ( l_ir_count != dd_v[DDS_IR_COUNT])
    {
+   short jjj;
    long code = dd_v[DDS_IR_CODE];
    short next_input;
    l_ir_count = dd_v[DDS_IR_COUNT]; // tell SP0 that he can go on
@@ -1577,7 +1575,9 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
          {
          }
       if ( cmd_state==109 ) // ANTENA SEARCH : Calculate polar error
-         { if ( jjj==3) do_polar(); }
+         { 
+         // TODO to be done by the slave: if ( jjj==3) do_polar(); 
+         }
       cmd_state=0; // we are done 
       }
    else if ( next_input < 0 ) // Check for a one key command
@@ -1613,6 +1613,7 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
  
       }
    }
+#endif  // AT_MASTER process IR
 ///// Process Keyboard commands
 
 if ( dd_v[DDS_RX_IDX]==0 ) {;}  // nothing to do
@@ -1819,6 +1820,7 @@ else // print field data
    } 
 if ( Next != 0 ) UDR0 = Next;
 
+#ifdef AT_SLAVE
 if ( use_polar )
    {
    static VECTOR work;  
@@ -1959,9 +1961,14 @@ else if ( standby_goto == 1 ) standby_goto = -1;  // no wait in this case
 //   dd_v[DDS_DEBUG + 0x1D]=dec_correction;
 //   dd_v[DDS_DEBUG + 0x14]=loc_ra_correction;
 //   dd_v[DDS_DEBUG + 0x15]=loc_dec_correction;
+else if ( standby_goto == 111 ) do_polar(); //   TODO This will never happen, but it's to force the compiler tp include do_polar in the hex file
+#elif AT_MASTER
+if ( standby_goto == 1 ) standby_goto = -1;  // no wait in this case TODO : since the polar math is done on the slave, the standby_goto seends to be sent back and forth
+#endif
 }
 
 
+#ifdef AT_MASTER
 short process_goto(AXIS *axis,char ra_axis)
 {
 if ( stop_cmd )
@@ -2213,6 +2220,7 @@ else
 
 return axis->state;
 }
+#endif  // AT_MASTER : process_goto
 
 
 ///////////////////////////////////////////// TWI /////////////////////////////////////////////////////////////////////////////////
@@ -2269,7 +2277,7 @@ PROGMEM char twi_states[] = {   0x01 , 0xFF , 0xF8 , 0xA4 , 0xC0 ,  0x00   //   
                             ,   0x02 , 0xFF , 0x08 , 0x84 , 0xA0 ,  0x00   //   1  START sent -> Send SLA address
                             ,   0x03 , 0x05 , 0x18 , 0x84 , 0xA0 ,  0x00   //   2  SLA sent -> send data , decrement count
                             ,   0x03 , 0x08 , 0x28 , 0x84 , 0xA0 ,  0x00   //   3  data sent -> continue until count is zero in which case twi_state++
-                  /* 4 */   ,   0x09 , 0x07 , 0x28 , 0x94 , 0x00 ,  0x03   //   4  Reached the end of the bytes to transmit -> send STOP, no wait, then go to state 9  
+                  /* 4 */   ,   0x09 , 0x07 , 0x28 , 0x94 , 0x00 ,  0x50   //   4  Reached the end of the bytes to transmit -> send STOP, no wait, then go to state 9  (wait 5ms for slave to process data)
                             ,   0x00 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x03   //   5  On error, come here -> on any status, send a stop, no wait, then go to state 0
                             ,   0x00 , 0x00 , 0x00 , 0x00 , 0xFF ,  0x00   //   6 
                             ,   0x00 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x00   //   7  STOP
@@ -2330,8 +2338,11 @@ twi_tx_buf[3]  = 0xC0;   // Sup Data : tell the Slave what we are about to suppl
 twi_tx_buf[4]  = pc[0];   // Current Selected Star (LSB)
 twi_tx_buf[5]  = pc[1];   // Current Selected Star (MSB)
 twi_tx_buf[6]  = twi_seq;   // Seq: sequence counter , incremented each time we record a new corrected star position
-twi_tx_buf[7]  = debug_mode;   // Spare
+twi_tx_buf[7]  = debug_mode;   // for the display
 for ( iii=0 ; iii<8      ; iii++ ) twi_tx_buf[8+iii] = pp[iii];
+twi_tx_buf[16]  = standby_goto;   // fix error before move request
+// 15 bytes available here
+
 for ( iii=1 ; iii<TWI_C1 ; iii++ ) sum +=twi_tx_buf[iii];
 twi_tx_buf[TWI_C1] = -sum;   // Checksum
 
@@ -2358,7 +2369,7 @@ static unsigned char twi_enable=0;
 // Two Wire Interface Telescope Tricks
 void twitt(void)
 {
-static unsigned char twi_state=0, wait=0 , cnt=0 , time, twi_idx, lstate=0;
+static unsigned char twi_state=0, wait=0 , twi_idx, lstate=0;
 static unsigned char sequence=8;   // what to request from slave : 1- current selected catalog star, 2- polar correction ... 
 static unsigned short *aa=(unsigned short*)&dd_v[DDS_DEBUG + 0x01];
 #ifdef AT_SLAVE
@@ -2370,10 +2381,7 @@ unsigned char SC=0,SR,ES;
 unsigned char *p;
 
 #ifdef AT_MASTER
-time = (unsigned char)(dd_v[DDS_SECONDS]) + 0x55;
-if ( ddll != 0 ) return ; 
-#else
-time = (unsigned char)(dd_v[DDS_SECONDS]);
+if ( ddll != 0 ) return ; // wait a bit
 #endif
 unsigned char twcr = TWCR & wait; 
 unsigned char twsr = TWSR&0xF8;  // flush the prescaler bits
@@ -2409,33 +2417,22 @@ lstate = twi_state;
          if      ( SC & 0x20 ) TWDR = twi_tx_buf[twi_idx++];   // 0x20 : Bit that ways that we drive TWDR and update the counter
          else if ( SC & 0x10 ) TWDR = twi_rx_buf[twi_idx++];   // 0x10 : Bit that ways that we drive TWDR only for the Slave address, then read
          else                  twi_rx_buf[twi_idx++] = TWDR;   // 0x08 : Bit that ways that we read TWDR
-         cnt++;                          // Nb bytes sent so far...
          }
       CR = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_CR ] ); 
       TWCR = CR;
       if ( CR&0x20) PORTB |=  0x20; // Set   pin PB5 when START bit is set
       else          PORTB &= ~0x20; // Clear pin PB5
 
-      if ( (SC & 0x20)!=0 && (twi_idx==twi_tx_buf[1]) )   // We sent everything, lets update the next package
-         {
-         twi_state++;     // when 0x20 (count mode) go to next state when count is reached
-         }
-      else if ( (SC & 0x18)!=0 && (twi_idx==twi_fb_count-1) )   // We received everything, lets update the next package
-         {
-         twi_state++;     // when 0x20 (count mode) go to next state when count is reached
-         }
-      else 
-         twi_state = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_NS ] );  // otherwise, go to specified next state
+      if      ( (SC & 0x20)!=0 && (twi_idx==twi_tx_buf[1])  ) { twi_state++; }       // when 0x20 (count mode) go to next state when count is reached
+      else if ( (SC & 0x18)!=0 && (twi_idx==twi_fb_count-1) ) { twi_state++; }       // when 0x20 (count mode) go to next state when count is reached
+      else twi_state = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_NS ] );  // otherwise, go to specified next state
       }  
    else                                  // we did not match the expected status register value for the current state, go to ERROR STATE
       {                                  // required otherwise we can jam here
       ES = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_ES ] );
-      if ( ES !=0xFF ) 
-         {
-         twi_state = ES;   // if a valid new state, use it
-         ddll = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_DL ] );
-         }
+      if ( ES !=0xFF )  twi_state = ES;   // if a valid new state, use it
       }
+   ddll = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_DL ] );
    if ( twi_state== 0x04 )   // TODO this is in SLAVE RECEIVE ... this is hardcoded
       {
       twi_success_rx++; 
@@ -2444,7 +2441,7 @@ lstate = twi_state;
    else if ( twi_state== 0x0F )  // TODO this is in SLAVE TRANSMIT ... this is hardcoded to the state
       {
       twi_success_rx++;  
-      if ( debug_mode==0 ) aa[0]++;  // High part          // Nb bytes sent so far...
+      if ( debug_mode==0 ) aa[0]++;  // High part          // Nb bytes received so far...
       }
    if ( twi_state== 0 ) twi_tx();
 if ( debug_mode==1 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08]; for ( ES = 0 ; ES < 20 ; ES++ ) p[ES] = twi_rx_buf[ES]; }
@@ -2466,8 +2463,6 @@ if ( (twsr == SR) || (twsr == SR2) || (SR == 0xFF) )   // TWI operation complete
       {
       if ( SC & 0x20 ) twi_tx_buf[twi_idx++] = TWDR;  // 0x20 : Bit that ways that we read TWDR and update the counter
       else             TWDR = twi_rx_buf[twi_idx++];  // 0x10 : Bit that ways that we Write to TWDR and update the counter
-      cnt++;                          // Nb bytes received so far...
-      //aa[1]++;  // High part          // Nb bytes received so far...
       }
    TWCR = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_CR ] );
 
@@ -2480,14 +2475,15 @@ if ( (twsr == SR) || (twsr == SR2) || (SR == 0xFF) )   // TWI operation complete
 //      /* DEBUG */ if ( sum == 0 ) p[1] ++;
 //      /* DEBUG */ else            p[2] ++;
 
-      // if ( sum == 0 ) 
-      twi_rx();
+      if ( sum == 0 ) twi_rx();
       twi_state++;     // when 0x20 (count mode) go to next state when count is reached
+      if ( debug_mode==0 ) aa[1]++;  // High part          // Nb bytes sent so far...
       }
    else if ( (SC & 0x10)!=0 && (twi_idx==twi_fb_count+2) )  // Message complete  +2
       {
       //twi_rx();
       twi_state++;     // when 0x10 (count mode) go to next state when count is reached
+      if ( debug_mode==0 ) aa[0]++;  // High part          // Nb bytes received so far...
       }
    else 
       {
@@ -2502,7 +2498,7 @@ else                                  // we did not match the expected status re
    }
 wait = 0x80;
 
-   if ( twi_state== 0 ) twi_tx();
+     if ( twi_state== 0 ) twi_tx();  // TODO not sure it's the right place
 
 if ( debug_mode==1 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08]; for ( ES = 0 ; ES < 20 ; ES++ ) p[ES] = twi_tx_buf[ES]; }
 #endif
@@ -2562,6 +2558,7 @@ ISR(TIMER1_COMPB_vect)   // Clear the Step outputs
 return;
 }
 
+#ifdef AT_MASTER
 void close_loop(void)  // Clear the Step outputs
 {
 long temp;
@@ -2614,6 +2611,7 @@ else { dec->next=0; }
 PORTC = ra->direction | dec->direction;    // I do this to optimize execution time
 
 }
+#endif
 
 #ifdef AT_SLAVE
 //ISR(TWI_vect)    // The slave used the interrupt vector ... I think that without setting the vecter, the TWI does not start
@@ -2635,8 +2633,9 @@ PORTC = ra->direction | dec->direction;    // I do this to optimize execution ti
 #define KEY_OFF 1000
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 10 KHz
 {
-static char IR0,IR1,IR2,IR,l_IR,code_started=0,count_bit;
 unsigned long histo;
+#ifdef AT_MASTER
+static char IR0,IR1,IR2,IR,l_IR,code_started=0,count_bit;
 static short earth_comp=0;
 static short count_0;
 static long loc_ir_code;
@@ -2645,23 +2644,18 @@ static unsigned short ir_key_off=0;  // limit the inputs to 4 per seconds
 // These takes too long to complete !!!  set_digital_output(DO_RA_STEP ,ra->next);     // eventually, I should use my routines...flush polopu...
 // These takes too long to complete !!!  set_digital_output(DO_DEC_STEP,dec->next);    // eventually, I should use my routines...flush polopu...
 PORTC = ra->next | dec->next | ra->direction | dec->direction;    // I do this to optimize execution time   activate the STEP CLOCK OUTPUT
-if ( ddll > 0 ) ddll--;  // test delay to reduce the responce speed of the slave
-#ifdef AT_SLAVE
-if (ddll==0) 
-   {
-//   twitt();
-   ddll = 3;
-   }
 #endif
 
-//#ifdef AT_MASTER
-//twitt();
-//#else
-//twitt();
-//#endif
+if ( ddll > 0 ) ddll--;  // test delay to reduce the responce speed of the slave
 
+// this takes a lot of time . . . .: ssec = (ssec+1)%10000;   
+ssec++; if ( ssec == 10000 ) ssec = 0;
+if ( ssec == 0) dd_v[DDS_SECONDS]++;
+d_TIMER1++;             // counts time in 0.1 ms
+
+
+#ifdef AT_MASTER
 //////////////////////// Process IR ///////////////////////
-
 IR2  = IR1;
 IR1  = IR0;
 /// - IR0  = is_digital_input_high(DI_REMOTE);
@@ -2702,15 +2696,8 @@ if ( code_started!=0 || IR!=0 )
    }
    
 
-
-// this takes a lot of time . . . .: ssec = (ssec+1)%10000;   
-ssec++; if ( ssec == 10000 ) ssec = 0;
-if ( ssec == 0) dd_v[DDS_SECONDS]++;
-
-d_TIMER1++;             // counts time in 0.1 ms
 if ( ! motor_disable )    //////////////////// motor disabled ///////////
    {
- 
    ///////////// Process earth compensation
    // this takes a lot of time . . . .:earth_comp = (earth_comp+1)%EARTH_COMP;
    earth_comp++ ; if ( earth_comp == EARTH_COMP ) earth_comp = 0;
@@ -2764,7 +2751,7 @@ if ( ((ssec & 0x7FF) == 0x3FF ) && (twi_hold==0) )
    }
 
 close_loop();
-
+#endif
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // This section terminates the interrupt routine and will help identify how much CPU time we use in the real-time interrupt
 //   histo = TCNT1; 
@@ -2863,22 +2850,7 @@ dec = (AXIS*)&dd_v[DDS_DEC];  // init pointers
 init_rs232();
 init_disp();
 
-
 ps("\033[2J");
-
-//set_digital_output(DO_RA_STEP  ,PULL_UP_ENABLED);       // PORTC BIT 0
-//set_digital_output(DO_RA_DIR   ,PULL_UP_ENABLED);       // PORTC BIT 1
-//set_digital_output(DO_DEC_STEP ,PULL_UP_ENABLED);       // PORTC BIT 2
-//set_digital_output(DO_DEC_DIR  ,PULL_UP_ENABLED);       // PORTC BIT 3
-// set_digital_output(DO_10KHZ    ,PULL_UP_ENABLED);   // PORTB BIT 2  // Set 10 Khz pwm output of OC1B (from TIMER 1) used to control the steps
-// set_digital_input (DI_REMOTE   ,PULL_UP_ENABLED);   // PORTD BIT 2
-//set_digital_output(DO_DISABLE  ,motor_disable);   // Start disabled
-PORTD &= ~DO_DISABLE;  // Start with motor disabled disabled
-PORTC  = 0x3F;         // Set outputs to 1...this is to avoid a glitch on the scope
-
-DDRB = 0x24; // set pins 2 of PORTB B as output     (logic 1 = output)          >> 0x04:10KHZ out  0x20:TWI_START
-DDRC = 0x3F; // set pins 0 1 2 3 of PORTC C as output     (logic 1 = output)    >> STEP AND DIR   plus TWI pins
-DDRD = 0x06; // set pins 1 and 2 of PORTD D as output     (logic 1 = output)    >> RS232 TX and DO DISABLE
 
 //set_analog_mode(MODE_8_BIT);                         // 8-bit analog-to-digital conversions
 d_ram = get_free_memory();
@@ -2889,6 +2861,14 @@ d_ram = get_free_memory();
    TWBR  = 23;   // 4 x 50 = 200 thus TWI clock is 100khz
    TWAR  = 0x10;  // TWI Address 0x10 + 1 for General Call (Broadcasts)
    TWCR  = 0x44;  // TWEA & TWEN -> activate the address
+
+   DDRB = 0x24; // set pins 2 of PORTB B as output     (logic 1 = output)          >> 0x04:10KHZ out  0x20:TWI_START
+
+   DDRC = 0x3F; // set pins 0 1 2 3 of PORTC C as output     (logic 1 = output)    >> STEP AND DIR   plus TWI pins
+   PORTC  = 0x3F;         // Set outputs to 1...this is to avoid a glitch on the scope when monitoring TWI signals
+   
+   DDRD = 0x06; // set pins 1 and 2 of PORTD D as output     (logic 1 = output)    >> RS232 TX and DO DISABLE
+   PORTD &= ~DO_DISABLE;  // Start with motor disabled disabled
 #endif
 
 #ifdef AT_SLAVE
@@ -2898,6 +2878,9 @@ d_ram = get_free_memory();
 //   TWAMR = 0xFE;  // TWI Address 0x20 + 1 for General Call (Broadcasts)
    TWAR  = 0x20;  // TWI Address 0x20 + 1 for General Call (Broadcasts)
    TWCR  = 0x44;  // TWEA & TWEN -> activate the address  +1 for interrupt enable - in which case ISR(TWI_vect) must be defined
+
+   DDRC = 0x30;   // set pins 4 5 of PORTC C as output     (logic 1 = output)    >>  TWI pins
+   PORTC  = 0x30; // Set outputs to 1...this is to avoid a glitch on the scope when monitoring TWI signals
 #endif
 
 sei();         //enable global interrupts
@@ -3099,17 +3082,19 @@ FFFF73B4  00037818  FFEA3660
 wait(5,SEC);
 
 
-while (1 )
-   {
-   wait(1,SEC);
-   }
-
+while (1 ) wait(1,SEC);  // This last while is important, because it calls display next....which is AP0
 return 0;
 }
 
 
 /*
 $Log: telescope2.c,v $
+Revision 1.65  2012/01/21 03:39:50  pmichel
+This is exponential groath,
+from zero progress in 2 weeks to a state when I feel the need to checkin every 5 minutes because so much progress was made
+-> Exchanging 32 bytes
+-> Telescope pos, debug_mode, current star, all sent to slave
+
 Revision 1.64  2012/01/21 03:10:27  pmichel
 Few display changes to debug TWI
 
