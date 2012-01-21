@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/21 00:05:28 $
-$Id: telescope2.c,v 1.60 2012/01/21 00:05:28 pmichel Exp pmichel $
+$Date: 2012/01/21 01:44:20 $
+$Id: telescope2.c,v 1.61 2012/01/21 01:44:20 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.60 $
+$Revision: 1.61 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -2252,26 +2252,29 @@ PROGMEM char twi_states[] = {   0x01 , 0x00 , 0x60 , 0xC4 , 0x00 ,  0x06 , 0xA8 
 #else                
 //                              NEXT   ERROR  ON     DO     SPECIAL DELAY
 //                              STATE  STATE  TWSR   TWCR   CODE    TO WAIT                 //   TWI MASTER STATES
-PROGMEM char twi_states[] = {   0x01 , 0xFF , 0xF8 , 0xA4 , 0x80 ,  0x00                    //   0  The bus is available ->  lets transmit a START , and initialize the count and pointer
-                            ,   0x02 , 0xFF , 0x08 , 0x84 , 0xD0 ,  0x00                    //   1  START sent -> Send SLA address
-                            ,   0x03 , 0x0A , 0x40 , 0xC4 , 0xC8 ,  0x00                    //   2  SLA sent -> receive data , decrement count
-                            ,   0x03 , 0x08 , 0x50 , 0xC4 , 0x88 ,  0x00                    //   3  data received. -> continue until count is zero in which case twi_state++
-                            ,   0x05 , 0x09 , 0x50 , 0x84 , 0x88 ,  0x00                    //   4  receiving last byte -> send Nack
-               /* 5 */      ,   0x06 , 0x08 , 0x58 , 0x94 , 0x08 ,  0x00                    //   5  Reached the end of the bytes to receive -> send STOP, no wait, then go to state 0
-                            ,   0x00 , 0x08 , 0xF8 , 0x84 , 0x00 ,  0x03                    //   6  STOP Sent
-                            ,   0x07 , 0xFF , 0xFF , 0x84 , 0x00 ,  0x00                    //   7  STOP
-               /* 8 */      ,   0x08 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x03                    //   8  On error, come here -> on any status, send a stop, no wait, then go to state 0
-                            ,   0x09 , 0xFF , 0xFF , 0x84 , 0x00 ,  0x00                    //   9  STOP
-                            ,   0x00 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x03                    //  10  On error, come here -> on any status, send a stop, no wait, then go to state 0
+//-PROGMEM char twi_states[] = {   0x01 , 0xFF , 0xF8 , 0xA4 , 0x80 ,  0x00                    //   0  The bus is available ->  lets transmit a START , and initialize the count and pointer
+//-                            ,   0x02 , 0xFF , 0x08 , 0x84 , 0xD0 ,  0x00                    //   1  START sent -> Send SLA address
+//-                            ,   0x03 , 0x0A , 0x40 , 0xC4 , 0xC8 ,  0x00                    //   2  SLA sent -> receive data , decrement count
+//-                            ,   0x03 , 0x08 , 0x50 , 0xC4 , 0x88 ,  0x00                    //   3  data received. -> continue until count is zero in which case twi_state++
+//-                            ,   0x05 , 0x09 , 0x50 , 0x84 , 0x88 ,  0x00                    //   4  receiving last byte -> send Nack
+//-               /* 5 */      ,   0x06 , 0x08 , 0x58 , 0x94 , 0x08 ,  0x00                    //   5  Reached the end of the bytes to receive -> send STOP, no wait, then go to state 0
+//-                            ,   0x00 , 0x08 , 0xF8 , 0x84 , 0x00 ,  0x03                    //   6  STOP Sent
+//-                            ,   0x07 , 0xFF , 0xFF , 0x84 , 0x00 ,  0x00                    //   7  STOP
+//-               /* 8 */      ,   0x08 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x03                    //   8  On error, come here -> on any status, send a stop, no wait, then go to state 0
+//-                            ,   0x09 , 0xFF , 0xFF , 0x84 , 0x00 ,  0x00                    //   9  STOP
+//-                            ,   0x00 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x03                    //  10  On error, come here -> on any status, send a stop, no wait, then go to state 0
+//-                            };
+PROGMEM char twi_states[] = {   0x01 , 0xFF , 0xF8 , 0xA4 , 0xC0 ,  0x00                    //   0  The bus is available ->  lets transmit a START , and initialize the count and pointer
+                            ,   0x02 , 0xFF , 0x08 , 0x84 , 0xA0 ,  0x00                    //   1  START sent -> Send SLA address
+                            ,   0x03 , 0x05 , 0x18 , 0x84 , 0xA0 ,  0x00                    //   2  SLA sent -> send data , decrement count
+                            ,   0x03 , 0x08 , 0x28 , 0x84 , 0xA0 ,  0x00                    //   3  data sent -> continue until count is zero in which case twi_state++
+                  /* 4 */   ,   0x00 , 0x07 , 0x28 , 0x94 , 0x00 ,  0x03                    //   4  Reached the end of the bytes to transmit -> send STOP, no wait, then go to state 0
+                            ,   0x00 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x03                    //   5  On error, come here -> on any status, send a stop, no wait, then go to state 0
+                            ,   0x00 , 0x00 , 0x00 , 0x00 , 0xFF ,  0x00                    //   6 
+                            ,   0x00 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x00                    //   7  STOP
+                            ,   0x00 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x00                    //   8  STOP
+                            ,   0x00 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x00                    //   9  STOP
                             };
-//PROGMEM char twi_states[] = {   0x01 , 0xFF , 0xF8 , 0xA4 , 0xC0 ,  0x00                    //   0  The bus is available ->  lets transmit a START , and initialize the count and pointer
-//                            ,   0x02 , 0xFF , 0x08 , 0x84 , 0xA0 ,  0x00                    //   1  START sent -> Send SLA address
-//                            ,   0x03 , 0x05 , 0x18 , 0x84 , 0xA0 ,  0x00                    //   2  SLA sent -> send data , decrement count
-//                            ,   0x03 , 0x05 , 0x28 , 0x84 , 0xA0 ,  0x00                    //   3  data sent -> continue until count is zero in which case twi_state++
-//                            ,   0x00 , 0x05 , 0x28 , 0x94 , 0x00 ,  0x03                    //   4  Reached the end of the bytes to transmit -> send STOP, no wait, then go to state 0
-//                            ,   0x00 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x03                    //   5  On error, come here -> on any status, send a stop, no wait, then go to state 0
-//                            ,   0x00 , 0x00 , 0x00 , 0x00 , 0xFF ,  0x00                    //   0 
-//                            };
    #define TWI_ROW 6   // 8 data per line
 #endif
 
@@ -2366,7 +2369,7 @@ if ( twcr )    // I seem to get called with Status=0xF8 ... why ?  ... because I
    }
 else if (wait) return;  // still waiting
 #ifdef AT_MASTER
-//if ( twi_success_rx > 0 && twi_state==0 ) return;   // To debug, stop after a few transmit
+//if ( twi_success_rx > 2 && twi_state==0 ) return;   // To debug, stop after a few transmit
 #endif
 
 p = (unsigned char*)&dd_v[DDS_HISTO + twi_state];  p[1]++; p[0] = twsr;
@@ -2414,7 +2417,8 @@ p = (unsigned char*)&dd_v[DDS_HISTO + twi_state];  p[1]++; p[0] = twsr;
          ddll = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_DL ] );
          }
       }
-   if ( twi_state== 6 ) twi_success_rx++;
+   if ( twi_state== 4 ) twi_success_rx++;   // TODO this is in SLAVE RECEIVE
+   // if ( twi_state== 6 ) twi_success_rx++;   // TODO this is in SLAVE TRANSMIT
    if ( twi_state== 0 ) twi_tx();
 p = (unsigned char*)&dd_v[DDS_DEBUG + 0x19]; 
 for ( ES = 0 ; ES < 20 ; ES++ ) p[ES] = twi_rx_buf[ES];
@@ -3086,6 +3090,10 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.61  2012/01/21 01:44:20  pmichel
+#####################################################################################
+SLAVE WRITE works - Ready to combine MASTER and SLAVE WRITE
+
 Revision 1.60  2012/01/21 00:05:28  pmichel
 ##################################################3
 Finally, The Slave Transmit works in continous
