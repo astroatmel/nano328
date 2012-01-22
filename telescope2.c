@@ -1,12 +1,15 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/21 03:39:50 $
-$Id: telescope2.c,v 1.65 2012/01/21 03:39:50 pmichel Exp pmichel $
+$Date: 2012/01/21 17:06:06 $
+$Id: telescope2.c,v 1.66 2012/01/21 17:06:06 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.65 $
+$Revision: 1.66 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
+- Add command to set the RA to an approx value (first thing to execute when aligning)
+- Confirm... the master does not receive 32 bytes...does the slave receive 32 bytes ?
+
 ** when clearing corrected stars positions, ALSO reset the polar vector to 0,0,1
 - Key to disable use_polar
 - ramp up/down the polar correction
@@ -183,6 +186,7 @@ unsigned char last_antena=0;
 
 // TWI exchanged data
 void twitt(void);
+unsigned char twi_seq;         // Seq: sequence counter , incremented by 2 to indicate to store a new correced star position, first bit =1 means do polar correction
 unsigned char twi_success_tx, twi_success_rx;
 unsigned char twi_fb_count=0;  // How many bytes should we send back 
 unsigned char twi_hold=0;      // tell foreground to not update the current pos
@@ -190,6 +194,8 @@ long twi_pos[2];               // Current pos sent to Slave
 long twi_star_ra,twi_star_dec; // Currently Selected Star pos sent from Slave
 long twi_ra_corr,twi_dec_corr; // Polar correction calculated by Slave
 short twi_star;                // Current Star index
+
+void record_pos(short pos);
 
 // I define: 
 // A step is a pure step from the motor (only one coil is 100% ON at a time)        200 steps = 1 full turn ... with the gear ratio : 1000 steps = 1 full turn = 3 deg (ra) = 12 minutes  
@@ -1418,6 +1424,18 @@ saved[pos].ra  = twi_pos[0]; // ra->pos;
 saved[pos].dec = twi_pos[1]; // dec->pos;
 saved[pos].ref_star = dd_v[DDS_CUR_STAR];
 twi_hold = 0;         // Tell foreground that if it interrupts us, it must not drive the twi position because we are reading them...
+
+if ( pos < 10 )
+   {
+   display_data((char*)console_buf,0,20,pgm_recorded_pos   ,pos   ,FMT_HEX + FMT_CONSOLE + 8);
+   }
+else
+   {
+   display_data((char*)console_buf,0,20,pgm_recorded_pos    ,pos   ,FMT_HEX + FMT_CONSOLE + 8);
+   display_data((char*)console_buf,0,20,pgm_recorded_pos_ra ,saved[pos].ra        ,FMT_HEX + FMT_CONSOLE + 8);
+   display_data((char*)console_buf,0,20,pgm_recorded_pos_dec,saved[pos].dec       ,FMT_HEX + FMT_CONSOLE + 8);
+   display_data((char*)console_buf,0,20,pgm_recorded_pos_ref,saved[pos].ref_star  ,FMT_HEX + FMT_CONSOLE + 8);
+   }
 }
 
 #ifdef AT_MASTER
@@ -1548,17 +1566,11 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
       if ( cmd_state==102 ) // PLAY ANTENA X : goto star corrected position X
          { goto_pos(10+jjj);  last_antena=10+jjj;}
       if ( cmd_state==103 ) // RECORD INPUT X : record user position X
-         { 
-         record_pos(jjj);  
-         display_data((char*)console_buf,0,20,pgm_recorded_pos   ,jjj   ,FMT_HEX + FMT_CONSOLE + 8);
-         }
+         { record_pos(jjj);  }
       if ( cmd_state==104 ) // RECORD ANTENA X : record star corrected position X
          { 
          record_pos(10+jjj); 
-         display_data((char*)console_buf,0,20,pgm_recorded_pos    ,jjj   ,FMT_HEX + FMT_CONSOLE + 8);
-         display_data((char*)console_buf,0,20,pgm_recorded_pos_ra ,saved[10+jjj].ra        ,FMT_HEX + FMT_CONSOLE + 8);
-         display_data((char*)console_buf,0,20,pgm_recorded_pos_dec,saved[10+jjj].dec       ,FMT_HEX + FMT_CONSOLE + 8);
-         display_data((char*)console_buf,0,20,pgm_recorded_pos_ref,saved[10+jjj].ref_star  ,FMT_HEX + FMT_CONSOLE + 8);
+         twi_seq+=2;  // tell the slave to update the active star's corrected position
          }
       if ( cmd_state==105 ) // CLEAR INPUT : clear all user positinos
          { for(iii=0;iii<10;iii++) saved[iii].ra = saved[iii].dec = saved[iii].ref_star=0; }
@@ -1577,6 +1589,7 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
       if ( cmd_state==109 ) // ANTENA SEARCH : Calculate polar error
          { 
          // TODO to be done by the slave: if ( jjj==3) do_polar(); 
+         twi_seq|=1;  // tell the slave to update the polar matrix
          }
       cmd_state=0; // we are done 
       }
@@ -2298,24 +2311,50 @@ PROGMEM char twi_states[] = {   0x01 , 0xFF , 0xF8 , 0xA4 , 0xC0 ,  0x00   //   
 #endif
 
 // a full message with a valid checksum was received in twi_tx_buf ...process it
-unsigned char twi_seq; // Seq: sequence counter , incremented each time we record a new corrected star position
-
+//#define TWI_C1 32
+#define TWI_C1 32
 void twi_rx(void)
 {
 #ifdef AT_SLAVE
 unsigned char *pc = (unsigned char*)&dd_v[DDS_CUR_STAR];
 unsigned char *pp = (unsigned char*)twi_pos;
-unsigned char iii;
+unsigned char iii,sum=0,found=0;
 if ( twi_tx_buf[3] == 0xC0 )  // Current position
    {
-   pc[0] = twi_tx_buf[4];   
-   pc[1] = twi_tx_buf[5];   
-   if ( debug_mode != twi_tx_buf[7] ) for ( iii=0 ; iii<32 ; iii++ ) dd_v[DDS_DEBUG + iii] = 0;
+   for ( iii=1 ; iii<TWI_C1 ; iii++ ) twi_rx_buf[iii]=0xFA;
+
+   pc[0] = twi_tx_buf[4];   // Current star
+   pc[1] = twi_tx_buf[5];   // Current star
+   if ( debug_mode != twi_tx_buf[7] ) for ( iii=0 ; iii<32 ; iii++ ) dd_v[DDS_DEBUG + iii] = 0; // Debug info
    debug_mode = twi_tx_buf[7];
-   for ( iii=0 ; iii<8      ; iii++ ) pp[iii] = twi_tx_buf[8+iii];
+   for ( iii=0 ; iii<8      ; iii++ ) pp[iii] = twi_tx_buf[8+iii]; // update current position
    ra->pos  = twi_pos[0];
    dec->pos = twi_pos[1];
+
+   if ( twi_seq != twi_tx_buf[6] )  // Add the current star to the list of corrected star position
+      {
+      twi_seq = twi_tx_buf[6]; 
+      for ( iii = 0 ; iii<10 && (found==0); iii++ )  // for all slots
+         {
+         if ( saved[iii].ref_star==dd_v[DDS_CUR_STAR] ) found=iii;  // Found a slots when we previously recorded a correction to that same star
+         if ( saved[iii].ref_star==0 )                  found=iii;  // New star corrected pos
+         }
+      record_pos(10+found); 
+      }
    }
+   ///////// Prepare responce
+   twi_rx_buf[1]  = twi_fb_count; 
+   twi_rx_buf[2]  = twi_tx_buf[2];  // command feedback
+   twi_rx_buf[3]  = twi_tx_buf[3];  // data feedback 
+for ( iii=1 ; iii<TWI_C1 ; iii++ ) sum +=twi_rx_buf[iii];
+twi_rx_buf[TWI_C1] = -sum;   // Checksum
+twi_rx_buf[4] = -sum;   // Checksum
+twi_rx_buf[8] = -sum;   // Checksum
+twi_rx_buf[12] = -sum;   // Checksum
+twi_rx_buf[16] = -sum;   // Checksum
+twi_rx_buf[20] = -sum;   // Checksum
+twi_rx_buf[24] = -sum;   // Checksum
+twi_rx_buf[28] = -sum;   // Checksum
 #endif
 }
 
@@ -2326,11 +2365,10 @@ void twi_tx(void)
 unsigned char *pc = (unsigned char*)&dd_v[DDS_CUR_STAR];
 unsigned char *pp = (unsigned char*)twi_pos;
 unsigned char iii,sum=0;
-#endif
-#define TWI_C1 32
 
 twi_hold = 1;         // Tell foreground that if it interrupts us, it must not drive the twi position because we are reading them...
-#ifdef AT_MASTER
+for ( iii=1 ; iii<TWI_C1 ; iii++ ) twi_tx_buf[iii]=0xAA;
+
 twi_tx_buf[0]  = 0x20;   // Slave address
 twi_tx_buf[1]  = TWI_C1+1;     // Byte count
 twi_tx_buf[2]  = 0xD0;   // Req Data : tell the Slave what we want to receive next  
@@ -2348,21 +2386,10 @@ twi_tx_buf[TWI_C1] = -sum;   // Checksum
 
 twi_rx_buf[0]  = 0x21;   // Slave address READ Request
 twi_fb_count   = TWI_C1+1;    // hardcoded for now, but it could depens on what the Master wants in return
-#endif
-#ifdef AT_SLAVE
-if ( twi_fb_count==0 ) twi_fb_count   = TWI_C1;    // TODO: remove ... this should be set by the reception SLA+W
-twi_rx_buf[1]  = 0xFF; 
-twi_rx_buf[2]  = 0x11; 
-twi_rx_buf[3]  = 0x22; 
-twi_rx_buf[4]  = 0x33; 
-twi_rx_buf[5]  = 0x44; 
-twi_rx_buf[6]  = 0x55; 
-twi_rx_buf[7]  = 0x66; 
-twi_rx_buf[8]  = 0x77; 
-twi_rx_buf[9]  = 0x88; 
-twi_rx_buf[10] = 0x99; 
-#endif
 twi_hold = 0;         // Tell foreground that if it interrupts us, it must not drive the twi position because we are reading them...
+#elif AT_SLAVE
+if ( twi_fb_count==0 ) twi_fb_count   = TWI_C1;    // TODO: remove ... this should be set by the reception SLA+W
+#endif
 }
 
 static unsigned char twi_enable=0;
@@ -2444,7 +2471,6 @@ lstate = twi_state;
       if ( debug_mode==0 ) aa[0]++;  // High part          // Nb bytes received so far...
       }
    if ( twi_state== 0 ) twi_tx();
-if ( debug_mode==1 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08]; for ( ES = 0 ; ES < 20 ; ES++ ) p[ES] = twi_rx_buf[ES]; }
 #endif
 
 #ifdef AT_SLAVE
@@ -2500,8 +2526,9 @@ wait = 0x80;
 
      if ( twi_state== 0 ) twi_tx();  // TODO not sure it's the right place
 
-if ( debug_mode==1 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08]; for ( ES = 0 ; ES < 20 ; ES++ ) p[ES] = twi_tx_buf[ES]; }
 #endif
+if ( debug_mode==1 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08]; for ( ES = 0 ; ES <= TWI_C1 ; ES++ ) p[ES] = twi_rx_buf[ES]; }
+if ( debug_mode==2 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08]; for ( ES = 0 ; ES <= TWI_C1 ; ES++ ) p[ES] = twi_tx_buf[ES]; }
 
 //if ( (PINC & 0x20) == 0) aa[0]++;
 //if ( (PINC & 0x10) == 0) aa[1]++;
@@ -3089,6 +3116,14 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.66  2012/01/21 17:06:06  pmichel
+########################
+Nice Split, both Master and Slaves uses about 19k of Flash
+Slaves has all the Polar Math minus the Motor logic
+Master has the Motor logic minus the Polar Math
+>>> Remains to add the logic so that the Master asks for a Pola
+>>> Remains to clean-up the code and but all the different parts together: Display / Motor / Polar Math
+
 Revision 1.65  2012/01/21 03:39:50  pmichel
 This is exponential groath,
 from zero progress in 2 weeks to a state when I feel the need to checkin every 5 minutes because so much progress was made
