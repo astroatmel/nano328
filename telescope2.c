@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/22 19:07:03 $
-$Id: telescope2.c,v 1.67 2012/01/22 19:07:03 pmichel Exp pmichel $
+$Date: 2012/01/22 19:34:31 $
+$Id: telescope2.c,v 1.68 2012/01/22 19:34:31 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.67 $
+$Revision: 1.68 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -59,7 +59,9 @@ void wait(long time,long mult);
 
 // Debug Mode 0 : value at offset 0x01 : High short = Nb Tx from Master : Low short = Nb rx from the Master
 //              : values at offset 0x08 to 0x1F are used to display TWI states 
-char debug_mode=0; // depending of the debug mode, change what the debug shows 
+// Debug Mode 1 : Shows TWI buffer 
+// Debug Mode 2 : Shows TWI buffer 
+char debug_mode=3; // depending of the debug mode, change what the debug shows 
 char nb_debug_mode=4;
 
 char fast_portc=0;
@@ -517,12 +519,14 @@ else                                        return  fp_sin_low(rad,1);          
 // short ir_count,l_ir_count,ll_ir_count;
 short l_ir_count;
 /////////////////////////////////////////// RS232 INPUTS ///////////////////////////////////////////////////////////
-#define RS232_RX_BUF 32
-unsigned char rs232_rx_buf[RS232_RX_BUF] = {0};
-//unsigned char rs232_rx_idx=0;                          // <- always points on the NULL
-//unsigned char l_rs232_rx_idx=0;                       // 
-volatile unsigned char rs232_rx_clr=0;               // set by foreground to tell ap0c0 that it can clear the buffer
+short rs232_rx;
 volatile unsigned char rs232_rx_cnt,l_rs232_rx_cnt; // set by foreground to tell ap0c0 that it received something
+/// what follows is the last method...
+//==#define RS232_RX_BUF 32
+//==unsigned char rs232_rx_buf[RS232_RX_BUF] = {0};
+//==//unsigned char rs232_rx_idx=0;                          // <- always points on the NULL
+//==//unsigned char l_rs232_rx_idx=0;                       // 
+//==volatile unsigned char rs232_rx_clr=0;               // set by foreground to tell ap0c0 that it can clear the buffer
 /////////////////////////////////////////// RS232 OUTPUTS //////////////////////////////////////////////////////////
 #define RS232_TX_BUF 64
 unsigned char rs232_tx_buf[RS232_TX_BUF] = {0}; // buffer that contains the proper thing to display based on current d_task
@@ -644,21 +648,21 @@ PROGMEM const unsigned char dd_x[DD_FIELDS]={ 22 , 32 , 42 , 52 , 64 , 74 , 84 ,
                                             , 22 , 27 , 32 , 37 , 42 , 47 , 52 , 57 , 64 , 69 , 74 , 79 , 84 , 89 , 94 , 99     // 0x20: Histogram 0->15
                                             , 39 , 39 , 39 , 72 , 97 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x30: RA structure values  [pos, pos_cor,pos_hw, speed, state
                                             , 22 , 22 , 22 , 72 , 97 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x40: DEC structure values [pos, pos_cor,pos_hw, speed, state
-                                            , 57 , 57 , 57 , 35 , 22 , 39 , 57 , 31 , 22 , 22 , 22 , 14 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds, start pos dec,ra,ra
+                                            , 57 , 57 , 57 , 35 , 22 , 39 , 57 , 31 , 22 , 22 , 22 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds, start pos dec,ra,ra
                                             };
 PROGMEM const unsigned char dd_y[DD_FIELDS]={ 36 , 36 , 36 , 36 , 36 , 36 , 36 , 36 , 37 , 37 , 37 , 37 , 37 , 37 , 37 , 37     // 0x00: DEBUG  0->15
                                             , 38 , 38 , 38 , 38 , 38 , 38 , 38 , 38 , 39 , 39 , 39 , 39 , 39 , 39 , 39 , 39     // 0x10: DEBUG 16->31
                                             , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35     // 0x20: Histogram 0->15
                                             , 25 , 26 , 27 , 31 , 31 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x30: RA structure values   [pos, pos_cor,pos_hw, speed, state
                                             , 25 , 26 , 27 , 32 , 32 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x40: DEC structure values  [pos, pos_cor,pos_hw, speed, state
-                                            , 25 , 26 , 27 , 22 , 29 , 29 , 29 , 31 , 31 , 32 , 28 , 44 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
+                                            , 25 , 26 , 27 , 22 , 29 , 29 , 29 , 31 , 31 , 32 , 28 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
                                             };
 PROGMEM const unsigned char dd_f[DD_FIELDS]={0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18    // 0x00: DEBUG  0->15      all HEX 8 bytes
                                             ,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18    // 0x10: DEBUG 16->31      all HEX 8 bytes
                                             ,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14    // 0x20: Histogram 0->15   all HEX 4 bytes
                                             ,0x50,0x50,0x50,0x26,0x24,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x30: RA structure values
                                             ,0x40,0x40,0x40,0x26,0x24,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x40: DEC structure values 
-                                            ,0x60,0x60,0x60,0x38,0x40,0x50,0x60,0x14,0x18,0x18,0xB0,0x70,0x00,0x00,0x00,0x00    // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
+                                            ,0x60,0x60,0x60,0x38,0x40,0x50,0x60,0x14,0x18,0x18,0xB0,0x00,0x00,0x00,0x00,0x00    // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
                                             };  
 // define the Start of each variable in the array
 #define DDS_DEBUG         0x00
@@ -676,7 +680,7 @@ PROGMEM const unsigned char dd_f[DD_FIELDS]={0x18,0x18,0x18,0x18,0x18,0x18,0x18,
 #define DDS_IR_CODE       0x58  // dd_v[DDS_IR_CODE]
 #define DDS_IR_L_CODE     0x59  // dd_v[DDS_IR_L_CODE]
 #define DDS_CUR_STAR      0x5A  // dd_v[DDS_CUR_STAR]
-#define DDS_RX_IDX        0x5B  // dd_v[DDS_RX_IDX]
+//#define DDS_RX_IDX        0x5B  // dd_v[DDS_RX_IDX]
 
 unsigned char dd_go(unsigned char task,char first)
 {
@@ -689,7 +693,7 @@ if ( dd_p[task] != dd_v[task] || first)
    if ( (XXX == 0) && (YYY == 0) ) return 0; // found nothing to display
 
    if ( task == DDS_CUR_STAR )     display_data((char*)rs232_tx_buf,XXX,YYY,pgm_stars_name + dd_v[DDS_CUR_STAR] * STAR_NAME_LEN ,0,FMT);   // special cases strings stored in FLASH
-   else if ( task == DDS_RX_IDX )  display_data((char*)rs232_tx_buf,XXX,YYY,0,(short)rs232_rx_buf                                 ,FMT);   // special cases strings stored in FLASH
+//   else if ( task == DDS_RX_IDX )  display_data((char*)rs232_tx_buf,XXX,YYY,0,(short)rs232_rx_buf                                 ,FMT);   // special cases strings stored in FLASH
    else                            display_data((char*)rs232_tx_buf,XXX,YYY,0,dd_v[task]                                          ,FMT);   // special cases strings stored in FLASH
 
    dd_p[task] = dd_v[task];
@@ -1350,31 +1354,13 @@ Hour   :
 Declin : 
 */
      
+#ifdef AT_MASTER
  
-#define PROSCAN_VCR1_CH_P   0x021D2E2D
-#define PROSCAN_VCR1_CH_M   0x021D3E2C
-#define PROSCAN_VCR1_VOL_P  0x023D0C2F
-#define PROSCAN_VCR1_VOL_M  0x023D1C2E
-#define PROSCAN_VCR1_FWD    0x021E3E1C
-#define PROSCAN_VCR1_REW    0x021E2E1D
-#define PROSCAN_VCR1_RECORD 0x021E8E17
-#define PROSCAN_VCR1_PLAY   0x021EAE15
-#define PROSCAN_VCR1_STOP   0x021E0E1F
 #define PROSCAN_VCR1_NORTH  0x021A6E59
 #define PROSCAN_VCR1_SOUTH  0x021A7E58
 #define PROSCAN_VCR1_WEST   0x021A8E57
 #define PROSCAN_VCR1_EAST   0x021A9E56
 #define PROSCAN_VCR1_OK     0x0210BEF4
-#define PROSCAN_VCR1_SEARCH 0x021ACE53
-#define PROSCAN_VCR1_GOBACK 0x021D8E27
-#define PROSCAN_VCR1_INPUT  0x021B8E47
-#define PROSCAN_VCR1_ANTENA 0x021FAE05
-#define PROSCAN_VCR1_CLEAR  0x021F9E06
-#define PROSCAN_VCR1_GUIDE  0x021E5E1A
-#define PROSCAN_VCR1_INFO   0x021C3E3C
-#define PROSCAN_VCR1_POWER  0x021D5E2A
-#define PROSCAN_VCR1_TRAK_P 0x021F4E0B
-#define PROSCAN_VCR1_TRAK_M 0x021F5E0A
 #define PROSCAN_VCR1_0      0x021CFE30
 #define PROSCAN_VCR1_1      0x021CEE31
 #define PROSCAN_VCR1_2      0x021CDE32
@@ -1385,6 +1371,91 @@ Declin :
 #define PROSCAN_VCR1_7      0x021C8E37
 #define PROSCAN_VCR1_8      0x021C7E38
 #define PROSCAN_VCR1_9      0x021C6E39
+#define PROSCAN_VCR1_CH_P   0x021D2E2D
+#define PROSCAN_VCR1_CH_M   0x021D3E2C
+#define PROSCAN_VCR1_VOL_P  0x023D0C2F
+#define PROSCAN_VCR1_VOL_M  0x023D1C2E
+#define PROSCAN_VCR1_FWD    0x021E3E1C
+#define PROSCAN_VCR1_REW    0x021E2E1D
+#define PROSCAN_VCR1_RECORD 0x021E8E17
+#define PROSCAN_VCR1_PLAY   0x021EAE15
+#define PROSCAN_VCR1_STOP   0x021E0E1F
+#define PROSCAN_VCR1_SEARCH 0x021ACE53
+#define PROSCAN_VCR1_GOBACK 0x021D8E27
+#define PROSCAN_VCR1_INPUT  0x021B8E47
+#define PROSCAN_VCR1_ANTENA 0x021FAE05
+#define PROSCAN_VCR1_CLEAR  0x021F9E06
+#define PROSCAN_VCR1_GUIDE  0x021E5E1A
+#define PROSCAN_VCR1_INFO   0x021C3E3C
+#define PROSCAN_VCR1_POWER  0x021D5E2A
+#define PROSCAN_VCR1_TRAK_P 0x021F4E0B
+#define PROSCAN_VCR1_TRAK_M 0x021F5E0A
+
+#define IDX_VCR1_NORTH  0
+#define IDX_VCR1_SOUTH  1
+#define IDX_VCR1_WEST   2
+#define IDX_VCR1_EAST   3
+#define IDX_VCR1_OK     4
+#define IDX_VCR1_0      5
+#define IDX_VCR1_1      6
+#define IDX_VCR1_2      7
+#define IDX_VCR1_3      8
+#define IDX_VCR1_4      9
+#define IDX_VCR1_5      10
+#define IDX_VCR1_6      11
+#define IDX_VCR1_7      12
+#define IDX_VCR1_8      13
+#define IDX_VCR1_9      14
+#define IDX_VCR1_CH_P   15
+#define IDX_VCR1_CH_M   16
+#define IDX_VCR1_VOL_P  17
+#define IDX_VCR1_VOL_M  18
+#define IDX_VCR1_FWD    19
+#define IDX_VCR1_REW    20
+#define IDX_VCR1_RECORD 21
+#define IDX_VCR1_PLAY   22
+#define IDX_VCR1_STOP   23
+#define IDX_VCR1_SEARCH 24
+#define IDX_VCR1_GOBACK 25
+#define IDX_VCR1_INPUT  26
+#define IDX_VCR1_ANTENA 27
+#define IDX_VCR1_CLEAR  28
+#define IDX_VCR1_GUIDE  29
+#define IDX_VCR1_INFO   30
+#define IDX_VCR1_POWER  31
+#define IDX_VCR1_TRAK_P 32
+#define IDX_VCR1_TRAK_M 33
+
+PROGMEM unsigned long PROSCANs[]= {   // The order is important   3                     4                     5                     6                     7
+PROSCAN_VCR1_NORTH  , PROSCAN_VCR1_SOUTH  , PROSCAN_VCR1_WEST   , PROSCAN_VCR1_EAST   , PROSCAN_VCR1_OK     , PROSCAN_VCR1_0      , PROSCAN_VCR1_1      , PROSCAN_VCR1_2      ,  // 0
+PROSCAN_VCR1_3      , PROSCAN_VCR1_4      , PROSCAN_VCR1_5      , PROSCAN_VCR1_6      , PROSCAN_VCR1_7      , PROSCAN_VCR1_8      , PROSCAN_VCR1_9      , PROSCAN_VCR1_CH_P   ,  // 8
+PROSCAN_VCR1_CH_M   , PROSCAN_VCR1_VOL_P  , PROSCAN_VCR1_VOL_M  , PROSCAN_VCR1_FWD    , PROSCAN_VCR1_REW    , PROSCAN_VCR1_RECORD , PROSCAN_VCR1_PLAY   , PROSCAN_VCR1_STOP   ,  // 16
+PROSCAN_VCR1_SEARCH , PROSCAN_VCR1_GOBACK , PROSCAN_VCR1_INPUT  , PROSCAN_VCR1_ANTENA , PROSCAN_VCR1_CLEAR  , PROSCAN_VCR1_GUIDE  , PROSCAN_VCR1_INFO   , PROSCAN_VCR1_POWER  ,  // 24
+PROSCAN_VCR1_TRAK_P , PROSCAN_VCR1_TRAK_M                                                                                                                                        // 32
+                                  };
+PROGMEM short         RS232EQVs[]= {  // The order is important, each rs232 character is assigned a PROSCAN equivalent
+0x5B41              , 0x5B42              , 0x5B44              , 0x5B43              , 13                  , '0'                 , '1'                 , '2'                 ,
+'3'                 , '4'                 , '5'                 , '6'                 , '7'                 , '8'                 , '9'                 , 'i'                 ,  
+'m'                 , 'k'                 , 'j'                 , '>'                 , '<'                 , 'r'                 , 'p'                 , 's'                 ,
+'/'                 , '*'                 , '.'                 , '!'                 , 0x5B33              , 'g'                 , '?'                 , '~'                 ,
+'+'                 , '-'                  
+                    , 0           };
+char idx_code,next_input;
+
+unsigned char  set_next_input(unsigned char idx_code)   // determine the type of input ; this valus is used strait in the cmd_state machine
+{
+if ( idx_code >= IDX_VCR1_0 && idx_code <=  IDX_VCR1_9 )      return 0;  //  0-9
+if ( idx_code == IDX_VCR1_PLAY                    )           return 1;  // PLAY   / 'p'
+if ( idx_code == IDX_VCR1_RECORD                  )           return 2;  // RECORD / 'r'
+if ( idx_code == IDX_VCR1_CLEAR                   )           return 3;  // CLEAR  / 'delete'
+if ( idx_code == IDX_VCR1_INPUT                   )           return 4;  // INPUT  / '.'
+if ( idx_code == IDX_VCR1_ANTENA                  )           return 5;  // ANTENA / '!'
+if ( idx_code >= IDX_VCR1_CH_P && idx_code <=IDX_VCR1_VOL_M ) return 6;  // CH_P   / 'i'      CH_M   / 'm'    OL_P  / 'k'    VOL_M  / 'j'    
+if ( idx_code == IDX_VCR1_SEARCH                  )           return 6;  // SEARCH / 'p'
+else                                                          return -1; // PLAY   / 'p'
+}
+#endif
+
 
 char standby_goto;
 
@@ -1439,25 +1510,6 @@ else
    }
 }
 
-#ifdef AT_MASTER
-short is_search(long *code) // return true on PROSCAN_VCR1_NORTH/SOUTH/EAST/WEST and PROSCAN_VCR1_SEARCH
-{
-//if ( (*code&0xFFFF0FF0) == 0x021A0E50 ) return 1;  
-if ( *code == PROSCAN_VCR1_CH_P   ) return 1;  
-if ( *code == PROSCAN_VCR1_CH_M   ) return 1;  
-if ( *code == PROSCAN_VCR1_VOL_P  ) return 1;  
-if ( *code == PROSCAN_VCR1_VOL_M  ) return 1;  
-if ( *code == PROSCAN_VCR1_SEARCH ) return 1;  
-return 0;
-}
-
-short is_digit(long *code)
-{
-if ( *code == PROSCAN_VCR1_INFO ) return 0;
-if ( (*code&0xFFFF0FF0) == 0x021C0E30 ) return 1;  
-return 0;
-}
-#endif
 
 /*
 - redo proscan codes using #defines and VCR1
@@ -1522,56 +1574,64 @@ void display_next_bg(void)
 twitt();
 if ( AP0_DISPLAY == 0 ) display_next();  // if not printing from AP0, then print here
 #elif  AT_MASTER
-unsigned char exec_code=0;
-short jjj;
-long code = dd_v[DDS_IR_CODE];
-short next_input;
+unsigned char code_idx=255; // lets work with the code's index  // wether it's IR or rs232
 short iii;
 
 twitt();
 
 if ( AP0_DISPLAY == 0 ) display_next();  // if not printing from AP0, then print here
 
-///// Process IR commands
 //dd_v[DDS_DEBUG + 0x0C] = cmd_state;
 
+///// Process IR commands
 if ( l_ir_count != dd_v[DDS_IR_COUNT])
    {
-   exec_code = 1;
+   long code = dd_v[DDS_IR_CODE];
+   long lcode;
    l_ir_count = dd_v[DDS_IR_COUNT]; // tell SP0 that he can go on
+   for( iii=0 ; (iii < sizeof(PROSCANs)/4) && (code_idx==255) ; iii++ )
+      {
+      lcode= pgm_read_dword(&PROSCANs[iii]);
+      if (code == lcode )  code_idx = iii;  // found a valid code
+      }
+//   dd_v[DDS_DEBUG + 0x04] = rs232_rx;
+//   dd_v[DDS_DEBUG + 0x05] = code_idx;
+   }
+else if ( l_rs232_rx_cnt != rs232_rx_cnt )  // new rs232 input
+   {
+   short scode;
+   l_rs232_rx_cnt = rs232_rx_cnt;
+   for( iii=0 ; (iii < sizeof(RS232EQVs)/2) && (code_idx==255) ; iii++ )
+      {
+      scode = pgm_read_word (&RS232EQVs[iii]);
+      if (rs232_rx == scode )  code_idx = iii;  // found a valid code
+      }
+   dd_v[DDS_DEBUG + 0x04] = rs232_rx;
+   dd_v[DDS_DEBUG + 0x05] = code_idx + rs232_rx_cnt*0x10000;
+   }
 
-   if      ( is_digit(&code) )             next_input = 0;  // Keyb : 0-9
-   else if ( code == PROSCAN_VCR1_PLAY)    next_input = 1;  // Keyb :   
-   else if ( code == PROSCAN_VCR1_RECORD)  next_input = 2;  // Keyb : 
-   else if ( code == PROSCAN_VCR1_CLEAR)   next_input = 3;  // Keyb : 
-   else if ( code == PROSCAN_VCR1_INPUT)   next_input = 4;  // Keyb : 
-   else if ( code == PROSCAN_VCR1_ANTENA)  next_input = 5;  // Keyb : 
-   else if ( is_search(&code) )            next_input = 6;  // Keyb : 
-   else                                    next_input = -1;
+///// Process Keyboard commands
+if ( code_idx != 255 ) // rceived a valid input from IR or RS232
+   {
+   unsigned char jjj=0;
+   if ( next_input == 0 ) jjj = code_idx-5;  // (This is the value) 0-9
+
+   next_input = set_next_input(code_idx);
+//   dd_v[DDS_DEBUG + 0x06] = next_input + cmd_state*10000;
 
    if ( next_input >=0 ) 
       {
       if ( cmd_state==0 ) cmd_val_idx=0;  // reset captured data
       cmd_state = pgm_read_byte(&cmd_states[cmd_state*7 + next_input]);  // go to next state based on input type
-      if ( cmd_val_idx<10) cmd_val[cmd_val_idx++] = code & 0x0000000F;   // store the last digit of the code
-      jjj = cmd_val[cmd_val_idx-1];  // last digit...
+      if ( cmd_val_idx<10) cmd_val[cmd_val_idx++] = jjj;                 // store the last code (from which we can extract a number)
       }
    else 
       {
       if ( cmd_state== 9 ) cmd_state=107;   // state 9 will  process anything  !
       else                 cmd_state=0;     // unknown command
-      jjj = 0;
       }
-   }
-else if ( l_rs232_rx_cnt != rs232_rx_cnt )  // new rs232 input
-   {
-   l_rs232_rx_cnt = rs232_rx_cnt;
-   next_input = 0;
-   }
-else exec_code = 0;
 
-if ( exec_code )
-   {
+
    if ( cmd_state >= 100 ) // a command is complete, need to process it
       {
       if ( cmd_state==100 ) // PLAY X X X : goto direct to catalog star 
@@ -1593,9 +1653,9 @@ if ( exec_code )
          { for(iii=0;iii<10;iii++) saved[10+iii].ra = saved[10+iii].dec = saved[10+iii].ref_star=0; }
       if ( cmd_state==107 ) // CLEAR ? : clear something else !
          { 
-         if ( code == PROSCAN_VCR1_INFO )   for(iii=0;iii<16;iii++) dd_v[DDS_HISTO+iii]=0; 
-         if ( code == PROSCAN_VCR1_OK )     redraw   = 1;       // redraw everything
-         if ( code == PROSCAN_VCR1_SEARCH ) loc_dec_correction=loc_ra_correction=use_polar=0; // Disable polar correction
+         if ( code_idx == IDX_VCR1_INFO )   for(iii=0;iii<16;iii++) dd_v[DDS_HISTO+iii]=0; 
+         if ( code_idx == IDX_VCR1_OK )     redraw   = 1;       // redraw everything
+         if ( code_idx == IDX_VCR1_SEARCH ) loc_dec_correction=loc_ra_correction=use_polar=0; // Disable polar correction
          cmd_state = 0;
          }
       if ( cmd_state==108 ) // COMPLEX GOTO MANUAL POSITION
@@ -1610,16 +1670,16 @@ if ( exec_code )
       }
    else if ( next_input < 0 ) // Check for a one key command
       {
-      if      ( code == PROSCAN_VCR1_NORTH   ) slew_cmd = 8;       // North
-      else if ( code == PROSCAN_VCR1_SOUTH   ) slew_cmd = 2;       // South
-      else if ( code == PROSCAN_VCR1_EAST    ) slew_cmd = 4;       // East
-      else if ( code == PROSCAN_VCR1_WEST    ) slew_cmd = 6;       // West
-      else if ( code == PROSCAN_VCR1_OK      ) slew_cmd = 5;       // Stop
-      else if ( code == PROSCAN_VCR1_STOP    ) slew_cmd = 5;       // Stop
-      else if ( code == PROSCAN_VCR1_TRAK_P  ) earth_tracking=1;   // Start tracking
-      else if ( code == PROSCAN_VCR1_TRAK_M  ) earth_tracking=0;   // Stop tracking
-      else if ( code == PROSCAN_VCR1_GOBACK  ) goto_pgm_pos(dd_v[DDS_CUR_STAR]);  // goto active star
-      else if ( code == PROSCAN_VCR1_POWER   ) 
+      if      ( code_idx == IDX_VCR1_NORTH   ) slew_cmd = 8;       // North
+      else if ( code_idx == IDX_VCR1_SOUTH   ) slew_cmd = 2;       // South
+      else if ( code_idx == IDX_VCR1_EAST    ) slew_cmd = 4;       // East
+      else if ( code_idx == IDX_VCR1_WEST    ) slew_cmd = 6;       // West
+      else if ( code_idx == IDX_VCR1_OK      ) slew_cmd = 5;       // Stop
+      else if ( code_idx == IDX_VCR1_STOP    ) slew_cmd = 5;       // Stop
+      else if ( code_idx == IDX_VCR1_TRAK_P  ) earth_tracking=1;   // Start tracking
+      else if ( code_idx == IDX_VCR1_TRAK_M  ) earth_tracking=0;   // Stop tracking
+      else if ( code_idx == IDX_VCR1_GOBACK  ) goto_pgm_pos(dd_v[DDS_CUR_STAR]);  // goto active star
+      else if ( code_idx == IDX_VCR1_POWER   ) 
          {
          motor_disable = !motor_disable;
          //set_digital_output(DO_DISABLE  ,motor_disable);
@@ -1628,12 +1688,12 @@ if ( exec_code )
          if ( motor_disable ) PORTD |=  DO_DISABLE;
          else                 PORTD &= ~DO_DISABLE;
          }
-      else if ( code == PROSCAN_VCR1_FWD     ) 
+      else if ( code_idx == IDX_VCR1_FWD     ) 
          {
          if ( dd_v[DDS_CUR_STAR] == NB_PGM_STARS -1 ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
          else                                         dd_v[DDS_CUR_STAR]++;
          }
-      else if ( code == PROSCAN_VCR1_REW ) 
+      else if ( code_idx == IDX_VCR1_REW ) 
          {
          if ( dd_v[DDS_CUR_STAR] == 0 )               dd_v[DDS_CUR_STAR] = NB_PGM_STARS-1; // we reached the first star
          else                                         dd_v[DDS_CUR_STAR]--;  
@@ -1642,45 +1702,12 @@ if ( exec_code )
       }
    }
 #endif  // AT_MASTER process IR
-///// Process Keyboard commands
 #ifdef ASFAS
-if ( dd_v[DDS_RX_IDX]==0 ) {;}  // nothing to do
-else if ( dd_v[DDS_RX_IDX]==1 )  // check if it's a single key command
-   {
-   if( rs232_rx_buf[0] == '<' || rs232_rx_buf[0] == '>')
-      {
-      if ( rs232_rx_buf[0] == '<') dd_v[DDS_CUR_STAR]--; 
-      if ( rs232_rx_buf[0] == '>') dd_v[DDS_CUR_STAR]++; 
-      rs232_rx_buf[0] = 0;
-      dd_v[DDS_RX_IDX]=0;
-      }
-//   else if ( rs232_rx_buf[0] == '.')
-//      {
-//      twi_success_rx = 0 ;
-//      rs232_rx_buf[0] = 0;
-//      dd_v[DDS_RX_IDX]=0;
-//      }
    else if ( rs232_rx_buf[0] == '/')  // Change what is displayed in the debug section
       {
       debug_mode ++ ;
       if ( debug_mode> nb_debug_mode ) debug_mode = 0;
       for ( iii=0 ; iii<32 ; iii++ ) dd_v[DDS_DEBUG + iii] = 0;
-      rs232_rx_buf[0] = 0;
-      dd_v[DDS_RX_IDX]=0;
-      }
-   else if ( rs232_rx_buf[0] == '*')
-      {
-      goto_pgm_pos(dd_v[DDS_CUR_STAR]);  // goto active star
-      rs232_rx_buf[0] = 0;
-      dd_v[DDS_RX_IDX]=0;
-      }
-//   else if ( rs232_rx_buf[0] == '[' || rs232_rx_buf[0] == '[')
-//      {
-//      }
-   else if ( rs232_rx_buf[0] == '(' || rs232_rx_buf[0] == ')')
-      {
-      if ( rs232_rx_buf[0] == '(' ) earth_tracking=1;
-      else                          earth_tracking=0;
       rs232_rx_buf[0] = 0;
       dd_v[DDS_RX_IDX]=0;
       }
@@ -1690,18 +1717,6 @@ else if ( dd_v[DDS_RX_IDX]==1 )  // check if it's a single key command
       rs232_rx_buf[0] = 0;
       dd_v[DDS_RX_IDX]=0;
       }
-   else if ( rs232_rx_buf[0] == '2' || rs232_rx_buf[0] == '4' || rs232_rx_buf[0] == '5' || rs232_rx_buf[0] == '6' || rs232_rx_buf[0] == '8')
-      {
-      slew_cmd = rs232_rx_buf[0] - '0';
-      rs232_rx_buf[0] = 0;
-      dd_v[DDS_RX_IDX]=0;
-      }
-   }
-else if ( rs232_rx_buf[dd_v[DDS_RX_IDX]-1]==0x0D || rs232_rx_buf[dd_v[DDS_RX_IDX]-1]==0x0A )  // Return
-   {
-   rs232_rx_buf[0] = 0;
-   dd_v[DDS_RX_IDX]=0;
-   }
 #endif
 // make sure CUR_STAR is inbound   
 if ( dd_v[DDS_CUR_STAR] >= NB_PGM_STARS ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
@@ -1753,22 +1768,36 @@ if ( redraw )
 // process RX
 if ( (UCSR0A & 0x80) != 0)    // ********** CA CA LIT BIEN...
    {
+   static unsigned char esc_code=0,esc_codes[3];
    CCC = UDR0;
-   if ( rs232_rx_clr )
+   if ( esc_code>0 || CCC==27 )
       {
-      rs232_rx_clr = dd_v[DDS_RX_IDX] = 0;
-      rs232_rx_buf[dd_v[DDS_RX_IDX]] = 0;
+      if ( CCC==27 ) esc_code=3;
+      else esc_codes[esc_code-1] = CCC;
+      if ( esc_code == 1 ) // last cde
+         {
+         rs232_rx = esc_codes[1]*0x100 + esc_codes[0];         
+         rs232_rx_cnt++;
+         } 
+      esc_code--;
+     dd_v[DDS_DEBUG + 0x06] = esc_codes[2]*0x10000 + esc_codes[1]*0x100 + esc_codes[0];
       }
-   if ( CCC == 0x08 ) // backspace
-      {
-      if ( dd_v[DDS_RX_IDX] > 0 ) dd_v[DDS_RX_IDX]--;
-      rs232_rx_buf[dd_v[DDS_RX_IDX]] = 0;
-      }
+//   else if ( rs232_rx_clr )
+//      {
+//      rs232_rx_clr = dd_v[DDS_RX_IDX] = 0;
+//      rs232_rx_buf[dd_v[DDS_RX_IDX]] = 0;
+//      }
+//   if ( CCC == 0x08 ) // backspace
+//      {
+//      if ( dd_v[DDS_RX_IDX] > 0 ) dd_v[DDS_RX_IDX]--;
+//      rs232_rx_buf[dd_v[DDS_RX_IDX]] = 0;
+//      }
    else
       {
-      rs232_rx_buf[dd_v[DDS_RX_IDX]++] = CCC;
-      if ( dd_v[DDS_RX_IDX] >= RS232_RX_BUF ) dd_v[DDS_RX_IDX]=RS232_RX_BUF-1;
-      rs232_rx_buf[dd_v[DDS_RX_IDX]] = 0;
+//      rs232_rx_buf[dd_v[DDS_RX_IDX]++] = CCC;
+//      if ( dd_v[DDS_RX_IDX] >= RS232_RX_BUF ) dd_v[DDS_RX_IDX]=RS232_RX_BUF-1;
+//      rs232_rx_buf[dd_v[DDS_RX_IDX]] = 0;
+      rs232_rx = CCC;
       rs232_rx_cnt++;
       }
    }
@@ -3125,6 +3154,10 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.68  2012/01/22 19:34:31  pmichel
+Hex : 18404 bytes
+About to change the way I process IR commands, in hope of freeying flash
+
 Revision 1.67  2012/01/22 19:07:03  pmichel
 Found why the output gave the impression that only 20 bytes were sent
 all is of, 32 bytes are exchanged . . .
