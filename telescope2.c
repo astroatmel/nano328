@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/21 17:06:06 $
-$Id: telescope2.c,v 1.66 2012/01/21 17:06:06 pmichel Exp pmichel $
+$Date: 2012/01/22 19:07:03 $
+$Id: telescope2.c,v 1.67 2012/01/22 19:07:03 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.66 $
+$Revision: 1.67 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -522,6 +522,7 @@ unsigned char rs232_rx_buf[RS232_RX_BUF] = {0};
 //unsigned char rs232_rx_idx=0;                          // <- always points on the NULL
 //unsigned char l_rs232_rx_idx=0;                       // 
 volatile unsigned char rs232_rx_clr=0;               // set by foreground to tell ap0c0 that it can clear the buffer
+volatile unsigned char rs232_rx_cnt,l_rs232_rx_cnt; // set by foreground to tell ap0c0 that it received something
 /////////////////////////////////////////// RS232 OUTPUTS //////////////////////////////////////////////////////////
 #define RS232_TX_BUF 64
 unsigned char rs232_tx_buf[RS232_TX_BUF] = {0}; // buffer that contains the proper thing to display based on current d_task
@@ -1517,6 +1518,14 @@ short ddll=0;
 
 void display_next_bg(void) 
 {
+#ifdef AT_SLAVE
+twitt();
+if ( AP0_DISPLAY == 0 ) display_next();  // if not printing from AP0, then print here
+#elif  AT_MASTER
+unsigned char exec_code=0;
+short jjj;
+long code = dd_v[DDS_IR_CODE];
+short next_input;
 short iii;
 
 twitt();
@@ -1526,21 +1535,18 @@ if ( AP0_DISPLAY == 0 ) display_next();  // if not printing from AP0, then print
 ///// Process IR commands
 //dd_v[DDS_DEBUG + 0x0C] = cmd_state;
 
-#ifdef AT_MASTER
 if ( l_ir_count != dd_v[DDS_IR_COUNT])
    {
-   short jjj;
-   long code = dd_v[DDS_IR_CODE];
-   short next_input;
+   exec_code = 1;
    l_ir_count = dd_v[DDS_IR_COUNT]; // tell SP0 that he can go on
 
-   if      ( is_digit(&code) )             next_input = 0;
-   else if ( code == PROSCAN_VCR1_PLAY)    next_input = 1;
-   else if ( code == PROSCAN_VCR1_RECORD)  next_input = 2;
-   else if ( code == PROSCAN_VCR1_CLEAR)   next_input = 3;
-   else if ( code == PROSCAN_VCR1_INPUT)   next_input = 4;
-   else if ( code == PROSCAN_VCR1_ANTENA)  next_input = 5;
-   else if ( is_search(&code) )            next_input = 6;
+   if      ( is_digit(&code) )             next_input = 0;  // Keyb : 0-9
+   else if ( code == PROSCAN_VCR1_PLAY)    next_input = 1;  // Keyb :   
+   else if ( code == PROSCAN_VCR1_RECORD)  next_input = 2;  // Keyb : 
+   else if ( code == PROSCAN_VCR1_CLEAR)   next_input = 3;  // Keyb : 
+   else if ( code == PROSCAN_VCR1_INPUT)   next_input = 4;  // Keyb : 
+   else if ( code == PROSCAN_VCR1_ANTENA)  next_input = 5;  // Keyb : 
+   else if ( is_search(&code) )            next_input = 6;  // Keyb : 
    else                                    next_input = -1;
 
    if ( next_input >=0 ) 
@@ -1556,7 +1562,16 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
       else                 cmd_state=0;     // unknown command
       jjj = 0;
       }
+   }
+else if ( l_rs232_rx_cnt != rs232_rx_cnt )  // new rs232 input
+   {
+   l_rs232_rx_cnt = rs232_rx_cnt;
+   next_input = 0;
+   }
+else exec_code = 0;
 
+if ( exec_code )
+   {
    if ( cmd_state >= 100 ) // a command is complete, need to process it
       {
       if ( cmd_state==100 ) // PLAY X X X : goto direct to catalog star 
@@ -1628,7 +1643,7 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
    }
 #endif  // AT_MASTER process IR
 ///// Process Keyboard commands
-
+#ifdef ASFAS
 if ( dd_v[DDS_RX_IDX]==0 ) {;}  // nothing to do
 else if ( dd_v[DDS_RX_IDX]==1 )  // check if it's a single key command
    {
@@ -1639,12 +1654,12 @@ else if ( dd_v[DDS_RX_IDX]==1 )  // check if it's a single key command
       rs232_rx_buf[0] = 0;
       dd_v[DDS_RX_IDX]=0;
       }
-   else if ( rs232_rx_buf[0] == '.')
-      {
-      twi_success_rx = 0 ;
-      rs232_rx_buf[0] = 0;
-      dd_v[DDS_RX_IDX]=0;
-      }
+//   else if ( rs232_rx_buf[0] == '.')
+//      {
+//      twi_success_rx = 0 ;
+//      rs232_rx_buf[0] = 0;
+//      dd_v[DDS_RX_IDX]=0;
+//      }
    else if ( rs232_rx_buf[0] == '/')  // Change what is displayed in the debug section
       {
       debug_mode ++ ;
@@ -1659,9 +1674,9 @@ else if ( dd_v[DDS_RX_IDX]==1 )  // check if it's a single key command
       rs232_rx_buf[0] = 0;
       dd_v[DDS_RX_IDX]=0;
       }
-   else if ( rs232_rx_buf[0] == '[' || rs232_rx_buf[0] == '[')
-      {
-      }
+//   else if ( rs232_rx_buf[0] == '[' || rs232_rx_buf[0] == '[')
+//      {
+//      }
    else if ( rs232_rx_buf[0] == '(' || rs232_rx_buf[0] == ')')
       {
       if ( rs232_rx_buf[0] == '(' ) earth_tracking=1;
@@ -1687,7 +1702,7 @@ else if ( rs232_rx_buf[dd_v[DDS_RX_IDX]-1]==0x0D || rs232_rx_buf[dd_v[DDS_RX_IDX
    rs232_rx_buf[0] = 0;
    dd_v[DDS_RX_IDX]=0;
    }
-
+#endif
 // make sure CUR_STAR is inbound   
 if ( dd_v[DDS_CUR_STAR] >= NB_PGM_STARS ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
 if ( dd_v[DDS_CUR_STAR] <  0            ) dd_v[DDS_CUR_STAR] = NB_PGM_STARS-1;
@@ -1754,6 +1769,7 @@ if ( (UCSR0A & 0x80) != 0)    // ********** CA CA LIT BIEN...
       rs232_rx_buf[dd_v[DDS_RX_IDX]++] = CCC;
       if ( dd_v[DDS_RX_IDX] >= RS232_RX_BUF ) dd_v[DDS_RX_IDX]=RS232_RX_BUF-1;
       rs232_rx_buf[dd_v[DDS_RX_IDX]] = 0;
+      rs232_rx_cnt++;
       }
    }
 
@@ -2348,13 +2364,6 @@ if ( twi_tx_buf[3] == 0xC0 )  // Current position
    twi_rx_buf[3]  = twi_tx_buf[3];  // data feedback 
 for ( iii=1 ; iii<TWI_C1 ; iii++ ) sum +=twi_rx_buf[iii];
 twi_rx_buf[TWI_C1] = -sum;   // Checksum
-twi_rx_buf[4] = -sum;   // Checksum
-twi_rx_buf[8] = -sum;   // Checksum
-twi_rx_buf[12] = -sum;   // Checksum
-twi_rx_buf[16] = -sum;   // Checksum
-twi_rx_buf[20] = -sum;   // Checksum
-twi_rx_buf[24] = -sum;   // Checksum
-twi_rx_buf[28] = -sum;   // Checksum
 #endif
 }
 
@@ -3116,6 +3125,10 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.67  2012/01/22 19:07:03  pmichel
+Found why the output gave the impression that only 20 bytes were sent
+all is of, 32 bytes are exchanged . . .
+
 Revision 1.66  2012/01/21 17:06:06  pmichel
 ########################
 Nice Split, both Master and Slaves uses about 19k of Flash
