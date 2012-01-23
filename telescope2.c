@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/22 19:34:31 $
-$Id: telescope2.c,v 1.68 2012/01/22 19:34:31 pmichel Exp pmichel $
+$Date: 2012/01/22 21:33:47 $
+$Id: telescope2.c,v 1.69 2012/01/22 21:33:47 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.68 $
+$Revision: 1.69 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -1390,7 +1390,7 @@ Declin :
 #define PROSCAN_VCR1_POWER  0x021D5E2A
 #define PROSCAN_VCR1_TRAK_P 0x021F4E0B
 #define PROSCAN_VCR1_TRAK_M 0x021F5E0A
-
+//          TODO  change the order for: 0-9 then north south east west ok stop play
 #define IDX_VCR1_NORTH  0
 #define IDX_VCR1_SOUTH  1
 #define IDX_VCR1_WEST   2
@@ -1670,14 +1670,11 @@ if ( code_idx != 255 ) // rceived a valid input from IR or RS232
       }
    else if ( next_input < 0 ) // Check for a one key command
       {
-      if      ( code_idx == IDX_VCR1_NORTH   ) slew_cmd = 8;       // North
-      else if ( code_idx == IDX_VCR1_SOUTH   ) slew_cmd = 2;       // South
-      else if ( code_idx == IDX_VCR1_EAST    ) slew_cmd = 4;       // East
-      else if ( code_idx == IDX_VCR1_WEST    ) slew_cmd = 6;       // West
-      else if ( code_idx == IDX_VCR1_OK      ) slew_cmd = 5;       // Stop
-      else if ( code_idx == IDX_VCR1_STOP    ) slew_cmd = 5;       // Stop
-      else if ( code_idx == IDX_VCR1_TRAK_P  ) earth_tracking=1;   // Start tracking
-      else if ( code_idx == IDX_VCR1_TRAK_M  ) earth_tracking=0;   // Stop tracking
+      if      ( code_idx <= IDX_VCR1_EAST    ) slew_cmd = code_idx + 1;  // North South East West 
+      else if ( code_idx == IDX_VCR1_OK      ) slew_cmd = IDX_VCR1_STOP; // Stop
+      else if ( code_idx == IDX_VCR1_STOP    ) slew_cmd = IDX_VCR1_STOP; // Stop
+      else if ( code_idx == IDX_VCR1_TRAK_P  ) earth_tracking=1;         // Start tracking
+      else if ( code_idx == IDX_VCR1_TRAK_M  ) earth_tracking=0;         // Stop tracking
       else if ( code_idx == IDX_VCR1_GOBACK  ) goto_pgm_pos(dd_v[DDS_CUR_STAR]);  // goto active star
       else if ( code_idx == IDX_VCR1_POWER   ) 
          {
@@ -2210,15 +2207,15 @@ if ( axis->state == 10 )  // Slewing   -> for slewing, we must catch the command
       {
       if ( ra_axis ) 
          {
-         if ( slew_cmd == 6 ) axis->spd_index++;       // Right - East
-         if ( slew_cmd == 4 ) axis->spd_index--;       // Left - West
+         if ( slew_cmd == IDX_VCR1_EAST + 1 ) axis->spd_index++;       // Right - East
+         if ( slew_cmd == IDX_VCR1_WEST + 1 ) axis->spd_index--;       // Left - West
          }
       else
          {
-         if ( slew_cmd == 8 ) axis->spd_index++;       // Up - North
-         if ( slew_cmd == 2 ) axis->spd_index--;       // Down - South
+         if ( slew_cmd == IDX_VCR1_NORTH + 1 ) axis->spd_index++;       // Up - North
+         if ( slew_cmd == IDX_VCR1_SOUTH + 1 ) axis->spd_index--;       // Down - South
          }
-      if    ( slew_cmd == 5 ) axis->spd_index = 0;     // all Stop
+      if    ( slew_cmd == IDX_VCR1_STOP  ) axis->spd_index = 0;     // all Stop
       if ( axis->spd_index >=  NB_SPEEDS ) axis->spd_index =  (NB_SPEEDS-1);
       if ( axis->spd_index <= -NB_SPEEDS ) axis->spd_index = -(NB_SPEEDS-1);
       }
@@ -3154,6 +3151,10 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.69  2012/01/22 21:33:47  pmichel
+Not a major improvement, down to 18000 bytes (from 18400)
+but the important thing is that now both IR and Keyboard go through the same logic
+
 Revision 1.68  2012/01/22 19:34:31  pmichel
 Hex : 18404 bytes
 About to change the way I process IR commands, in hope of freeying flash
