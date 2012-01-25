@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/22 21:33:47 $
-$Id: telescope2.c,v 1.69 2012/01/22 21:33:47 pmichel Exp pmichel $
+$Date: 2012/01/23 03:32:29 $
+$Id: telescope2.c,v 1.71 2012/01/23 03:32:29 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.69 $
+$Revision: 1.71 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -59,8 +59,8 @@ void wait(long time,long mult);
 
 // Debug Mode 0 : value at offset 0x01 : High short = Nb Tx from Master : Low short = Nb rx from the Master
 //              : values at offset 0x08 to 0x1F are used to display TWI states 
-// Debug Mode 1 : Shows TWI buffer 
-// Debug Mode 2 : Shows TWI buffer 
+// Debug Mode 1 : Shows TWI buffer of what the Master sends (on the master console)    and what the Slave receives (on the slave console)
+// Debug Mode 2 : Shows TWI buffer of what the Master receives (on the master console) and what the Slave sends (on the slave console)
 char debug_mode=3; // depending of the debug mode, change what the debug shows 
 char nb_debug_mode=4;
 
@@ -188,10 +188,11 @@ unsigned char last_antena=0;
 
 // TWI exchanged data
 void twitt(void);
-unsigned char twi_seq;         // Seq: sequence counter , incremented by 2 to indicate to store a new correced star position, first bit =1 means do polar correction
+unsigned char twi_seq=0;       // Seq: sequence counter , incremented by 2 to indicate to store a new correced star position, first bit =1 means do polar correction
 unsigned char twi_success_tx, twi_success_rx;
 unsigned char twi_fb_count=0;  // How many bytes should we send back 
 unsigned char twi_hold=0;      // tell foreground to not update the current pos
+long twi_test=0;               // when active, the foreground will not drive the twi_pos
 long twi_pos[2];               // Current pos sent to Slave
 long twi_star_ra,twi_star_dec; // Currently Selected Star pos sent from Slave
 long twi_ra_corr,twi_dec_corr; // Polar correction calculated by Slave
@@ -394,15 +395,7 @@ sum += (tbh * tal + 0x8000) >> 15;
 return sum;
 }
 
-///#ifndef AT_SLAVE
-#ifndef DISABLE_SINCOS
-long fp_sin_low(long fp_45_e1,char COS)
-{ return 0; }
-long fp_sin(unsigned long tick_angle)
-{ return 0; }
-long fp_cos(unsigned long tick_angle)
-{ return 0; }
-#else
+#ifdef AT_SLAVE
 
 // Fixed point representation of the first factorials 1/n!
 #define FAC_2 ((long)0x40000000) // 1/2!  = 1/2     
@@ -1105,6 +1098,7 @@ VVV->y  = fp_mult(fp_sin(*RA),cos_dec);    // any of the equation here changes, 
 
 // Generate a rotation matrix R from the polar RA and DEC
 PROGMEM const char pgm_polar_matrix     []="Polar Matrix: ";
+PROGMEM const char pgm_polar_matrix_d   []="Data: ";
 void generate_polar_matrix(MATRIX *R,unsigned long *pol_ra,unsigned long *pol_dec,unsigned long *shift_ra,unsigned char PRINT)
 {
 long cos_pol_ra   = fp_cos(*pol_ra);
@@ -1131,17 +1125,19 @@ R->m33 =  cos_pol_dec                                                           
 
 if ( PRINT !=0  )
    {
-   display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m11 ,FMT_FP + FMT_CONSOLE + 8);
-   display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m21 ,FMT_FP + FMT_CONSOLE + 8);
-   display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m31 ,FMT_FP + FMT_CONSOLE + 8);
+   display_data((char*)console_buf,0,20,pgm_polar_matrix   ,0      ,FMT_NO_VAL + FMT_CONSOLE + 8);
+
+   display_data((char*)console_buf,0,20,pgm_polar_matrix_d ,R->m11 ,FMT_FP + FMT_CONSOLE + 8);
+   display_data((char*)console_buf,0,20,pgm_polar_matrix_d ,R->m21 ,FMT_FP + FMT_CONSOLE + 8);
+   display_data((char*)console_buf,0,20,pgm_polar_matrix_d ,R->m31 ,FMT_FP + FMT_CONSOLE + 8);
    
-   display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m12 ,FMT_FP + FMT_CONSOLE + 8);
-   display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m22 ,FMT_FP + FMT_CONSOLE + 8);
-   display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m32 ,FMT_FP + FMT_CONSOLE + 8);
+   display_data((char*)console_buf,0,20,pgm_polar_matrix_d ,R->m12 ,FMT_FP + FMT_CONSOLE + 8);
+   display_data((char*)console_buf,0,20,pgm_polar_matrix_d ,R->m22 ,FMT_FP + FMT_CONSOLE + 8);
+   display_data((char*)console_buf,0,20,pgm_polar_matrix_d ,R->m32 ,FMT_FP + FMT_CONSOLE + 8);
    
-   display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m13 ,FMT_FP + FMT_CONSOLE + 8);
-   display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m23 ,FMT_FP + FMT_CONSOLE + 8);
-   display_data((char*)console_buf,0,20,pgm_polar_matrix ,R->m33 ,FMT_FP + FMT_CONSOLE + 8);
+   display_data((char*)console_buf,0,20,pgm_polar_matrix_d ,R->m13 ,FMT_FP + FMT_CONSOLE + 8);
+   display_data((char*)console_buf,0,20,pgm_polar_matrix_d ,R->m23 ,FMT_FP + FMT_CONSOLE + 8);
+   display_data((char*)console_buf,0,20,pgm_polar_matrix_d ,R->m33 ,FMT_FP + FMT_CONSOLE + 8);
    }
 }
 
@@ -1245,13 +1241,9 @@ for ( pass = 1 ; pass <=2 ; pass ++ )
             {
             shift = next_ra + ra_idx * ra_span;
             if ( pass == 1 ) 
-               {
                generate_polar_matrix(& PoleMatrix,&shift,&deg, &shift, 0);
-               }
             else  // best ra and best dec found already
-               {
                generate_polar_matrix(& PoleMatrix,&polar_ra,&polar_dec, &shift, 0);
-               }
  
             error_sum=0;
      
@@ -1259,7 +1251,7 @@ for ( pass = 1 ; pass <=2 ; pass ++ )
             for ( star_idx=error=0 ; star_idx<10 ; star_idx++ )
                { // here the magic happens... for each registered star, calculate the error: delta_x^2 + delta_y^2 + delta_z^2
                ref = saved[star_idx+10].ref_star;
-               if ( ref !=0 )  // foe every star with a corrected position
+               if ( ref !=0 )  // for every star with a corrected position
                   {
                   display_next();
                   ra  = pgm_read_dword(&pgm_stars_pos[ref*2+0]);
@@ -1288,7 +1280,7 @@ for ( pass = 1 ; pass <=2 ; pass ++ )
                   }
                } 
       
-   //-         while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_sum ,error_sum,FMT_FP    ,8);  console_go = 1;
+//-    display_data((char*)console_buf,0,20,pgm_polar_sum ,error_sum,FMT_FP + FMT_CONSOLE + 8); 
             if ( error_sum < best_error )
                {
                best_error = error_sum;
@@ -1356,11 +1348,6 @@ Declin :
      
 #ifdef AT_MASTER
  
-#define PROSCAN_VCR1_NORTH  0x021A6E59
-#define PROSCAN_VCR1_SOUTH  0x021A7E58
-#define PROSCAN_VCR1_WEST   0x021A8E57
-#define PROSCAN_VCR1_EAST   0x021A9E56
-#define PROSCAN_VCR1_OK     0x0210BEF4
 #define PROSCAN_VCR1_0      0x021CFE30
 #define PROSCAN_VCR1_1      0x021CEE31
 #define PROSCAN_VCR1_2      0x021CDE32
@@ -1371,15 +1358,20 @@ Declin :
 #define PROSCAN_VCR1_7      0x021C8E37
 #define PROSCAN_VCR1_8      0x021C7E38
 #define PROSCAN_VCR1_9      0x021C6E39
+#define PROSCAN_VCR1_NORTH  0x021A6E59
+#define PROSCAN_VCR1_SOUTH  0x021A7E58
+#define PROSCAN_VCR1_WEST   0x021A8E57
+#define PROSCAN_VCR1_EAST   0x021A9E56
+#define PROSCAN_VCR1_OK     0x0210BEF4
+#define PROSCAN_VCR1_STOP   0x021E0E1F
+#define PROSCAN_VCR1_PLAY   0x021EAE15
+#define PROSCAN_VCR1_RECORD 0x021E8E17
 #define PROSCAN_VCR1_CH_P   0x021D2E2D
 #define PROSCAN_VCR1_CH_M   0x021D3E2C
 #define PROSCAN_VCR1_VOL_P  0x023D0C2F
 #define PROSCAN_VCR1_VOL_M  0x023D1C2E
 #define PROSCAN_VCR1_FWD    0x021E3E1C
 #define PROSCAN_VCR1_REW    0x021E2E1D
-#define PROSCAN_VCR1_RECORD 0x021E8E17
-#define PROSCAN_VCR1_PLAY   0x021EAE15
-#define PROSCAN_VCR1_STOP   0x021E0E1F
 #define PROSCAN_VCR1_SEARCH 0x021ACE53
 #define PROSCAN_VCR1_GOBACK 0x021D8E27
 #define PROSCAN_VCR1_INPUT  0x021B8E47
@@ -1390,61 +1382,86 @@ Declin :
 #define PROSCAN_VCR1_POWER  0x021D5E2A
 #define PROSCAN_VCR1_TRAK_P 0x021F4E0B
 #define PROSCAN_VCR1_TRAK_M 0x021F5E0A
-//          TODO  change the order for: 0-9 then north south east west ok stop play
-#define IDX_VCR1_NORTH  0
-#define IDX_VCR1_SOUTH  1
-#define IDX_VCR1_WEST   2
-#define IDX_VCR1_EAST   3
-#define IDX_VCR1_OK     4
-#define IDX_VCR1_0      5
-#define IDX_VCR1_1      6
-#define IDX_VCR1_2      7
-#define IDX_VCR1_3      8
-#define IDX_VCR1_4      9
-#define IDX_VCR1_5      10
-#define IDX_VCR1_6      11
-#define IDX_VCR1_7      12
-#define IDX_VCR1_8      13
-#define IDX_VCR1_9      14
-#define IDX_VCR1_CH_P   15
-#define IDX_VCR1_CH_M   16
-#define IDX_VCR1_VOL_P  17
-#define IDX_VCR1_VOL_M  18
-#define IDX_VCR1_FWD    19
-#define IDX_VCR1_REW    20
-#define IDX_VCR1_RECORD 21
-#define IDX_VCR1_PLAY   22
-#define IDX_VCR1_STOP   23
-#define IDX_VCR1_SEARCH 24
-#define IDX_VCR1_GOBACK 25
-#define IDX_VCR1_INPUT  26
-#define IDX_VCR1_ANTENA 27
-#define IDX_VCR1_CLEAR  28
-#define IDX_VCR1_GUIDE  29
-#define IDX_VCR1_INFO   30
-#define IDX_VCR1_POWER  31
-#define IDX_VCR1_TRAK_P 32
-#define IDX_VCR1_TRAK_M 33
+
+#define IDX_VCR1_0          0
+#define IDX_VCR1_1          1
+#define IDX_VCR1_2          2
+#define IDX_VCR1_3          3
+#define IDX_VCR1_4          4
+#define IDX_VCR1_5          5
+#define IDX_VCR1_6          6
+#define IDX_VCR1_7          7
+#define IDX_VCR1_8          8
+#define IDX_VCR1_9          9
+#define IDX_VCR1_NORTH      10
+#define IDX_VCR1_SOUTH      11
+#define IDX_VCR1_WEST       12
+#define IDX_VCR1_EAST       13
+#define IDX_VCR1_OK         14
+#define IDX_VCR1_STOP       15
+#define IDX_VCR1_PLAY       16
+#define IDX_VCR1_RECORD     17
+#define IDX_VCR1_CH_P       18
+#define IDX_VCR1_CH_M       19
+#define IDX_VCR1_VOL_P      20
+#define IDX_VCR1_VOL_M      21
+#define IDX_VCR1_FWD        22
+#define IDX_VCR1_REW        23
+#define IDX_VCR1_SEARCH     24
+#define IDX_VCR1_GOBACK     25
+#define IDX_VCR1_INPUT      26
+#define IDX_VCR1_ANTENA     27
+#define IDX_VCR1_CLEAR      28
+#define IDX_VCR1_GUIDE      29
+#define IDX_VCR1_INFO       30
+#define IDX_VCR1_POWER      31
+#define IDX_VCR1_TRAK_P     32
+#define IDX_VCR1_TRAK_M     33
+
+/*
+- the following IR commands clear after 3 seconds  ... The IR sends values to the RS232 buffer same as keyboard  3sec is 
+- Store generic position 1-10  (complex command sequence)           r.X                       [RECORD  + INPUT + X]  // 10 slots avail for generic pos
+- goto  generic position 1-10  (complex command sequence)           p.X                       [PLAY    + INPUT + X]
+- Store corrected star position 1-10  (complex command sequence)    r!X                       [RECORD  + ANTENA + X]  //  10 slots for star correction
+- goto  corrected star position 1-10  (complex command sequence)    p!X                       [PLAY    + ANTENA + X]  //     each slot also contains the index of the star (reference)
+- goto  directory start position 1-??  (complex command sequence)   pXXX                      [PLAY    + X + X + X]
+- Go to Catalog star                                                *                         [GO BACK] 
+- Select next/previous star from catalog                            < / >                     [FWD/REV] 
+- clear all generic recorded positions                              <del> .                   [CLEAR   + INPUT]
+- clear all stars corrected positions                               <del> !                   [CLEAR   + ANTENA]
+- clear histogram values                                            <del> ?                   [CLEAR   + INFO]
+= move back and forth to remove friction                            <del> *                   [CLEAR   + GO BACK]
+- Redraw screen                                                     <del> <enter>             [CLEAR   + OK] 
+- Reset input command                                               <enter> g                 [CLEAR   + GUIDE]
+- goto ra position                                                  [EW]123 45 67 /           [VOL     + 123 45 67 + SEARCH]
+- goto dec position                                                 [NS]123 45 67 /           [CH      + 12 34 56 78 + SEARCH]
+- calculate polar error based on corrected star position            ! /                       [ANTENA  + SEARCH]
+- Code to toggle motor on/off                                       ~                         [POWER]
+- Slew                                                              [esc][O[ABCD]             [UP/DOWN/LEFT/RIGHT]
+- Slew stop                                                         <enter> / s               [OK/STOP]
+- Start/stop tracking                                               + / -                     [TRACKING +/-] 
+- add a command that displays at the console : time, position, star name (corrected star position)
+*/
 
 PROGMEM unsigned long PROSCANs[]= {   // The order is important   3                     4                     5                     6                     7
-PROSCAN_VCR1_NORTH  , PROSCAN_VCR1_SOUTH  , PROSCAN_VCR1_WEST   , PROSCAN_VCR1_EAST   , PROSCAN_VCR1_OK     , PROSCAN_VCR1_0      , PROSCAN_VCR1_1      , PROSCAN_VCR1_2      ,  // 0
-PROSCAN_VCR1_3      , PROSCAN_VCR1_4      , PROSCAN_VCR1_5      , PROSCAN_VCR1_6      , PROSCAN_VCR1_7      , PROSCAN_VCR1_8      , PROSCAN_VCR1_9      , PROSCAN_VCR1_CH_P   ,  // 8
-PROSCAN_VCR1_CH_M   , PROSCAN_VCR1_VOL_P  , PROSCAN_VCR1_VOL_M  , PROSCAN_VCR1_FWD    , PROSCAN_VCR1_REW    , PROSCAN_VCR1_RECORD , PROSCAN_VCR1_PLAY   , PROSCAN_VCR1_STOP   ,  // 16
+PROSCAN_VCR1_0      , PROSCAN_VCR1_1      , PROSCAN_VCR1_2      , PROSCAN_VCR1_3      , PROSCAN_VCR1_4      , PROSCAN_VCR1_5      , PROSCAN_VCR1_6      , PROSCAN_VCR1_7      ,  // 0
+PROSCAN_VCR1_8      , PROSCAN_VCR1_9      , PROSCAN_VCR1_NORTH  , PROSCAN_VCR1_SOUTH  , PROSCAN_VCR1_WEST   , PROSCAN_VCR1_EAST   , PROSCAN_VCR1_OK     , PROSCAN_VCR1_STOP   ,  // 8
+PROSCAN_VCR1_PLAY   , PROSCAN_VCR1_RECORD , PROSCAN_VCR1_CH_P   , PROSCAN_VCR1_CH_M   , PROSCAN_VCR1_VOL_P  , PROSCAN_VCR1_VOL_M  , PROSCAN_VCR1_FWD    , PROSCAN_VCR1_REW    ,  // 16
 PROSCAN_VCR1_SEARCH , PROSCAN_VCR1_GOBACK , PROSCAN_VCR1_INPUT  , PROSCAN_VCR1_ANTENA , PROSCAN_VCR1_CLEAR  , PROSCAN_VCR1_GUIDE  , PROSCAN_VCR1_INFO   , PROSCAN_VCR1_POWER  ,  // 24
-PROSCAN_VCR1_TRAK_P , PROSCAN_VCR1_TRAK_M                                                                                                                                        // 32
+PROSCAN_VCR1_TRAK_P , PROSCAN_VCR1_TRAK_M ,                                                                                                                                      // 32
                                   };
 PROGMEM short         RS232EQVs[]= {  // The order is important, each rs232 character is assigned a PROSCAN equivalent
-0x5B41              , 0x5B42              , 0x5B44              , 0x5B43              , 13                  , '0'                 , '1'                 , '2'                 ,
-'3'                 , '4'                 , '5'                 , '6'                 , '7'                 , '8'                 , '9'                 , 'i'                 ,  
-'m'                 , 'k'                 , 'j'                 , '>'                 , '<'                 , 'r'                 , 'p'                 , 's'                 ,
-'/'                 , '*'                 , '.'                 , '!'                 , 0x5B33              , 'g'                 , '?'                 , '~'                 ,
+'0'                 , '1'                 , '2'                 , '3'                 , '4'                 , '5'                 , '6'                 , '7'                 , 
+'8'                 , '9'                 , 0x5B41              , 0x5B42              , 0x5B44              , 0x5B43              , 13                  , 's'                 ,
+'p'                 , 'r'                 , 'i'                 , 'm'                 , 'k'                 , 'j'                 , '>'                 , '<'                 , 
+'/'                 , '*'                 , '.'                 , '!'                 , 0x7E                , 'g'                 , '?'                 , '~'                 ,
 '+'                 , '-'                  
-                    , 0           };
+                                  };  
 char idx_code,next_input;
 
-unsigned char  set_next_input(unsigned char idx_code)   // determine the type of input ; this valus is used strait in the cmd_state machine
+char set_next_input(char idx_code)   // determine the type of input ; this valus is used strait in the cmd_state machine
 {
-if ( idx_code >= IDX_VCR1_0 && idx_code <=  IDX_VCR1_9 )      return 0;  //  0-9
+if ( idx_code <= IDX_VCR1_9                       )           return 0;  // 0-9
 if ( idx_code == IDX_VCR1_PLAY                    )           return 1;  // PLAY   / 'p'
 if ( idx_code == IDX_VCR1_RECORD                  )           return 2;  // RECORD / 'r'
 if ( idx_code == IDX_VCR1_CLEAR                   )           return 3;  // CLEAR  / 'delete'
@@ -1511,39 +1528,7 @@ else
 }
 
 
-/*
-- redo proscan codes using #defines and VCR1
-- the following IR commands clear after 3 seconds  ... The IR sends values to the RS232 buffer same as keyboard  3sec is 
-- Store generic position 1-10  (complex command sequence)           Sg1 <enter>               [RECORD  + INPUT + X]  // 10 slots avail for generic pos
-- goto  generic position 1-10  (complex command sequence)           Gg1 <enter>               [PLAY    + INPUT + X]
-- Store corrected star position 1-10  (complex command sequence)    Sc2 <enter>               [RECORD  + ANTENA + X]  //  10 slots for star correction
-- goto  corrected star position 1-10  (complex command sequence)    Gc2 <enter>               [PLAY    + ANTENA + X]  //     each slot also contains the index of the star (reference)
-- goto  directory start position 1-??  (complex command sequence)   G123 <enter>              [PLAY    + X + X + X]
-- Go to Catalog star                                                *                         [GO BACK] 
-- Select next/previous star from catalog                            < / >                     [FWD/REV] 
-- clear all generic recorded positions                              Cg   <enter>              [CLEAR   + INPUT]
-- clear all stars corrected positions                               Cc   <enter>              [CLEAR   + ANTENA]
-- clear histogram values                                            Ch   <enter>              [CLEAR   + INFO]
-= move back and forth to remove friction                            Cf   <enter>              [CLEAR   + GO BACK]
-- Redraw screen                                                     !                         [CLEAR   + OK] 
-- Reset input command                                               <enter>                   [CLEAR   + GUIDE]
-- goto ra position                                                  [EW]123 45 67 <enter>     [VOL     + 123 45 67 + SEARCH]
-- goto dec position                                                 [NS]123 45 67 <enter>     [CH      + 12 34 56 78 + SEARCH]
-- calculate polar error based on corrected star position            Po    <enter>             [ANTENA  + SEARCH]
-- Code to toggle motor on/off                                       Mo[nf] <enter>            [POWER]
-- Slew                                                              [esc][O[ABCD]             [UP/DOWN/LEFT/RIGHT]
-- Slew stop                                                         [esc][OFABCD]             [OK/STOP]
-- Start/stop tracking                                               + / -                     [TRACKING +/-] 
-- add a command that displays at the console : time, position, star name (corrected star position)
-*/
 
-//  Remote defined codes:
-//  PROSCAN_VCR1_CH_P    PROSCAN_VCR1_CH_M    PROSCAN_VCR1_VOL_P   PROSCAN_VCR1_VOL_M   PROSCAN_VCR1_TRAK_P  PROSCAN_VCR1_TRAK_M  PROSCAN_VCR1_RECORD  PROSCAN_VCR1_PLAY    PROSCAN_VCR1_STOP    
-//  PROSCAN_VCR1_NORTH   PROSCAN_VCR1_SOUTH   PROSCAN_VCR1_EAST    PROSCAN_VCR1_WEST    PROSCAN_VCR1_OK      PROSCAN_VCR1_FWD     PROSCAN_VCR1_RW
-//  PROSCAN_VCR1_POWER   PROSCAN_VCR1_SEARCH  PROSCAN_VCR1_GOBACK  PROSCAN_VCR1_INPUT   PROSCAN_VCR1_ANTENA  PROSCAN_VCR1_CLEAR   PROSCAN_VCR1_GUIDE   
-//  PROSCAN_VCR1_0       PROSCAN_VCR1_1       PROSCAN_VCR1_2       PROSCAN_VCR1_3       PROSCAN_VCR1_4       PROSCAN_VCR1_5       PROSCAN_VCR1_6       PROSCAN_VCR1_7       PROSCAN_VCR1_8       PROSCAN_VCR1_9       
-//  OA up      OD   left
-//  OB down    OC   right    OF
 
 #ifdef AT_MASTER
 unsigned char cmd_state=0;
@@ -1574,7 +1559,7 @@ void display_next_bg(void)
 twitt();
 if ( AP0_DISPLAY == 0 ) display_next();  // if not printing from AP0, then print here
 #elif  AT_MASTER
-unsigned char code_idx=255; // lets work with the code's index  // wether it's IR or rs232
+char code_idx=-1; // lets work with the code's index  // wether it's IR or rs232
 short iii;
 
 twitt();
@@ -1589,7 +1574,7 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
    long code = dd_v[DDS_IR_CODE];
    long lcode;
    l_ir_count = dd_v[DDS_IR_COUNT]; // tell SP0 that he can go on
-   for( iii=0 ; (iii < sizeof(PROSCANs)/4) && (code_idx==255) ; iii++ )
+   for( iii=0 ; (iii < sizeof(PROSCANs)/4) && (code_idx<0) ; iii++ )
       {
       lcode= pgm_read_dword(&PROSCANs[iii]);
       if (code == lcode )  code_idx = iii;  // found a valid code
@@ -1601,7 +1586,7 @@ else if ( l_rs232_rx_cnt != rs232_rx_cnt )  // new rs232 input
    {
    short scode;
    l_rs232_rx_cnt = rs232_rx_cnt;
-   for( iii=0 ; (iii < sizeof(RS232EQVs)/2) && (code_idx==255) ; iii++ )
+   for( iii=0 ; (iii < sizeof(RS232EQVs)/2) && (code_idx<0) ; iii++ )
       {
       scode = pgm_read_word (&RS232EQVs[iii]);
       if (rs232_rx == scode )  code_idx = iii;  // found a valid code
@@ -1611,13 +1596,12 @@ else if ( l_rs232_rx_cnt != rs232_rx_cnt )  // new rs232 input
    }
 
 ///// Process Keyboard commands
-if ( code_idx != 255 ) // rceived a valid input from IR or RS232
+if ( code_idx >= 0   ) // received a valid input from IR or RS232
    {
    unsigned char jjj=0;
-   if ( next_input == 0 ) jjj = code_idx-5;  // (This is the value) 0-9
 
    next_input = set_next_input(code_idx);
-//   dd_v[DDS_DEBUG + 0x06] = next_input + cmd_state*10000;
+   if ( next_input == 0 ) jjj = code_idx;  // (This is the value) 0-9
 
    if ( next_input >=0 ) 
       {
@@ -1630,7 +1614,7 @@ if ( code_idx != 255 ) // rceived a valid input from IR or RS232
       if ( cmd_state== 9 ) cmd_state=107;   // state 9 will  process anything  !
       else                 cmd_state=0;     // unknown command
       }
-
+   dd_v[DDS_DEBUG + 0x07] = next_input*10000 + cmd_state;
 
    if ( cmd_state >= 100 ) // a command is complete, need to process it
       {
@@ -1670,12 +1654,16 @@ if ( code_idx != 255 ) // rceived a valid input from IR or RS232
       }
    else if ( next_input < 0 ) // Check for a one key command
       {
-      if      ( code_idx <= IDX_VCR1_EAST    ) slew_cmd = code_idx + 1;  // North South East West 
-      else if ( code_idx == IDX_VCR1_OK      ) slew_cmd = IDX_VCR1_STOP; // Stop
-      else if ( code_idx == IDX_VCR1_STOP    ) slew_cmd = IDX_VCR1_STOP; // Stop
+      if      ( code_idx >= IDX_VCR1_NORTH && code_idx <= IDX_VCR1_STOP    ) slew_cmd = code_idx;  // Slew commande: North South East West and Stop
       else if ( code_idx == IDX_VCR1_TRAK_P  ) earth_tracking=1;         // Start tracking
       else if ( code_idx == IDX_VCR1_TRAK_M  ) earth_tracking=0;         // Stop tracking
       else if ( code_idx == IDX_VCR1_GOBACK  ) goto_pgm_pos(dd_v[DDS_CUR_STAR]);  // goto active star
+      else if ( code_idx == IDX_VCR1_INFO    ) 
+         {
+         debug_mode ++ ;
+         if ( debug_mode> nb_debug_mode ) debug_mode = 0;
+         for ( iii=0 ; iii<32 ; iii++ ) dd_v[DDS_DEBUG + iii] = 0;
+         }
       else if ( code_idx == IDX_VCR1_POWER   ) 
          {
          motor_disable = !motor_disable;
@@ -1699,22 +1687,6 @@ if ( code_idx != 255 ) // rceived a valid input from IR or RS232
       }
    }
 #endif  // AT_MASTER process IR
-#ifdef ASFAS
-   else if ( rs232_rx_buf[0] == '/')  // Change what is displayed in the debug section
-      {
-      debug_mode ++ ;
-      if ( debug_mode> nb_debug_mode ) debug_mode = 0;
-      for ( iii=0 ; iii<32 ; iii++ ) dd_v[DDS_DEBUG + iii] = 0;
-      rs232_rx_buf[0] = 0;
-      dd_v[DDS_RX_IDX]=0;
-      }
-   else if ( rs232_rx_buf[0] == '!')
-      {
-      redraw = 1;  // redraw everything
-      rs232_rx_buf[0] = 0;
-      dd_v[DDS_RX_IDX]=0;
-      }
-#endif
 // make sure CUR_STAR is inbound   
 if ( dd_v[DDS_CUR_STAR] >= NB_PGM_STARS ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
 if ( dd_v[DDS_CUR_STAR] <  0            ) dd_v[DDS_CUR_STAR] = NB_PGM_STARS-1;
@@ -2207,15 +2179,15 @@ if ( axis->state == 10 )  // Slewing   -> for slewing, we must catch the command
       {
       if ( ra_axis ) 
          {
-         if ( slew_cmd == IDX_VCR1_EAST + 1 ) axis->spd_index++;       // Right - East
-         if ( slew_cmd == IDX_VCR1_WEST + 1 ) axis->spd_index--;       // Left - West
+         if ( slew_cmd == IDX_VCR1_EAST ) axis->spd_index++;       // Right - East
+         if ( slew_cmd == IDX_VCR1_WEST ) axis->spd_index--;       // Left - West
          }
       else
          {
-         if ( slew_cmd == IDX_VCR1_NORTH + 1 ) axis->spd_index++;       // Up - North
-         if ( slew_cmd == IDX_VCR1_SOUTH + 1 ) axis->spd_index--;       // Down - South
+         if ( slew_cmd == IDX_VCR1_NORTH ) axis->spd_index++;       // Up - North
+         if ( slew_cmd == IDX_VCR1_SOUTH ) axis->spd_index--;       // Down - South
          }
-      if    ( slew_cmd == IDX_VCR1_STOP  ) axis->spd_index = 0;     // all Stop
+      if ( slew_cmd == IDX_VCR1_OK  || slew_cmd == IDX_VCR1_STOP   ) axis->spd_index = 0;     // all Stop
       if ( axis->spd_index >=  NB_SPEEDS ) axis->spd_index =  (NB_SPEEDS-1);
       if ( axis->spd_index <= -NB_SPEEDS ) axis->spd_index = -(NB_SPEEDS-1);
       }
@@ -2375,13 +2347,14 @@ if ( twi_tx_buf[3] == 0xC0 )  // Current position
 
    if ( twi_seq != twi_tx_buf[6] )  // Add the current star to the list of corrected star position
       {
-      twi_seq = twi_tx_buf[6]; 
-      for ( iii = 0 ; iii<10 && (found==0); iii++ )  // for all slots
+      for ( iii = 10 ; iii<20 && (found==0); iii++ )  // for all slots
          {
          if ( saved[iii].ref_star==dd_v[DDS_CUR_STAR] ) found=iii;  // Found a slots when we previously recorded a correction to that same star
          if ( saved[iii].ref_star==0 )                  found=iii;  // New star corrected pos
          }
-      record_pos(10+found); 
+      record_pos(found); 
+      if ( (twi_seq!=255) && (twi_tx_buf[6]==255) )    do_polar();    // 255 means do polar , 0 in feedback meeds that it's done
+      twi_seq = twi_tx_buf[6]; 
       }
    }
    ///////// Prepare responce
@@ -2562,8 +2535,8 @@ wait = 0x80;
      if ( twi_state== 0 ) twi_tx();  // TODO not sure it's the right place
 
 #endif
-if ( debug_mode==1 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08]; for ( ES = 0 ; ES <= TWI_C1 ; ES++ ) p[ES] = twi_rx_buf[ES]; }
-if ( debug_mode==2 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08]; for ( ES = 0 ; ES <= TWI_C1 ; ES++ ) p[ES] = twi_tx_buf[ES]; }
+if ( debug_mode==1 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08]; for ( ES = 0 ; ES <= TWI_C1 ; ES++ ) p[ES] = twi_tx_buf[ES]; }
+if ( debug_mode==2 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08]; for ( ES = 0 ; ES <= TWI_C1 ; ES++ ) p[ES] = twi_rx_buf[ES]; }
 
 //if ( (PINC & 0x20) == 0) aa[0]++;
 //if ( (PINC & 0x10) == 0) aa[1]++;
@@ -2806,7 +2779,7 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
       }
    }
 
-if ( ((ssec & 0x7FF) == 0x3FF ) && (twi_hold==0) )
+if ( ((ssec & 0x7FF) == 0x3FF ) && (twi_hold==0) && (twi_test==0))
    { // 5 times per seconds: update the position so that the background can use a snapshot of the position
    twi_pos[0]  = ra->pos;
    twi_pos[1] = dec->pos;
@@ -3024,42 +2997,67 @@ Recorded position: 00000009
 RA :3739E783                       
 DEC:046A5F79                       
 ref:00000004                      
+
+Slave Result:  ... to be compared with previous system all in one CPU
+Data: 7FF6A59A  0.99971456 
+Data: 020E0355  0.01605264 
+Data: FDBC30AD  -.01769439 
+Data: FDF2C11F  -.01602922 
+Data: 7FFBC13E  0.99987044 
+Data: 002FFD4C  0.00146451 
+Data: 0244814E  0.01771560 
+Data: FFD95173  -.00118047 
+Data: 7FFAD5AF  0.99984236 
 */
-saved[10].ra  = 0xF433C764;
-saved[10].dec = 0x031455D5;
-saved[10].ref_star  = 0x08;  // 19 psc
+#ifdef AT_MASTER
+twi_test = 1;
+wait(500,MSEC);
+twi_pos[0]    = 0xF433C764;
+twi_pos[1]    = 0x031455D5;
+dd_v[DDS_CUR_STAR]  = 0x08;  // 19 psc
+wait(500,MSEC); twi_seq+=2; wait(500,MSEC);   // Tell the slave to record that position
 
-saved[11].ra  = 0x0C77551F;
-saved[11].dec = 0x030A8BC5;
-saved[11].ref_star  = 0x09;
+twi_pos[0]    = 0x0C77551F;
+twi_pos[1]    = 0x030A8BC5;
+dd_v[DDS_CUR_STAR]  = 0x09;
+wait(500,MSEC); twi_seq+=2; wait(500,MSEC);   // Tell the slave to record that position
 
-saved[12].ra  = 0x0C6BD457;
-saved[12].dec = 0xF35CD11C;
-saved[12].ref_star  = 0x0B;
+twi_pos[0]    = 0x0C6BD457;
+twi_pos[1]    = 0xF35CD11C;
+dd_v[DDS_CUR_STAR]  = 0x0B;
+wait(500,MSEC); twi_seq+=2; wait(500,MSEC);   // Tell the slave to record that position
 
-saved[13].ra  = 0xF431271C;
-saved[13].dec = 0xF36EFB73;
-saved[13].ref_star  = 0x0C;
+twi_pos[0]    = 0xF431271C;
+twi_pos[1]    = 0xF36EFB73;
+dd_v[DDS_CUR_STAR]  = 0x0C;
+wait(500,MSEC); twi_seq+=2; wait(500,MSEC);   // Tell the slave to record that position
 
-saved[14].ra  = 0x3C629AA5;
-saved[14].dec = 0x0510E764;
-saved[14].ref_star  = 0x01;
+twi_pos[0]    = 0x3C629AA5;
+twi_pos[1]    = 0x0510E764;
+dd_v[DDS_CUR_STAR]  = 0x01;
+wait(500,MSEC); twi_seq+=2; wait(500,MSEC);   // Tell the slave to record that position
 
-saved[15].ra  = 0x353C32E1;
-saved[15].dec = 0xF1A45541;
-saved[15].ref_star  = 0x02;
+twi_pos[0]    = 0x353C32E1;
+twi_pos[1]    = 0xF1A45541;
+dd_v[DDS_CUR_STAR]  = 0x02;
+wait(500,MSEC); twi_seq+=2; wait(500,MSEC);   // Tell the slave to record that position
 
-saved[16].ra  = 0x3739E783;
-saved[16].dec = 0x046A5F79;
-saved[16].ref_star  = 0x04;
-
-#if(TEST_POLAR)
-//            POLAR_RA      POLAR_DEC      TIME_SHIFT_RA
-// test_polar(0*TICKS_P_DEG,10*TICKS_P_DEG,0*TICKS_P_DEG);
-// test_polar(45*TICKS_P_DEG,10*TICKS_P_DEG,45*TICKS_P_DEG);
-   test_polar(10*TICKS_P_DEG,10*TICKS_P_DEG,10*TICKS_P_DEG);
+twi_pos[0]    = 0x3739E783;
+twi_pos[1]    = 0x046A5F79;
+dd_v[DDS_CUR_STAR]  = 0x04;
+wait(500,MSEC); twi_seq+=2; wait(500,MSEC);   // Tell the slave to record that position
+wait(500,MSEC); twi_seq=255; wait(500,MSEC);   // Tell the slave to do a Polar align
+twi_test=0;
 #endif
 
+#ifdef AT_SLAVE
+  #if(TEST_POLAR)
+  //            POLAR_RA      POLAR_DEC      TIME_SHIFT_RA
+  // test_polar(0*TICKS_P_DEG,10*TICKS_P_DEG,0*TICKS_P_DEG);
+  // test_polar(45*TICKS_P_DEG,10*TICKS_P_DEG,45*TICKS_P_DEG);
+     test_polar(10*TICKS_P_DEG,10*TICKS_P_DEG,10*TICKS_P_DEG);
+  #endif
+#endif
 
 /*
 Polar Correction Matrix:
@@ -3103,6 +3101,7 @@ Polar Matrix: FF9D5873  -.00301069
 Polar Matrix: 027095C9  0.01906082  
 Polar Matrix: 7FF9E5F8  0.99981379  
 FFFF73B4  00037818  FFEA3660 
+
 */
 
 #ifdef ASFAS 
@@ -3151,6 +3150,9 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.71  2012/01/23 03:32:29  pmichel
+reordering
+
 Revision 1.69  2012/01/22 21:33:47  pmichel
 Not a major improvement, down to 18000 bytes (from 18400)
 but the important thing is that now both IR and Keyboard go through the same logic
