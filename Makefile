@@ -8,16 +8,17 @@ AVRDUDE_DEVICE = m328p
 CFLAGS=-g -Wall -mcall-prologues -mmcu=$(DEVICE) -O2 -I /opt/cross/avr/include
 CC=avr-gcc
 OBJ2HEX=avr-objcopy 
-LDFLAGS=-Wl,-gc-sections -lpololu_$(DEVICE) -Wl,-relax
+#LDFLAGS=-Wl,-gc-sections -lpololu_$(DEVICE) -Wl,-relax
+LDFLAGS=-Wl,-gc-sections -Wl,-relax
 ASFLAGS=-Wa,-ah -Wa,-D -fverbose-asm -dA -S 
 
 PORT ?= /dev/ttyACM0
 AVRDUDE=avrdude
 
-TARGET=telescope
-OBJECT_FILES=telescope.o
+TARGET=telescope2
+OBJECT_FILES=telescope2_master.o telescope2_slave.o
 
-all: $(TARGET).hex
+all: telescope2_master.hex telescope2_slave.hex
 
 clean:
 	rm -f *.o *.hex *.obj *.hex
@@ -25,12 +26,44 @@ clean:
 %.hex: %.obj
 	$(OBJ2HEX) -R .eeprom -O ihex $< $@
 
-telescope.o: telescope.c
+telescope2_master.o: telescope2_master.c
+telescope2_slave.o: telescope2_slave.c
 
-%.obj: $(OBJECT_FILES)
-	$(CC) $(CFLAGS) $(ASFLAGS) telescope.c 
-	$(CC) $(CFLAGS) $(OBJECT_FILES) $(LDFLAGS) -o $@
+#%.obj: $(OBJECT_FILES)
+#	$(CC) $(CFLAGS) -D$@ $(ASFLAGS) ($@.obj:.c)
+#	$(CC) $(CFLAGS) -D$@ $(OBJECT_FILES) $(LDFLAGS) -o $@
 
-program: $(TARGET).hex
+telescope2_master.obj: telescope2_master.c
+	$(CC) $(CFLAGS) -DAT_MASTER $(ASFLAGS) telescope2_master.c
+	$(CC) $(CFLAGS) -DAT_MASTER telescope2_master.c $(LDFLAGS) -o $@
+telescope2_slave.obj: telescope2_slave.c
+	$(CC) $(CFLAGS) -DAT_SLAVE $(ASFLAGS) telescope2_slave.c
+	$(CC) $(CFLAGS) -DAT_SLAVE telescope2_slave.c $(LDFLAGS) -o $@
+
+master: 
 	./chmod_ttyACM0
-	$(AVRDUDE) -v -p $(AVRDUDE_DEVICE) -c avrisp2 -P $(PORT) -U flash:w:$(TARGET).hex
+	$(AVRDUDE) -v -p $(AVRDUDE_DEVICE) -c avrisp2 -P $(PORT) -U flash:w:$(TARGET)_master.hex
+
+slave: 
+	./chmod_ttyACM0
+	$(AVRDUDE) -v -p $(AVRDUDE_DEVICE) -c avrisp2 -P $(PORT) -U flash:w:$(TARGET)_slave.hex
+
+
+# Normal Fuses for Polopu A328P
+#
+#  avrdude: Device signature = 0x1e950f
+#  avrdude: safemode: lfuse reads as F6  CKDIV8=0x80 >>> No DIV8   CKOUT=0c40 >> No CLK OUT  CKSEL 0x03 =    SUT 0x30 >> Ceramic Crystal, fast rising
+#  avrdude: safemode: hfuse reads as D9
+#  avrdude: safemode: efuse reads as 7
+
+#  For the Telescope Board, the low fuse has to be:
+#  MASTER : avrdude: safemode: lfuse reads as B6  CKDIV8=0x80 >>> No DIV8   CKOUT=0x00 >> CLK OUT ACTIVE  SUT 0x30 : slow rising    CKSEL 0x06 =   Ceramic Crystal
+#  SLAVE  : avrdude: safemode: lfuse reads as E0  CKDIV8=0x80 >>> No DIV8   CKOUT=0x40 >> NO CLK OUT      SUT 0x20 : slow rising    CKSEL 0x00 =   External clock
+
+
+# to read the Fuses: to the files high and low :
+# avrdude -v -p m328p -c avrisp2 -P /dev/ttyACM0  -U hfuse:r:high:h -U lfuse:r:low:h
+
+# to change the fuse setting:
+# avrdude -v -p m328p -c avrisp2 -P /dev/ttyACM0 -U lfuse:w:0xb6:m
+

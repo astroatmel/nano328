@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/23 03:32:29 $
-$Id: telescope2.c,v 1.71 2012/01/23 03:32:29 pmichel Exp pmichel $
+$Date: 2012/01/25 04:05:51 $
+$Id: telescope2.c,v 1.72 2012/01/25 04:05:51 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.71 $
+$Revision: 1.72 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -41,17 +41,23 @@ TODO:
 
 #define DO_10KHZ         IO_B2
 #define DI_REMOTE        (1<<2) // IO_D2   PORTD BIT 2
-#define DO_DISABLE       (1<<4) // IO_D4   PORTD BIT 4
+#define DO_DISABLE       (1<<3) // IO_D3   PORTD BIT 3   // Step motor enable
+#define DO_RESET         (1<<4) // IO_D4   PORTD BIT 4   // Step motor reset
 
 #define DO_DEC_DIR       IO_C3  // 0x11   17
 #define DO_DEC_STEP      IO_C2  // 0x10   16
 #define DO_RA_DIR        IO_C1  // 0x0F   15
 #define DO_RA_STEP       IO_C0  // 0x0E   14
 
-#define FAST_RA_STEP     0x01
-#define FAST_RA_DIR      0x02
-#define FAST_DEC_STEP    0x04
-#define FAST_DEC_DIR     0x08
+//#define FAST_RA_STEP     0x01
+//#define FAST_RA_DIR      0x02
+//#define FAST_DEC_STEP    0x04
+//#define FAST_DEC_DIR     0x08
+
+#define FAST_RA_STEP     0x04
+#define FAST_RA_DIR      0x08
+#define FAST_DEC_STEP    0x01
+#define FAST_DEC_DIR     0x02
 
 void wait(long time,long mult);
 #define SEC 10000
@@ -1436,7 +1442,7 @@ Declin :
 - goto ra position                                                  [EW]123 45 67 /           [VOL     + 123 45 67 + SEARCH]
 - goto dec position                                                 [NS]123 45 67 /           [CH      + 12 34 56 78 + SEARCH]
 - calculate polar error based on corrected star position            ! /                       [ANTENA  + SEARCH]
-- Code to toggle motor on/off                                       ~                         [POWER]
+- Code to toggle motor on/off                                       ~  (no shift required)    [POWER]
 - Slew                                                              [esc][O[ABCD]             [UP/DOWN/LEFT/RIGHT]
 - Slew stop                                                         <enter> / s               [OK/STOP]
 - Start/stop tracking                                               + / -                     [TRACKING +/-] 
@@ -1454,7 +1460,7 @@ PROGMEM short         RS232EQVs[]= {  // The order is important, each rs232 char
 '0'                 , '1'                 , '2'                 , '3'                 , '4'                 , '5'                 , '6'                 , '7'                 , 
 '8'                 , '9'                 , 0x5B41              , 0x5B42              , 0x5B44              , 0x5B43              , 13                  , 's'                 ,
 'p'                 , 'r'                 , 'i'                 , 'm'                 , 'k'                 , 'j'                 , '>'                 , '<'                 , 
-'/'                 , '*'                 , '.'                 , '!'                 , 0x7E                , 'g'                 , '?'                 , '~'                 ,
+'/'                 , '*'                 , '.'                 , '!'                 , 0x7E                , 'g'                 , '?'                 , 0x60                ,
 '+'                 , '-'                  
                                   };  
 char idx_code,next_input;
@@ -1670,8 +1676,9 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
          //set_digital_output(DO_DISABLE  ,motor_disable);
          //if ( motor_disable ) set_digital_output(DO_DISABLE  ,2);  // see: include/pololu/digital.h, it seems that using constants makes the code very efficiant
          //else                 set_digital_output(DO_DISABLE  ,0);
-         if ( motor_disable ) PORTD |=  DO_DISABLE;
-         else                 PORTD &= ~DO_DISABLE;
+         if ( motor_disable ) PORTD &= ~DO_DISABLE;  // set the pin to 0 V
+         else                 PORTD |=  DO_DISABLE;
+  dd_v[DDS_DEBUG + 0x1E] = DO_DISABLE;
          }
       else if ( code_idx == IDX_VCR1_FWD     ) 
          {
@@ -2607,7 +2614,7 @@ if ( temp >= TICKS_P_STEP )
    {
    // too long to complete !!set_digital_output(DO_RA_DIR,0); // go backward
    //FAST_SET_RA_DIR(0);
-   ra->direction=FAST_RA_DIR;
+   ra->direction=0x00;
    add_value_to_pos(-TICKS_P_STEP,&ra->pos_hw);
    ra->next=FAST_RA_STEP;
    }
@@ -2615,7 +2622,7 @@ else if ( -temp >= TICKS_P_STEP )
    {
    // too long to complete !!set_digital_output(DO_RA_DIR,1); // go forward
    //FAST_SET_RA_DIR(1);
-   ra->direction=0x00;
+   ra->direction=FAST_RA_DIR;
    add_value_to_pos(TICKS_P_STEP,&ra->pos_hw);
    ra->next=FAST_RA_STEP;
    }
@@ -2902,8 +2909,9 @@ d_ram = get_free_memory();
    DDRC = 0x3F; // set pins 0 1 2 3 of PORTC C as output     (logic 1 = output)    >> STEP AND DIR   plus TWI pins
    PORTC  = 0x3F;         // Set outputs to 1...this is to avoid a glitch on the scope when monitoring TWI signals
    
-   DDRD = 0x06; // set pins 1 and 2 of PORTD D as output     (logic 1 = output)    >> RS232 TX and DO DISABLE
-   PORTD &= ~DO_DISABLE;  // Start with motor disabled disabled
+   // DDRD = 0x06; // set pins 1 and 2 of PORTD D as output     (logic 1 = output)    >> RS232 TX and DO DISABLE
+   PORTD &= ~(DO_DISABLE | DO_RESET);  // Start with motor disabled disabled and reset
+   DDRD = 0x1A; // set pins 1 and 3 and 4 of PORTD D as output     (logic 1 = output)    >> p0:RS232 rx p1:RS232 TX  p2:IR  p3: Enable  p4: Reset
 #endif
 
 #ifdef AT_SLAVE
@@ -2917,8 +2925,10 @@ d_ram = get_free_memory();
    DDRC = 0x30;   // set pins 4 5 of PORTC C as output     (logic 1 = output)    >>  TWI pins
    PORTC  = 0x30; // Set outputs to 1...this is to avoid a glitch on the scope when monitoring TWI signals
 #endif
-
 sei();         //enable global interrupts
+
+wait(2,SEC);
+PORTD |= DO_RESET;  // reset of motor drive complete
 
 display_data((char*)console_buf,0,20,pgm_starting,d_ram,FMT_NO_VAL + FMT_CONSOLE + 8);
 
@@ -2933,9 +2943,10 @@ display_data((char*)console_buf,0,20,pgm_starting,d_ram,FMT_NO_VAL + FMT_CONSOLE
 display_data((char*)console_buf,0,20,pgm_free_mem,d_ram,FMT_HEX + FMT_CONSOLE + 8);
 
 for ( iii=0 ; iii<31 ; iii++ ) dd_v[DDS_DEBUG + iii] = iii * 0x100;
-motor_disable = 0;
-         if ( motor_disable ) PORTD |=  DO_DISABLE;
-         else                 PORTD &= ~DO_DISABLE;
+
+         motor_disable = 1;
+         if ( motor_disable ) PORTD &= ~DO_DISABLE;  // set the pin to 0 V
+         else                 PORTD |=  DO_DISABLE;
 
 
 wait(2,SEC);
@@ -3150,6 +3161,12 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.72  2012/01/25 04:05:51  pmichel
+Slave does polar align
+Slave: 25.8K of flash used
+Master 18.8K of flash used
+I think I might put the star catalog on the master...
+
 Revision 1.71  2012/01/23 03:32:29  pmichel
 reordering
 
