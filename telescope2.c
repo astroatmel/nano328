@@ -1,18 +1,18 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/29 05:21:50 $
-$Id: telescope2.c,v 1.73 2012/01/29 05:21:50 pmichel Exp pmichel $
+$Date: 2012/02/12 18:14:13 $
+$Id: telescope2.c,v 1.74 2012/02/12 18:14:13 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.73 $
+$Revision: 1.74 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
 *** Problems:
 *** Seems the earth compensation is just a bit too slow
-*** Tork only on RA
 *** Minimum tork too low 00 default tork whould be 10 (75%) and (100%) when GOTO or SLEWING /// Green light runs a PWM representing the % tork 20%, 50%, 75%, 100%
 ** Add a search patern function to locate a point of interest
 ** use yellow pwm sequence to indicate remote control input state (command) off = ready to process a command 25% means 1 key in, 50%: 2 key in ...  max sequqnce = 100% solid
+*** if Motor off and tracking, then position decrements (we fall back)
 
 - Add command to set the RA to an approx value (first thing to execute when aligning)
 - Confirm... the master does not receive 32 bytes...does the slave receive 32 bytes ?
@@ -68,9 +68,9 @@ TODO:
 #define DO_PD7_DECAYB1   (1<<7) 
 
 // SLAVE
-#define DO_PB7_RED       (1<<7) 
+#define DO_PB7_GREEN     (1<<7) 
 #define DO_PD5_YELLOW    (1<<5) 
-#define DO_PD6_GREEN     (1<<6) 
+#define DO_PD6_RED       (1<<6) 
 #define DO_PB0_LCD_B0    (1<<0) 
 #define DO_PB1_LCD_B1    (1<<1) 
 #define DO_PB2_LCD_B2    (1<<2) 
@@ -80,15 +80,15 @@ TODO:
 #define DO_PC2_LCD_RS    (1<<2) 
 
 #define IF_CONDITION_PORT_BIT(CC,PP,BB)        \
-{                                              \
+{                                               \
 if ( CC ) PP |=  (BB); /* Set bits of port   */  \
-else      PP &= ~(BB); /* Clear bits of port */  \
+else      PP &= ~(BB); /* Clear bits of port */   \
 }                                     
 
 #define IF_NOT_CONDITION_PORT_BIT(CC,PP,BB)    \
-{                                              \
+{                                               \
 if ( CC ) PP &= ~(BB); /* Clear bits of port */  \
-else      PP |=  (BB); /* Set bits of port   */  \
+else      PP |=  (BB); /* Set bits of port   */   \
 }                                     
 
 void wait(long time,long mult);
@@ -237,7 +237,9 @@ long twi_star_ra,twi_star_dec; // Currently Selected Star pos sent from Slave
 long twi_ra_corr,twi_dec_corr; // Polar correction calculated by Slave
 short twi_star;                // Current Star index
 
-unsigned char torq=0,spdd=0;   // For debug purpose
+unsigned char torq=0,dcay=0;   // Requested Torq and Decay value
+unsigned char effectiv_torq=0; // Effective Torq
+unsigned char minumum_torq=0;  // Minumum   Torq
 
 void record_pos(short pos);
 
@@ -1516,7 +1518,7 @@ PROGMEM short         RS232EQVs[]= {  // The order is important, each rs232 char
 '8'                 , '9'                 , 0x5B41              , 0x5B42              , 0x5B44              , 0x5B43              , 13                  , 's'                 ,
 'p'                 , 'r'                 , 'i'                 , 'm'                 , 'k'                 , 'j'                 , '>'                 , '<'                 , 
 '/'                 , '*'                 , '.'                 , '!'                 , 0x7E                , 'g'                 , '?'                 , 0x60                ,
-'+'                 , '-'                 , '$'                 , '%'
+'+'                 , '-'                 , '%'                 , '$'
                                   };  
 char idx_code,next_input;
 
@@ -1628,31 +1630,18 @@ dd_v[DDS_DEBUG_PAGE] = debug_page;
 twitt();
 
 // Torque control
-if ( motor_disable ) torq = 0; // start with low torq when motor off
-IF_NOT_CONDITION_PORT_BIT(torq & 0x01 , PORTB , DO_PB1_TORQA1  | DO_PB3_TORQB1  );
-IF_NOT_CONDITION_PORT_BIT(torq & 0x02 , PORTB , DO_PB2_TORQA2  | DO_PB4_TORQB2  );
-///IF_NOT_CONDITION_PORT_BIT(torq & 0x01 , PORTB , DO_PB1_TORQA1  );
-///IF_NOT_CONDITION_PORT_BIT(torq & 0x02 , PORTB , DO_PB2_TORQA2  );
-///IF_NOT_CONDITION_PORT_BIT(torq & 0x01 , PORTB , DO_PB3_TORQB1  );
-///IF_NOT_CONDITION_PORT_BIT(torq & 0x02 , PORTB , DO_PB4_TORQB2  );
-IF_NOT_CONDITION_PORT_BIT(spdd & 0x01 , PORTD , DO_PD5_DECAYA1 | DO_PD7_DECAYB1 );
-IF_NOT_CONDITION_PORT_BIT(spdd & 0x02 , PORTD , DO_PD6_DECAYA2                  );
-IF_NOT_CONDITION_PORT_BIT(spdd & 0x02 , PORTB , DO_PB5_DECAYB2                  );
-//if ( torq & 0x01 ) PORTB |=  (DO_PB1_TORQA1  | DO_PB3_TORQB1);
-//else               PORTB &= ~(DO_PB1_TORQA1  | DO_PB3_TORQB1);
-//if ( torq & 0x02 ) PORTB |=  (DO_PB2_TORQA2  | DO_PB4_TORQB2);
-//else               PORTB &= ~(DO_PB2_TORQA2  | DO_PB4_TORQB2);
-//if ( spdd & 0x01 ) PORTD |=  (DO_PD5_DECAYA1 | DO_PD7_DECAYB1);
-//else               PORTD &= ~(DO_PD5_DECAYA1 | DO_PD7_DECAYB1);   // PD6 and PD7 only rizes to 3.4V  not 5v like the others
-//if ( spdd & 0x02 ) PORTD |=  (DO_PD6_DECAYA2                 );
-//else               PORTD &= ~(DO_PD6_DECAYA2                 );
-//if ( spdd & 0x02 ) PORTB |=  (DO_PB5_DECAYB2                 );
-//else               PORTB &= ~(DO_PB5_DECAYB2                 );
+if ( motor_disable ) { torq = 0; dcay = 3; } // start with low torq when motor off   and set the decay to 0% which seems to be the less noizy and the best one
+//else if ( earth_tracking && (torq < 2) ) torq = 2; // if we are tracking, then set the torq to a minimum of 50% 
 
-
+IF_NOT_CONDITION_PORT_BIT(effectiv_torq & 0x01 , PORTB , DO_PB1_TORQA1  | DO_PB3_TORQB1  );
+IF_NOT_CONDITION_PORT_BIT(effectiv_torq & 0x02 , PORTB , DO_PB2_TORQA2  | DO_PB4_TORQB2  );
+IF_NOT_CONDITION_PORT_BIT(dcay & 0x01 , PORTD , DO_PD5_DECAYA1 | DO_PD7_DECAYB1 );
+IF_NOT_CONDITION_PORT_BIT(dcay & 0x02 , PORTD , DO_PD6_DECAYA2                  );
+IF_NOT_CONDITION_PORT_BIT(dcay & 0x02 , PORTB , DO_PB5_DECAYB2                  );
 
 if ( AP0_DISPLAY == 0 ) display_next();  // if not printing from AP0, then print here
 
+//dd_v[DDS_DEBUG + 0x0C] = 0x5000 + torq;
 //dd_v[DDS_DEBUG + 0x0C] = cmd_state;
 
 ///// Process IR commands
@@ -1666,8 +1655,8 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
       lcode= pgm_read_dword(&PROSCANs[iii]);
       if (code == lcode )  code_idx = iii;  // found a valid code
       }
-//   dd_v[DDS_DEBUG + 0x04] = rs232_rx;
-//   dd_v[DDS_DEBUG + 0x05] = code_idx;
+   dd_v[DDS_DEBUG + 0x04] = code;
+   dd_v[DDS_DEBUG + 0x05] = code_idx;
    }
 else if ( l_rs232_rx_cnt != rs232_rx_cnt )  // new rs232 input
    {
@@ -1688,6 +1677,8 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
    unsigned char jjj=0;
 
    next_input = set_next_input(code_idx);
+   dd_v[DDS_DEBUG + 0x06] = next_input;
+
    if ( next_input == 0 ) jjj = code_idx;  // (This is the value) 0-9
 
    if ( next_input >=0 ) 
@@ -1701,7 +1692,8 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
       if ( cmd_state== 9 ) cmd_state=107;   // state 9 will  process anything  !
       else                 cmd_state=0;     // unknown command
       }
-   dd_v[DDS_DEBUG + 0x07] = next_input*10000 + cmd_state;
+   dd_v[DDS_DEBUG + 0x07] = cmd_val[cmd_val_idx-3]*100 + cmd_val[cmd_val_idx-2]*10 + jjj;
+   dd_v[DDS_DEBUG + 0x03] = cmd_state;
 
    if ( cmd_state >= 100 ) // a command is complete, need to process it
       {
@@ -1745,8 +1737,13 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
       else if ( code_idx == IDX_VCR1_TRAK_P  ) earth_tracking=1;         // Start tracking
       else if ( code_idx == IDX_VCR1_TRAK_M  ) earth_tracking=0;         // Stop tracking
       else if ( code_idx == IDX_VCR1_GOBACK  ) goto_pgm_pos(dd_v[DDS_CUR_STAR]);  // goto active star
-      else if ( code_idx == IDX_VCR1_MUTE    ) { torq ++;  dd_v[DDS_DEBUG + 0x1E]=torq ; }
-      else if ( code_idx == IDX_VCR1_SPEED   ) { spdd ++;  dd_v[DDS_DEBUG + 0x1D]=spdd ; }
+      else if ( code_idx == IDX_VCR1_SPEED   ) 
+         { 
+         torq = (torq+1)&3;                                // Increment torq value
+         if (torq<minumum_torq) torq = minumum_torq;      // if lower than effective torq, then use effectiv torq (cant change to lower than minimum required)
+         dd_v[DDS_DEBUG + 0x1E]=torq ; 
+         }
+      else if ( code_idx == IDX_VCR1_MUTE    ) { dcay = (dcay+1)&3;  dd_v[DDS_DEBUG + 0x1D]=dcay ; }
       else if ( code_idx == IDX_VCR1_INFO    ) 
          {
          debug_page ++ ;
@@ -2451,29 +2448,30 @@ if ( twi_tx_buf[3] == 0xC0 )  // Current position
    twi_rx_buf[1]  = twi_fb_count; 
    twi_rx_buf[2]  = twi_tx_buf[2];  // command feedback
    twi_rx_buf[3]  = twi_tx_buf[3];  // data feedback 
-   spdd = twi_tx_buf[17];
-   torq = twi_tx_buf[18];
+   dcay = twi_tx_buf[17];
+   effectiv_torq = twi_tx_buf[18];
+   motor_disable = twi_tx_buf[19];
 
 for ( iii=1 ; iii<TWI_C1 ; iii++ ) sum +=twi_rx_buf[iii];
 twi_rx_buf[TWI_C1] = -sum;   // Checksum
 
 
-IF_NOT_CONDITION_PORT_BIT( spdd&0x01 , PORTB , DO_PB7_RED    );
-IF_NOT_CONDITION_PORT_BIT( spdd&0x02 , PORTD , DO_PD5_YELLOW );
-IF_NOT_CONDITION_PORT_BIT( spdd&0x04 , PORTD , DO_PD6_GREEN  );
+//IF_NOT_CONDITION_PORT_BIT( dcay&0x01 , PORTB , DO_PB7_GREEN    );
+//IF_NOT_CONDITION_PORT_BIT( dcay&0x02 , PORTD , DO_PD5_YELLOW );
+//IF_NOT_CONDITION_PORT_BIT( dcay&0x04 , PORTD , DO_PD6_RED    );
 
-IF_CONDITION_PORT_BIT( torq&0x01 , PORTB , DO_PB0_LCD_B0 );
-IF_CONDITION_PORT_BIT( torq&0x02 , PORTB , DO_PB1_LCD_B1 );
-IF_CONDITION_PORT_BIT( torq&0x04 , PORTB , DO_PB2_LCD_B2 );
-IF_CONDITION_PORT_BIT( torq&0x08 , PORTB , DO_PB3_LCD_B3 );
+IF_CONDITION_PORT_BIT( effectiv_torq&0x01 , PORTB , DO_PB0_LCD_B0 );
+IF_CONDITION_PORT_BIT( effectiv_torq&0x02 , PORTB , DO_PB1_LCD_B1 );
+IF_CONDITION_PORT_BIT( effectiv_torq&0x04 , PORTB , DO_PB2_LCD_B2 );
+IF_CONDITION_PORT_BIT( effectiv_torq&0x08 , PORTB , DO_PB3_LCD_B3 );
 
-IF_CONDITION_PORT_BIT( torq&0x01 , PORTC , DO_PC2_LCD_RS );
-IF_CONDITION_PORT_BIT( torq&0x02 , PORTC , DO_PC1_LCD_RW );
-IF_CONDITION_PORT_BIT( torq&0x04 , PORTC , DO_PC0_LCD_EE );
+IF_CONDITION_PORT_BIT( effectiv_torq&0x01 , PORTC , DO_PC2_LCD_RS );
+IF_CONDITION_PORT_BIT( effectiv_torq&0x02 , PORTC , DO_PC1_LCD_RW );
+IF_CONDITION_PORT_BIT( effectiv_torq&0x04 , PORTC , DO_PC0_LCD_EE );
 
-dd_v[DDS_DEBUG + 0x1E] = ((long)torq<<16) + spdd;
+dd_v[DDS_DEBUG + 0x1E] = ((long)effectiv_torq<<16) + dcay;
 
-#endif
+#endif  // AT_SLAVE
 }
 
 // Prepare the next message to transmit
@@ -2497,9 +2495,10 @@ twi_tx_buf[6]  = twi_seq;   // Seq: sequence counter , incremented each time we 
 twi_tx_buf[7]  = debug_page;   // for the display
 for ( iii=0 ; iii<8      ; iii++ ) twi_tx_buf[8+iii] = pp[iii];
 twi_tx_buf[16]  = standby_goto;   // fix error before move request
-twi_tx_buf[17]  = spdd;   // test LED
-twi_tx_buf[18]  = torq;   // test LCD
-// 13 bytes available here
+twi_tx_buf[17]  = dcay;   // test LED
+twi_tx_buf[18]  = effectiv_torq;   // test LCD
+twi_tx_buf[19]  = motor_disable; 
+// 12 bytes available here
 
 for ( iii=1 ; iii<TWI_C1 ; iii++ ) sum +=twi_tx_buf[iii];
 twi_tx_buf[TWI_C1] = -sum;   // Checksum
@@ -2793,6 +2792,8 @@ static unsigned short ir_key_off=0;  // limit the inputs to 4 per seconds
 // These takes too long to complete !!!  set_digital_output(DO_PC0_RA_STEP ,ra->next);     // eventually, I should use my routines...flush polopu...
 // These takes too long to complete !!!  set_digital_output(DO_PC2_DEC_STEP,dec->next);    // eventually, I should use my routines...flush polopu...
 PORTC = ra->next | dec->next | ra->direction | dec->direction;    // I do this to optimize execution time   activate the STEP CLOCK OUTPUT
+#else
+char current_pwm=0;
 #endif
 
 if ( ddll > 0 ) ddll--;  // test delay to reduce the responce speed of the slave
@@ -2802,6 +2803,20 @@ ssec++; if ( ssec == 10000 ) ssec = 0;
 if ( ssec == 0) dd_v[DDS_SECONDS]++;
 d_TIMER1++;             // counts time in 0.1 ms
 
+#ifdef AT_SLAVE
+// Drive LEDs in 1 second PWM to indicate various states
+IF_NOT_CONDITION_PORT_BIT( dcay&0x01 , PORTD , DO_PD6_RED    );
+IF_NOT_CONDITION_PORT_BIT( dcay&0x02 , PORTD , DO_PD5_YELLOW );
+
+// Motor Current setting:
+if      ( motor_disable ){                    ;              }
+else if ( effectiv_torq==3 )      {                    current_pwm=1; }
+else if ( effectiv_torq==2 )      { if ( ssec < 7500 ) current_pwm=1; }
+else if ( effectiv_torq==1 )      { if ( ssec < 5000 ) current_pwm=1; }
+else                              { if ( ssec < 2000 ) current_pwm=1; }
+IF_NOT_CONDITION_PORT_BIT( current_pwm , PORTB , DO_PB7_GREEN    );
+dd_v[DDS_DEBUG + 0x1E]=effectiv_torq;
+#endif
 
 #ifdef AT_MASTER
 //PORTB = TMP1++;   // to test TORQ pins
@@ -2888,6 +2903,15 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
 //   
    if ( (ra->state == 0) && (dec->state == 0)) moving=0;
    else                                        moving=1;  // we are still moving 
+
+   if      ( moving )           minumum_torq = 2;  // If we are doing a GOTO or a SLEW, set the torq to a minimum of 75%
+   else if ( earth_tracking   ) minumum_torq = 1;  // If we are tracking , set the torq to a minimum of 50%
+   else                         minumum_torq = 0;  // No minimum required
+   effectiv_torq = torq;
+   if ( effectiv_torq < minumum_torq ) effectiv_torq = minumum_torq;
+
+// dd_v[DDS_DEBUG + 0x0B] = minumum_torq;
+// dd_v[DDS_DEBUG + 0x0C] = effectiv_torq;
 
 //   dd_v[DDS_DEBUG + 0x12]=moving;
 //   dd_v[DDS_DEBUG + 0x1A]=moving;
@@ -3042,9 +3066,9 @@ d_ram = get_free_memory();
 
    PORTC = 0x30; // Set outputs to 1...this is to avoid a glitch on the scope when monitoring TWI signals
 
-   DDRB  = DO_PB7_RED     | DO_PB0_LCD_B0  | DO_PB1_LCD_B1  | DO_PB2_LCD_B2  | DO_PB3_LCD_B3 ;
+   DDRB  = DO_PB7_GREEN   | DO_PB0_LCD_B0  | DO_PB1_LCD_B1  | DO_PB2_LCD_B2  | DO_PB3_LCD_B3 ;
    DDRC  = DO_PC4_TWI_SDA | DO_PC5_TWI_SCL | DO_PC2_LCD_RS  | DO_PC1_LCD_RW  | DO_PC0_LCD_EE ;   // set pins 4 5 of PORTC C as output     (logic 1 = output)    >>  TWI pins
-   DDRD  = DO_PD5_YELLOW  | DO_PD6_GREEN ; 
+   DDRD  = DO_PD5_YELLOW  | DO_PD6_RED   ; 
 
 #endif
 sei();         //enable global interrupts
@@ -3280,6 +3304,13 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.74  2012/02/12 18:14:13  pmichel
+### Important milestone
+Fixed torq problem
+Reversed RA axis to match earth's rottation
+Tested LEDs and LCD outputs
+First test outside at -20 !
+
 Revision 1.73  2012/01/29 05:21:50  pmichel
 Last version on SUSE11b... both laptops can now compile
 
