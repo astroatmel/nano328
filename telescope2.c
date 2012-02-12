@@ -1,12 +1,19 @@
 /*
 $Author: pmichel $
-$Date: 2012/01/25 04:05:51 $
-$Id: telescope2.c,v 1.72 2012/01/25 04:05:51 pmichel Exp pmichel $
+$Date: 2012/01/29 05:21:50 $
+$Id: telescope2.c,v 1.73 2012/01/29 05:21:50 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.72 $
+$Revision: 1.73 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
+*** Problems:
+*** Seems the earth compensation is just a bit too slow
+*** Tork only on RA
+*** Minimum tork too low 00 default tork whould be 10 (75%) and (100%) when GOTO or SLEWING /// Green light runs a PWM representing the % tork 20%, 50%, 75%, 100%
+** Add a search patern function to locate a point of interest
+** use yellow pwm sequence to indicate remote control input state (command) off = ready to process a command 25% means 1 key in, 50%: 2 key in ...  max sequqnce = 100% solid
+
 - Add command to set the RA to an approx value (first thing to execute when aligning)
 - Confirm... the master does not receive 32 bytes...does the slave receive 32 bytes ?
 
@@ -39,64 +46,90 @@ TODO:
 #define ADC6C            6
 #define AI_BATTERY       ADC6C
 
-#define DO_10KHZ         IO_B2
-#define DI_REMOTE        (1<<2) // IO_D2   PORTD BIT 2
-#define DO_DISABLE       (1<<3) // IO_D3   PORTD BIT 3   // Step motor enable
-#define DO_RESET         (1<<4) // IO_D4   PORTD BIT 4   // Step motor reset
+#define DO_PB1_TORQA1    (1<<1) 
+#define DO_PB2_TORQA2    (1<<2) 
+#define DO_PB3_TORQB1    (1<<3) 
+#define DO_PB4_TORQB2    (1<<4) 
+#define DO_PB5_DECAYB2   (1<<5) 
 
-#define DO_DEC_DIR       IO_C3  // 0x11   17
-#define DO_DEC_STEP      IO_C2  // 0x10   16
-#define DO_RA_DIR        IO_C1  // 0x0F   15
-#define DO_RA_STEP       IO_C0  // 0x0E   14
+#define DO_PC0_DEC_STEP  (1<<0) // 0x10   16
+#define DO_PC1_DEC_DIR   (1<<1) // 0x11   17
+#define DO_PC2_RA_STEP   (1<<2) // 0x0E   14
+#define DO_PC3_RA_DIR    (1<<3) // 0x0F   15
 
-//#define FAST_RA_STEP     0x01
-//#define FAST_RA_DIR      0x02
-//#define FAST_DEC_STEP    0x04
-//#define FAST_DEC_DIR     0x08
+#define DO_PC4_TWI_SDA   (1<<4) 
+#define DO_PC5_TWI_SCL   (1<<5) 
 
-#define FAST_RA_STEP     0x04
-#define FAST_RA_DIR      0x08
-#define FAST_DEC_STEP    0x01
-#define FAST_DEC_DIR     0x02
+#define DI_PD2_REMOTE    (1<<2) // IO_D2   PORTD BIT 2
+#define DO_PD3_DISABLE   (1<<3) // IO_D3   PORTD BIT 3   // Step motor enable
+#define DO_PD4_TWI_START (1<<4) 
+#define DO_PD5_DECAYA1   (1<<5) 
+#define DO_PD6_DECAYA2   (1<<6) 
+#define DO_PD7_DECAYB1   (1<<7) 
+
+// SLAVE
+#define DO_PB7_RED       (1<<7) 
+#define DO_PD5_YELLOW    (1<<5) 
+#define DO_PD6_GREEN     (1<<6) 
+#define DO_PB0_LCD_B0    (1<<0) 
+#define DO_PB1_LCD_B1    (1<<1) 
+#define DO_PB2_LCD_B2    (1<<2) 
+#define DO_PB3_LCD_B3    (1<<3) 
+#define DO_PC0_LCD_EE    (1<<0) 
+#define DO_PC1_LCD_RW    (1<<1) 
+#define DO_PC2_LCD_RS    (1<<2) 
+
+#define IF_CONDITION_PORT_BIT(CC,PP,BB)        \
+{                                              \
+if ( CC ) PP |=  (BB); /* Set bits of port   */  \
+else      PP &= ~(BB); /* Clear bits of port */  \
+}                                     
+
+#define IF_NOT_CONDITION_PORT_BIT(CC,PP,BB)    \
+{                                              \
+if ( CC ) PP &= ~(BB); /* Clear bits of port */  \
+else      PP |=  (BB); /* Set bits of port   */  \
+}                                     
 
 void wait(long time,long mult);
 #define SEC 10000
 #define MSEC 10
 
-// Debug Mode 0 : value at offset 0x01 : High short = Nb Tx from Master : Low short = Nb rx from the Master
+// Debug Page 0 : value at offset 0x01 : High short = Nb Tx from Master : Low short = Nb rx from the Master
 //              : values at offset 0x08 to 0x1F are used to display TWI states 
-// Debug Mode 1 : Shows TWI buffer of what the Master sends (on the master console)    and what the Slave receives (on the slave console)
-// Debug Mode 2 : Shows TWI buffer of what the Master receives (on the master console) and what the Slave sends (on the slave console)
-char debug_mode=3; // depending of the debug mode, change what the debug shows 
-char nb_debug_mode=4;
+// Debug Page 1 : Shows TWI buffer of what the Master sends (on the master console)    and what the Slave receives (on the slave console)
+// Debug Page 2 : Shows TWI buffer of what the Master receives (on the master console) and what the Slave sends (on the slave console)
+// Debug Page 3 : 
+char debug_page=3; // depending of the debug mode, change what the debug shows 
+char nb_debug_page=4;
 
 char fast_portc=0;
 // Use all pins of PORTB for fast outputs  ... B0 B1 cant be used, and B4 B5 causes problem at download time
 ///- #define FAST_SET_RA_DIR_(VAL)                   
 ///-    {                                           
-///-    set_digital_output(DO_RA_DIR  ,VAL    );    
+///-    set_digital_output(DO_PC1_RA_DIR  ,VAL    );    
 ///-    }
 ///- #define FAST_SET_RA_STEP_(VAL)                  
 ///-    {                                           
-///-    set_digital_output(DO_RA_STEP ,VAL    );    
+///-    set_digital_output(DO_PC0_RA_STEP ,VAL    );    
 ///-    }
 ///- #define FAST_SET_RA_DIR(VAL)                  
 ///-    {                                           
-///-    if ( VAL ) PORTC |= (1<<DO_RA_DIR);      /* Set   C3 */   
-///-    else       PORTC &= 255-(1<<DO_RA_DIR);  /* Reset C3 */   
+///-    if ( VAL ) PORTC |= (1<<DO_PC1_RA_DIR);      /* Set   C3 */   
+///-    else       PORTC &= 255-(1<<DO_PC1_RA_DIR);  /* Reset C3 */   
 ///-    }
 ///- #define FAST_SET_RA_STEP(VAL)                  
 ///-    {                                          
-///-    if ( VAL ) PORTC |= (1<<DO_RA_STEP);      /* Set   C2 */   
-///-    else       PORTC &= 255-(1<<DO_RA_STEP);  /* Reset C2 */   
+///-    if ( VAL ) PORTC |= (1<<DO_PC0_RA_STEP);      /* Set   C2 */   
+///-    else       PORTC &= 255-(1<<DO_PC0_RA_STEP);  /* Reset C2 */   
 ///-    }
 ///- #define FAST_SET_DEC_DIR(VAL)                  
 ///-    {                                           
-///-    set_digital_output(DO_DEC_DIR  ,VAL    );   
+///-    set_digital_output(DO_PC3_DEC_DIR  ,VAL    );   
 ///-    }
 ///- #define FAST_SET_DEC_STEP(VAL)                 
 ///-    {                                           
-///-    set_digital_output(DO_DEC_STEP ,VAL    );   
+///-    set_digital_output(DO_PC2_DEC_STEP ,VAL    );   
 ///-    }
  
 ////////////////////////////////// DEFINES /////////////////////////////////////   TICKS_P_STEP * 16 * GEAR_BIG/GEAR_SMALL * STEP_P_REV / RA_DEG_P_REV
@@ -204,6 +237,8 @@ long twi_star_ra,twi_star_dec; // Currently Selected Star pos sent from Slave
 long twi_ra_corr,twi_dec_corr; // Polar correction calculated by Slave
 short twi_star;                // Current Star index
 
+unsigned char torq=0,spdd=0;   // For debug purpose
+
 void record_pos(short pos);
 
 // I define: 
@@ -279,22 +314,37 @@ PROGMEM const char NLNL[]="\012\015";
    #else
    // this is 1K if slash:
    PROGMEM const char dip328p[]={"\
-                               -----------\012\015\
-    (PCINT14/RESET)      PC6  < 01     15 > PC5 (ADC5/SCL/PCINT13)\012\015\
-    (PCINT16/RXD)        PD0  < 02     16 > PC4 (ADC4/SDA/PCINT12)\012\015\
-    (PCINT17/TXD)        PD1  < 03     17 > PC3 (ADC3/PCINT11)\012\015\
-    (PCINT18/INT0)       PD2  < 04     18 > PC2 (ADC2/PCINT10)\012\015\
-    (PCINT19/OC2B/INT1)  PD3  < 05     19 > PC1AREF (ADC1/PCINT9)\012\015\
-    (PCINT20/XCK/T0)     PD4  < 06     20 > PC0 (ADAVCCC0/PCINT8)\012\015\
-                         VCC  < 07     21 > GND\012\015\
-                         GND  < 08     22 > AREF\012\015\
-    (PCINT6/XTAL1/TOSC1) PB6  < 09     23 > AVCC\012\015\
-    (PCINT7/XTAL2/TOSC2) PB7  < 10     24 > PB5 (SCK/PCINT5)\012\015\
-    (PCINT21/OC0B/T1)    PD5  < 11     25 > PB4 (MISO/PCINT4)\012\015\
-    (PCINT22/OC0A/AIN0)  PD6  < 12     26 > PB3 (MOSI/OC2A/PCINT3)\012\015\
-    (PCINT23/AIN1)       PD7  < 13     27 > PB2 (SS/OC1B/PCINT2)\012\015\
-    (PCINT0/CLKO/ICP1)   PB0  < 14     28 > PB1 (OC1A/PCINT1)\012\015\
-                               -----------\012\015\
+MASTER:\012\015\
+   >RESET     (PCINT14/RESET)      PC6  < 01     15 > PC5 (ADC5/SCL/PCINT13)   SCL               \012\015\
+   >RX        (PCINT16/RXD)        PD0  < 02     16 > PC4 (ADC4/SDA/PCINT12)   SDA               \012\015\
+   <TX        (PCINT17/TXD)        PD1  < 03     17 > PC3 (ADC3/PCINT11)       BATTERY<          \012\015\
+              (PCINT18/INT0)       PD2  < 04     18 > PC2 (ADC2/PCINT10)                         \012\015\
+              (PCINT19/OC2B/INT1)  PD3  < 05     19 > PC1AREF (ADC1/PCINT9)                      \012\015\
+              (PCINT20/XCK/T0)     PD4  < 06     20 > PC0 (ADAVCCC0/PCINT8)                      \012\015\
+                                   VCC  < 07     21 > GND                                        \012\015\
+                                   GND  < 08     22 > AREF                                       \012\015\
+   >CLKOUT    (PCINT6/XTAL1/TOSC1) PB6  < 09     23 > AVCC                                       \012\015\
+   <LED RED   (PCINT7/XTAL2/TOSC2) PB7  < 10     24 > PB5 (SCK/PCINT5)                           \012\015\
+   <LED YELLOW(PCINT21/OC0B/T1)    PD5  < 11     25 > PB4 (MISO/PCINT4)                          \012\015\
+   <LED GREEN (PCINT22/OC0A/AIN0)  PD6  < 12     26 > PB3 (MOSI/OC2A/PCINT3)   LCD B3<>          \012\015\
+              (PCINT23/AIN1)       PD7  < 13     27 > PB2 (SS/OC1B/PCINT2)     LCD B2<>          \012\015\
+  <>LCD B0    (PCINT0/CLKO/ICP1)   PB0  < 14     28 > PB1 (OC1A/PCINT1)        LCD B1<>          \012\015\
+\012\015                                                                                                 \
+SLAVE:\012\015                                                                                           \
+   >RESET     (PCINT14/RESET)      PC6  < 01     15 > PC5 (ADC5/SCL/PCINT13)   SCL               \012\015\
+   >RX        (PCINT16/RXD)        PD0  < 02     16 > PC4 (ADC4/SDA/PCINT12)   SDA               \012\015\
+   <TX        (PCINT17/TXD)        PD1  < 03     17 > PC3 (ADC3/PCINT11)       DEC_DIR>          \012\015\
+   >IR        (PCINT18/INT0)       PD2  < 04     18 > PC2 (ADC2/PCINT10)       DEC_STEP>         \012\015\
+   <ENABLE    (PCINT19/OC2B/INT1)  PD3  < 05     19 > PC1AREF (ADC1/PCINT9)    RA_DIR>           \012\015\
+   <TWI_START (PCINT20/XCK/T0)     PD4  < 06     20 > PC0 (ADAVCCC0/PCINT8)    RA_STEP>          \012\015\
+                                   VCC  < 07     21 > GND                                        \012\015\
+                                   GND  < 08     22 > AREF                                       \012\015\
+    XTAL      (PCINT6/XTAL1/TOSC1) PB6  < 09     23 > AVCC                                       \012\015\
+    XTAL      (PCINT7/XTAL2/TOSC2) PB7  < 10     24 > PB5 (SCK/PCINT5)         decayb2>          \012\015\
+   <decaya1   (PCINT21/OC0B/T1)    PD5  < 11     25 > PB4 (MISO/PCINT4)        torqb2>           \012\015\
+   <decaya2   (PCINT22/OC0A/AIN0)  PD6  < 12     26 > PB3 (MOSI/OC2A/PCINT3)   torqb1>           \012\015\
+   <decayb1   (PCINT23/AIN1)       PD7  < 13     27 > PB2 (SS/OC1B/PCINT2)     torqa2>           \012\015\
+   <CLKOUT    (PCINT0/CLKO/ICP1)   PB0  < 14     28 > PB1 (OC1A/PCINT1)        torqa1>           \012\015\
    "};
    #endif
 #endif
@@ -557,7 +607,7 @@ unsigned short console_idx=0;                    // when 0, we are not currently
 //31|   IR CODE RECEIVED: 12345678 12345678 / 1234                RA SPEED:                RA STATE:  
 //32| PREV CODE RECEIVED: 12345678 12345678                      DEC SPEED:               DEC STATE:  
 //33| PREV PREV RECEIVED: 12345678 12345678                                              
-//34|    BATTERY VOLTAGE: 12.0V
+//34|    BATTERY VOLTAGE: 12.0V                                 DEBUG PAGE:
 //35|          HISTOGRAM: 1234 1234 1234 1234 1234 1234 1234 1234  1234 1234 1234 1234 1234 1234 1234 1234            <-- once one reaches 65535, values are latched and printed 
 //36|              DEBUG: 12345678  12345678  12345678  12345678   12345678  12345678  12345678  12345678                                               
 //37|                     12345678  12345678  12345678  12345678   12345678  12345678  12345678  12345678                                               
@@ -588,7 +638,7 @@ PROGMEM const char display_main[]={"\012\015\
    IR CODE RECEIVED:                                         RA SPEED:                RA STATE:\012\015\
  PREV CODE RECEIVED:                                        DEC SPEED:               DEC STATE:\012\015\
  PREV PREV RECEIVED: \012\015\
-    BATTERY VOLTAGE: \012\015\
+    BATTERY VOLTAGE:                                       DEBUG PAGE: \012\015\
       SP0 HISTOGRAM: \012\015\
               DEBUG: \012\015\
 \012\015\
@@ -647,21 +697,21 @@ PROGMEM const unsigned char dd_x[DD_FIELDS]={ 22 , 32 , 42 , 52 , 64 , 74 , 84 ,
                                             , 22 , 27 , 32 , 37 , 42 , 47 , 52 , 57 , 64 , 69 , 74 , 79 , 84 , 89 , 94 , 99     // 0x20: Histogram 0->15
                                             , 39 , 39 , 39 , 72 , 97 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x30: RA structure values  [pos, pos_cor,pos_hw, speed, state
                                             , 22 , 22 , 22 , 72 , 97 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x40: DEC structure values [pos, pos_cor,pos_hw, speed, state
-                                            , 57 , 57 , 57 , 35 , 22 , 39 , 57 , 31 , 22 , 22 , 22 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds, start pos dec,ra,ra
+                                            , 57 , 57 , 57 , 35 , 22 , 39 , 57 , 31 , 22 , 22 , 22 , 72 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds, start pos dec,ra,ra
                                             };
 PROGMEM const unsigned char dd_y[DD_FIELDS]={ 36 , 36 , 36 , 36 , 36 , 36 , 36 , 36 , 37 , 37 , 37 , 37 , 37 , 37 , 37 , 37     // 0x00: DEBUG  0->15
                                             , 38 , 38 , 38 , 38 , 38 , 38 , 38 , 38 , 39 , 39 , 39 , 39 , 39 , 39 , 39 , 39     // 0x10: DEBUG 16->31
                                             , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35     // 0x20: Histogram 0->15
                                             , 25 , 26 , 27 , 31 , 31 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x30: RA structure values   [pos, pos_cor,pos_hw, speed, state
                                             , 25 , 26 , 27 , 32 , 32 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x40: DEC structure values  [pos, pos_cor,pos_hw, speed, state
-                                            , 25 , 26 , 27 , 22 , 29 , 29 , 29 , 31 , 31 , 32 , 28 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
+                                            , 25 , 26 , 27 , 22 , 29 , 29 , 29 , 31 , 31 , 32 , 28 , 34 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
                                             };
 PROGMEM const unsigned char dd_f[DD_FIELDS]={0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18    // 0x00: DEBUG  0->15      all HEX 8 bytes
                                             ,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18    // 0x10: DEBUG 16->31      all HEX 8 bytes
                                             ,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14    // 0x20: Histogram 0->15   all HEX 4 bytes
                                             ,0x50,0x50,0x50,0x26,0x24,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x30: RA structure values
                                             ,0x40,0x40,0x40,0x26,0x24,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x40: DEC structure values 
-                                            ,0x60,0x60,0x60,0x38,0x40,0x50,0x60,0x14,0x18,0x18,0xB0,0x00,0x00,0x00,0x00,0x00    // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
+                                            ,0x60,0x60,0x60,0x38,0x40,0x50,0x60,0x14,0x18,0x18,0xB0,0x14,0x00,0x00,0x00,0x00    // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
                                             };  
 // define the Start of each variable in the array
 #define DDS_DEBUG         0x00
@@ -679,6 +729,7 @@ PROGMEM const unsigned char dd_f[DD_FIELDS]={0x18,0x18,0x18,0x18,0x18,0x18,0x18,
 #define DDS_IR_CODE       0x58  // dd_v[DDS_IR_CODE]
 #define DDS_IR_L_CODE     0x59  // dd_v[DDS_IR_L_CODE]
 #define DDS_CUR_STAR      0x5A  // dd_v[DDS_CUR_STAR]
+#define DDS_DEBUG_PAGE    0x5B  // dd_v[DDS_DEBUG_PAGE]
 //#define DDS_RX_IDX        0x5B  // dd_v[DDS_RX_IDX]
 
 unsigned char dd_go(unsigned char task,char first)
@@ -1388,6 +1439,8 @@ Declin :
 #define PROSCAN_VCR1_POWER  0x021D5E2A
 #define PROSCAN_VCR1_TRAK_P 0x021F4E0B
 #define PROSCAN_VCR1_TRAK_M 0x021F5E0A
+#define PROSCAN_VCR1_MUTE   0x020C0F3F
+#define PROSCAN_VCR1_SPEED  0x021B9E46
 
 #define IDX_VCR1_0          0
 #define IDX_VCR1_1          1
@@ -1423,6 +1476,8 @@ Declin :
 #define IDX_VCR1_POWER      31
 #define IDX_VCR1_TRAK_P     32
 #define IDX_VCR1_TRAK_M     33
+#define IDX_VCR1_MUTE       34
+#define IDX_VCR1_SPEED      35
 
 /*
 - the following IR commands clear after 3 seconds  ... The IR sends values to the RS232 buffer same as keyboard  3sec is 
@@ -1454,14 +1509,14 @@ PROSCAN_VCR1_0      , PROSCAN_VCR1_1      , PROSCAN_VCR1_2      , PROSCAN_VCR1_3
 PROSCAN_VCR1_8      , PROSCAN_VCR1_9      , PROSCAN_VCR1_NORTH  , PROSCAN_VCR1_SOUTH  , PROSCAN_VCR1_WEST   , PROSCAN_VCR1_EAST   , PROSCAN_VCR1_OK     , PROSCAN_VCR1_STOP   ,  // 8
 PROSCAN_VCR1_PLAY   , PROSCAN_VCR1_RECORD , PROSCAN_VCR1_CH_P   , PROSCAN_VCR1_CH_M   , PROSCAN_VCR1_VOL_P  , PROSCAN_VCR1_VOL_M  , PROSCAN_VCR1_FWD    , PROSCAN_VCR1_REW    ,  // 16
 PROSCAN_VCR1_SEARCH , PROSCAN_VCR1_GOBACK , PROSCAN_VCR1_INPUT  , PROSCAN_VCR1_ANTENA , PROSCAN_VCR1_CLEAR  , PROSCAN_VCR1_GUIDE  , PROSCAN_VCR1_INFO   , PROSCAN_VCR1_POWER  ,  // 24
-PROSCAN_VCR1_TRAK_P , PROSCAN_VCR1_TRAK_M ,                                                                                                                                      // 32
+PROSCAN_VCR1_TRAK_P , PROSCAN_VCR1_TRAK_M , PROSCAN_VCR1_MUTE   , PROSCAN_VCR1_SPEED                                                                                             // 32
                                   };
 PROGMEM short         RS232EQVs[]= {  // The order is important, each rs232 character is assigned a PROSCAN equivalent
 '0'                 , '1'                 , '2'                 , '3'                 , '4'                 , '5'                 , '6'                 , '7'                 , 
 '8'                 , '9'                 , 0x5B41              , 0x5B42              , 0x5B44              , 0x5B43              , 13                  , 's'                 ,
 'p'                 , 'r'                 , 'i'                 , 'm'                 , 'k'                 , 'j'                 , '>'                 , '<'                 , 
 '/'                 , '*'                 , '.'                 , '!'                 , 0x7E                , 'g'                 , '?'                 , 0x60                ,
-'+'                 , '-'                  
+'+'                 , '-'                 , '$'                 , '%'
                                   };  
 char idx_code,next_input;
 
@@ -1568,7 +1623,33 @@ if ( AP0_DISPLAY == 0 ) display_next();  // if not printing from AP0, then print
 char code_idx=-1; // lets work with the code's index  // wether it's IR or rs232
 short iii;
 
+dd_v[DDS_DEBUG_PAGE] = debug_page;
+
 twitt();
+
+// Torque control
+if ( motor_disable ) torq = 0; // start with low torq when motor off
+IF_NOT_CONDITION_PORT_BIT(torq & 0x01 , PORTB , DO_PB1_TORQA1  | DO_PB3_TORQB1  );
+IF_NOT_CONDITION_PORT_BIT(torq & 0x02 , PORTB , DO_PB2_TORQA2  | DO_PB4_TORQB2  );
+///IF_NOT_CONDITION_PORT_BIT(torq & 0x01 , PORTB , DO_PB1_TORQA1  );
+///IF_NOT_CONDITION_PORT_BIT(torq & 0x02 , PORTB , DO_PB2_TORQA2  );
+///IF_NOT_CONDITION_PORT_BIT(torq & 0x01 , PORTB , DO_PB3_TORQB1  );
+///IF_NOT_CONDITION_PORT_BIT(torq & 0x02 , PORTB , DO_PB4_TORQB2  );
+IF_NOT_CONDITION_PORT_BIT(spdd & 0x01 , PORTD , DO_PD5_DECAYA1 | DO_PD7_DECAYB1 );
+IF_NOT_CONDITION_PORT_BIT(spdd & 0x02 , PORTD , DO_PD6_DECAYA2                  );
+IF_NOT_CONDITION_PORT_BIT(spdd & 0x02 , PORTB , DO_PB5_DECAYB2                  );
+//if ( torq & 0x01 ) PORTB |=  (DO_PB1_TORQA1  | DO_PB3_TORQB1);
+//else               PORTB &= ~(DO_PB1_TORQA1  | DO_PB3_TORQB1);
+//if ( torq & 0x02 ) PORTB |=  (DO_PB2_TORQA2  | DO_PB4_TORQB2);
+//else               PORTB &= ~(DO_PB2_TORQA2  | DO_PB4_TORQB2);
+//if ( spdd & 0x01 ) PORTD |=  (DO_PD5_DECAYA1 | DO_PD7_DECAYB1);
+//else               PORTD &= ~(DO_PD5_DECAYA1 | DO_PD7_DECAYB1);   // PD6 and PD7 only rizes to 3.4V  not 5v like the others
+//if ( spdd & 0x02 ) PORTD |=  (DO_PD6_DECAYA2                 );
+//else               PORTD &= ~(DO_PD6_DECAYA2                 );
+//if ( spdd & 0x02 ) PORTB |=  (DO_PB5_DECAYB2                 );
+//else               PORTB &= ~(DO_PB5_DECAYB2                 );
+
+
 
 if ( AP0_DISPLAY == 0 ) display_next();  // if not printing from AP0, then print here
 
@@ -1664,21 +1745,23 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
       else if ( code_idx == IDX_VCR1_TRAK_P  ) earth_tracking=1;         // Start tracking
       else if ( code_idx == IDX_VCR1_TRAK_M  ) earth_tracking=0;         // Stop tracking
       else if ( code_idx == IDX_VCR1_GOBACK  ) goto_pgm_pos(dd_v[DDS_CUR_STAR]);  // goto active star
+      else if ( code_idx == IDX_VCR1_MUTE    ) { torq ++;  dd_v[DDS_DEBUG + 0x1E]=torq ; }
+      else if ( code_idx == IDX_VCR1_SPEED   ) { spdd ++;  dd_v[DDS_DEBUG + 0x1D]=spdd ; }
       else if ( code_idx == IDX_VCR1_INFO    ) 
          {
-         debug_mode ++ ;
-         if ( debug_mode> nb_debug_mode ) debug_mode = 0;
+         debug_page ++ ;
+         if ( debug_page> nb_debug_page ) debug_page = 0;
          for ( iii=0 ; iii<32 ; iii++ ) dd_v[DDS_DEBUG + iii] = 0;
          }
       else if ( code_idx == IDX_VCR1_POWER   ) 
          {
          motor_disable = !motor_disable;
-         //set_digital_output(DO_DISABLE  ,motor_disable);
-         //if ( motor_disable ) set_digital_output(DO_DISABLE  ,2);  // see: include/pololu/digital.h, it seems that using constants makes the code very efficiant
-         //else                 set_digital_output(DO_DISABLE  ,0);
-         if ( motor_disable ) PORTD &= ~DO_DISABLE;  // set the pin to 0 V
-         else                 PORTD |=  DO_DISABLE;
-  dd_v[DDS_DEBUG + 0x1E] = DO_DISABLE;
+         //set_digital_output(DO_PD3_DISABLE  ,motor_disable);
+         //if ( motor_disable ) set_digital_output(DO_PD3_DISABLE  ,2);  // see: include/pololu/digital.h, it seems that using constants makes the code very efficiant
+         //else                 set_digital_output(DO_PD3_DISABLE  ,0);
+//         if ( motor_disable ) PORTD &= ~DO_PD3_DISABLE;  // set the pin to 0 V
+//         else                 PORTD |=  DO_PD3_DISABLE;
+         IF_CONDITION_PORT_BIT(motor_disable==0 , PORTD , DO_PD3_DISABLE );
          }
       else if ( code_idx == IDX_VCR1_FWD     ) 
          {
@@ -2346,8 +2429,8 @@ if ( twi_tx_buf[3] == 0xC0 )  // Current position
 
    pc[0] = twi_tx_buf[4];   // Current star
    pc[1] = twi_tx_buf[5];   // Current star
-   if ( debug_mode != twi_tx_buf[7] ) for ( iii=0 ; iii<32 ; iii++ ) dd_v[DDS_DEBUG + iii] = 0; // Debug info
-   debug_mode = twi_tx_buf[7];
+   if ( debug_page != twi_tx_buf[7] ) for ( iii=0 ; iii<32 ; iii++ ) dd_v[DDS_DEBUG + iii] = 0; // Debug info
+   debug_page = twi_tx_buf[7];
    for ( iii=0 ; iii<8      ; iii++ ) pp[iii] = twi_tx_buf[8+iii]; // update current position
    ra->pos  = twi_pos[0];
    dec->pos = twi_pos[1];
@@ -2368,8 +2451,28 @@ if ( twi_tx_buf[3] == 0xC0 )  // Current position
    twi_rx_buf[1]  = twi_fb_count; 
    twi_rx_buf[2]  = twi_tx_buf[2];  // command feedback
    twi_rx_buf[3]  = twi_tx_buf[3];  // data feedback 
+   spdd = twi_tx_buf[17];
+   torq = twi_tx_buf[18];
+
 for ( iii=1 ; iii<TWI_C1 ; iii++ ) sum +=twi_rx_buf[iii];
 twi_rx_buf[TWI_C1] = -sum;   // Checksum
+
+
+IF_NOT_CONDITION_PORT_BIT( spdd&0x01 , PORTB , DO_PB7_RED    );
+IF_NOT_CONDITION_PORT_BIT( spdd&0x02 , PORTD , DO_PD5_YELLOW );
+IF_NOT_CONDITION_PORT_BIT( spdd&0x04 , PORTD , DO_PD6_GREEN  );
+
+IF_CONDITION_PORT_BIT( torq&0x01 , PORTB , DO_PB0_LCD_B0 );
+IF_CONDITION_PORT_BIT( torq&0x02 , PORTB , DO_PB1_LCD_B1 );
+IF_CONDITION_PORT_BIT( torq&0x04 , PORTB , DO_PB2_LCD_B2 );
+IF_CONDITION_PORT_BIT( torq&0x08 , PORTB , DO_PB3_LCD_B3 );
+
+IF_CONDITION_PORT_BIT( torq&0x01 , PORTC , DO_PC2_LCD_RS );
+IF_CONDITION_PORT_BIT( torq&0x02 , PORTC , DO_PC1_LCD_RW );
+IF_CONDITION_PORT_BIT( torq&0x04 , PORTC , DO_PC0_LCD_EE );
+
+dd_v[DDS_DEBUG + 0x1E] = ((long)torq<<16) + spdd;
+
 #endif
 }
 
@@ -2391,10 +2494,12 @@ twi_tx_buf[3]  = 0xC0;   // Sup Data : tell the Slave what we are about to suppl
 twi_tx_buf[4]  = pc[0];   // Current Selected Star (LSB)
 twi_tx_buf[5]  = pc[1];   // Current Selected Star (MSB)
 twi_tx_buf[6]  = twi_seq;   // Seq: sequence counter , incremented each time we record a new corrected star position
-twi_tx_buf[7]  = debug_mode;   // for the display
+twi_tx_buf[7]  = debug_page;   // for the display
 for ( iii=0 ; iii<8      ; iii++ ) twi_tx_buf[8+iii] = pp[iii];
 twi_tx_buf[16]  = standby_goto;   // fix error before move request
-// 15 bytes available here
+twi_tx_buf[17]  = spdd;   // test LED
+twi_tx_buf[18]  = torq;   // test LCD
+// 13 bytes available here
 
 for ( iii=1 ; iii<TWI_C1 ; iii++ ) sum +=twi_tx_buf[iii];
 twi_tx_buf[TWI_C1] = -sum;   // Checksum
@@ -2443,7 +2548,7 @@ else if (wait) return;  // still waiting
 #endif
 
 sequence++;
-if ( debug_mode==0 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08 + twi_state]; p[3]=sequence; p[2]=lstate; p[1]++; p[0] = twsr; } // Use DEBUG 0x10 through 0x08 to debug TWI states ############################################
+if ( debug_page==0 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08 + twi_state]; p[3]=sequence; p[2]=lstate; p[1]++; p[0] = twsr; } // Use DEBUG 0x10 through 0x08 to debug TWI states ############################################
 lstate = twi_state;
 
 #ifdef AT_MASTER
@@ -2462,8 +2567,9 @@ lstate = twi_state;
          }
       CR = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_CR ] ); 
       TWCR = CR;
-      if ( CR&0x20) PORTB |=  0x20; // Set   pin PB5 when START bit is set
-      else          PORTB &= ~0x20; // Clear pin PB5
+//      if ( CR&0x20) PORTD |=  DO_PD4_TWI_START; // Set   pin PD4 when START bit is set   to thlp debug with the scope
+//      else          PORTD &= ~DO_PD4_TWI_START; // Clear pin PD4
+      IF_CONDITION_PORT_BIT( CR&0x20 , PORTD , DO_PD4_TWI_START  );
 
       if      ( (SC & 0x20)!=0 && (twi_idx==twi_tx_buf[1])  ) { twi_state++; }       // when 0x20 (count mode) go to next state when count is reached
       else if ( (SC & 0x18)!=0 && (twi_idx==twi_fb_count-1) ) { twi_state++; }       // when 0x20 (count mode) go to next state when count is reached
@@ -2478,12 +2584,12 @@ lstate = twi_state;
    if ( twi_state== 0x04 )   // TODO this is in SLAVE RECEIVE ... this is hardcoded
       {
       twi_success_rx++; 
-      if ( debug_mode==0 ) aa[1]++;  // High part          // Nb bytes sent so far...
+      if ( debug_page==0 ) aa[1]++;  // High part          // Nb bytes sent so far...
       }
    else if ( twi_state== 0x0F )  // TODO this is in SLAVE TRANSMIT ... this is hardcoded to the state
       {
       twi_success_rx++;  
-      if ( debug_mode==0 ) aa[0]++;  // High part          // Nb bytes received so far...
+      if ( debug_page==0 ) aa[0]++;  // High part          // Nb bytes received so far...
       }
    if ( twi_state== 0 ) twi_tx();
 #endif
@@ -2518,13 +2624,13 @@ if ( (twsr == SR) || (twsr == SR2) || (SR == 0xFF) )   // TWI operation complete
 
       if ( sum == 0 ) twi_rx();
       twi_state++;     // when 0x20 (count mode) go to next state when count is reached
-      if ( debug_mode==0 ) aa[1]++;  // High part          // Nb bytes sent so far...
+      if ( debug_page==0 ) aa[1]++;  // High part          // Nb bytes sent so far...
       }
    else if ( (SC & 0x10)!=0 && (twi_idx==twi_fb_count+2) )  // Message complete  +2
       {
       //twi_rx();
       twi_state++;     // when 0x10 (count mode) go to next state when count is reached
-      if ( debug_mode==0 ) aa[0]++;  // High part          // Nb bytes received so far...
+      if ( debug_page==0 ) aa[0]++;  // High part          // Nb bytes received so far...
       }
    else 
       {
@@ -2542,8 +2648,8 @@ wait = 0x80;
      if ( twi_state== 0 ) twi_tx();  // TODO not sure it's the right place
 
 #endif
-if ( debug_mode==1 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08]; for ( ES = 0 ; ES <= TWI_C1 ; ES++ ) p[ES] = twi_tx_buf[ES]; }
-if ( debug_mode==2 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08]; for ( ES = 0 ; ES <= TWI_C1 ; ES++ ) p[ES] = twi_rx_buf[ES]; }
+if ( debug_page==1 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08]; for ( ES = 0 ; ES <= TWI_C1 ; ES++ ) p[ES] = twi_tx_buf[ES]; }
+if ( debug_page==2 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08]; for ( ES = 0 ; ES <= TWI_C1 ; ES++ ) p[ES] = twi_rx_buf[ES]; }
 
 //if ( (PINC & 0x20) == 0) aa[0]++;
 //if ( (PINC & 0x10) == 0) aa[1]++;
@@ -2604,46 +2710,46 @@ return;
 void close_loop(void)  // Clear the Step outputs
 {
 long temp;
-// too long to complete !! set_digital_output(DO_RA_STEP,0);    // eventually, I should use my routines...flush polopu...
-// too long to complete !! set_digital_output(DO_DEC_STEP,0);   // eventually, I should use my routines...flush polopu...
+// too long to complete !! set_digital_output(DO_PC0_RA_STEP,0);    // eventually, I should use my routines...flush polopu...
+// too long to complete !! set_digital_output(DO_PC2_DEC_STEP,0);   // eventually, I should use my routines...flush polopu...
 //FAST_SET_RA_STEP(0);
 //FAST_SET_DEC_STEP(0);
 
 temp = ra->pos_hw-ra->pos_cor;
 if ( temp >= TICKS_P_STEP )
    {
-   // too long to complete !!set_digital_output(DO_RA_DIR,0); // go backward
+   // too long to complete !!set_digital_output(DO_PC1_RA_DIR,0); // go backward
    //FAST_SET_RA_DIR(0);
-   ra->direction=0x00;
+   ra->direction=DO_PC3_RA_DIR;
    add_value_to_pos(-TICKS_P_STEP,&ra->pos_hw);
-   ra->next=FAST_RA_STEP;
+   ra->next=DO_PC2_RA_STEP;
    }
 else if ( -temp >= TICKS_P_STEP )
    {
-   // too long to complete !!set_digital_output(DO_RA_DIR,1); // go forward
+   // too long to complete !!set_digital_output(DO_PC1_RA_DIR,1); // go forward
    //FAST_SET_RA_DIR(1);
-   ra->direction=FAST_RA_DIR;
+   ra->direction=0x00;
    add_value_to_pos(TICKS_P_STEP,&ra->pos_hw);
-   ra->next=FAST_RA_STEP;
+   ra->next=DO_PC2_RA_STEP;
    }
 else { ra->next=0; }
 
 temp = dec->pos_hw-dec->pos_cor;
 if ( temp >= (2*TICKS_P_STEP) )      // The DEC axis has 2 times less teeths 
    {
-   // too long to complete !!set_digital_output(DO_DEC_DIR,0); // go backward
+   // too long to complete !!set_digital_output(DO_PC3_DEC_DIR,0); // go backward
    //FAST_SET_DEC_DIR(0);
    dec->direction=0x00;
    add_value_to_pos(-(2*TICKS_P_STEP),&dec->pos_hw);
-   dec->next=FAST_DEC_STEP;
+   dec->next=DO_PC0_DEC_STEP;
    }
 else if ( -temp >= (2*TICKS_P_STEP) )
    {
-   // too long to complete !!set_digital_output(DO_DEC_DIR,1); // go forward
+   // too long to complete !!set_digital_output(DO_PC3_DEC_DIR,1); // go forward
    //FAST_SET_DEC_DIR(1);
-   dec->direction=FAST_DEC_DIR;
+   dec->direction=DO_PC1_DEC_DIR;
    add_value_to_pos( (2*TICKS_P_STEP),&dec->pos_hw);
-   dec->next=FAST_DEC_STEP;
+   dec->next=DO_PC0_DEC_STEP;
    }
 else { dec->next=0; }
 
@@ -2677,14 +2783,15 @@ ISR(TIMER1_OVF_vect)    // my SP0C0 @ 10 KHz
 {
 unsigned long histo;
 #ifdef AT_MASTER
+//static char TMP1;
 static char IR0,IR1,IR2,IR,l_IR,code_started=0,count_bit;
 static short earth_comp=0;
 static short count_0;
 static long loc_ir_code;
 static unsigned short ir_key_off=0;  // limit the inputs to 4 per seconds
 
-// These takes too long to complete !!!  set_digital_output(DO_RA_STEP ,ra->next);     // eventually, I should use my routines...flush polopu...
-// These takes too long to complete !!!  set_digital_output(DO_DEC_STEP,dec->next);    // eventually, I should use my routines...flush polopu...
+// These takes too long to complete !!!  set_digital_output(DO_PC0_RA_STEP ,ra->next);     // eventually, I should use my routines...flush polopu...
+// These takes too long to complete !!!  set_digital_output(DO_PC2_DEC_STEP,dec->next);    // eventually, I should use my routines...flush polopu...
 PORTC = ra->next | dec->next | ra->direction | dec->direction;    // I do this to optimize execution time   activate the STEP CLOCK OUTPUT
 #endif
 
@@ -2697,11 +2804,20 @@ d_TIMER1++;             // counts time in 0.1 ms
 
 
 #ifdef AT_MASTER
+//PORTB = TMP1++;   // to test TORQ pins
+//if ( TMP1 & 0x10 ) PORTD |=  DO_PD5_DECAYA1;
+//else               PORTD &= ~DO_PD5_DECAYA1; 
+//if ( TMP1 & 0x08 ) PORTD |=  DO_PD6_DECAYA2;
+//else               PORTD &= ~DO_PD6_DECAYA2; 
+//if ( TMP1 & 0x04 ) PORTD |=  DO_PD7_DECAYB1;
+//else               PORTD &= ~DO_PD7_DECAYB1; 
+
+
 //////////////////////// Process IR ///////////////////////
 IR2  = IR1;
 IR1  = IR0;
-/// - IR0  = is_digital_input_high(DI_REMOTE);
-IR0  = (PIND & DI_REMOTE) !=0;
+/// - IR0  = is_digital_input_high(DI_PD2_REMOTE);
+IR0  = (PIND & DI_PD2_REMOTE) !=0;
 IR   = IR0 & IR1 & IR2;
 if ( ir_key_off < KEY_OFF) ir_key_off++;
 if ( code_started!=0 || IR!=0 )
@@ -2839,7 +2955,8 @@ void init_disp(void)
 
 // pmichel: disabled the close loop interrupt, I now call it at the ent of the Overflow interrupt ::::: TIMSK1 |= 1 << OCIE1B;    // timer1 interrupt when Output Compare B Match
 TIMSK1 |= 1 <<  TOIE1;    // timer1 interrupt when Overflow                    ///////////////// SP0C0
-TCCR1A  = 0xA3;           // FAST PWM, Clear OC1A/OC1B on counter match, SET on BOTTOM
+// dont drive the pins TCCR1A  = 0xA3;           // FAST PWM, Clear OC1A/OC1B on counter match, SET on BOTTOM
+TCCR1A  = 0x03;           // FAST PWM, Clear OC1A/OC1B on counter match, SET on BOTTOM
 TCCR1B  = 0x19;           // Clock divider set to 1 , FAST PWM, TOP = OCR1A
 OCR1A   = F_CPU_K/10;     // Clock divider set to 1, so F_CPU_K/10 is CLK / 1000 / 10 thus, every 10000 there will be an interrupt : 10Khz
 OCR1B   = 1500      ;     // By default, set the PWM to 75%    3*F_CPU_K/40 = 1500
@@ -2904,14 +3021,15 @@ d_ram = get_free_memory();
    TWAR  = 0x10;  // TWI Address 0x10 + 1 for General Call (Broadcasts)
    TWCR  = 0x44;  // TWEA & TWEN -> activate the address
 
-   DDRB = 0x24; // set pins 2 of PORTB B as output     (logic 1 = output)          >> 0x04:10KHZ out  0x20:TWI_START
+   DDRB  = 0x3F; // p0:CLKOUT> p1:TORQA1> p2:TORQA2> p3:TORQB1> p4:TORQB2>   p5:DECAYB2>
 
-   DDRC = 0x3F; // set pins 0 1 2 3 of PORTC C as output     (logic 1 = output)    >> STEP AND DIR   plus TWI pins
-   PORTC  = 0x3F;         // Set outputs to 1...this is to avoid a glitch on the scope when monitoring TWI signals
+// DDRC  = 0x3F; // set pins 0 1 2 3 of PORTC C as output     (logic 1 = output)    >> STEP AND DIR   plus TWI pins
+   DDRC  = DO_PC4_TWI_SDA | DO_PC5_TWI_SCL | DO_PC0_DEC_STEP | DO_PC1_DEC_DIR | DO_PC2_RA_STEP | DO_PC3_RA_DIR ; 
+   PORTC = 0x3F;         // Set outputs to 1...this is to avoid a glitch on the scope when monitoring TWI signals
    
-   // DDRD = 0x06; // set pins 1 and 2 of PORTD D as output     (logic 1 = output)    >> RS232 TX and DO DISABLE
-   PORTD &= ~(DO_DISABLE | DO_RESET);  // Start with motor disabled disabled and reset
-   DDRD = 0x1A; // set pins 1 and 3 and 4 of PORTD D as output     (logic 1 = output)    >> p0:RS232 rx p1:RS232 TX  p2:IR  p3: Enable  p4: Reset
+// DDRD = 0x06; // set pins 1 and 2 of PORTD D as output     (logic 1 = output)    >> RS232 TX and DO DISABLE
+   PORTD &= ~(DO_PD3_DISABLE);  // Start with motor disabled disabled and reset
+   DDRD  = 0x1A; // set pins 1 and 3 and 4 of PORTD D as output     (logic 1 = output)    >> p0:RS232 rx p1:RS232 TX  p2:IR  p3: Enable  p4: TWI_START
 #endif
 
 #ifdef AT_SLAVE
@@ -2922,13 +3040,14 @@ d_ram = get_free_memory();
    TWAR  = 0x20;  // TWI Address 0x20 + 1 for General Call (Broadcasts)
    TWCR  = 0x44;  // TWEA & TWEN -> activate the address  +1 for interrupt enable - in which case ISR(TWI_vect) must be defined
 
-   DDRC = 0x30;   // set pins 4 5 of PORTC C as output     (logic 1 = output)    >>  TWI pins
-   PORTC  = 0x30; // Set outputs to 1...this is to avoid a glitch on the scope when monitoring TWI signals
+   PORTC = 0x30; // Set outputs to 1...this is to avoid a glitch on the scope when monitoring TWI signals
+
+   DDRB  = DO_PB7_RED     | DO_PB0_LCD_B0  | DO_PB1_LCD_B1  | DO_PB2_LCD_B2  | DO_PB3_LCD_B3 ;
+   DDRC  = DO_PC4_TWI_SDA | DO_PC5_TWI_SCL | DO_PC2_LCD_RS  | DO_PC1_LCD_RW  | DO_PC0_LCD_EE ;   // set pins 4 5 of PORTC C as output     (logic 1 = output)    >>  TWI pins
+   DDRD  = DO_PD5_YELLOW  | DO_PD6_GREEN ; 
+
 #endif
 sei();         //enable global interrupts
-
-wait(2,SEC);
-PORTD |= DO_RESET;  // reset of motor drive complete
 
 display_data((char*)console_buf,0,20,pgm_starting,d_ram,FMT_NO_VAL + FMT_CONSOLE + 8);
 
@@ -2945,8 +3064,8 @@ display_data((char*)console_buf,0,20,pgm_free_mem,d_ram,FMT_HEX + FMT_CONSOLE + 
 for ( iii=0 ; iii<31 ; iii++ ) dd_v[DDS_DEBUG + iii] = iii * 0x100;
 
          motor_disable = 1;
-         if ( motor_disable ) PORTD &= ~DO_DISABLE;  // set the pin to 0 V
-         else                 PORTD |=  DO_DISABLE;
+         if ( motor_disable ) PORTD &= ~DO_PD3_DISABLE;  // set the pin to 0 V
+         else                 PORTD |=  DO_PD3_DISABLE;
 
 
 wait(2,SEC);
@@ -2975,7 +3094,7 @@ d_now   = d_TIMER1;
 //dd_v[DDS_SECONDS] = ssec = 0;
 
 //--motor_disable = 0;   // Stepper motor enabled...
-//--set_digital_output(DO_DISABLE  ,motor_disable);   
+//--set_digital_output(DO_PD3_DISABLE  ,motor_disable);   
 
 // Corrected star positions with a polar error that I introduced
 /*
@@ -3161,6 +3280,9 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.73  2012/01/29 05:21:50  pmichel
+Last version on SUSE11b... both laptops can now compile
+
 Revision 1.72  2012/01/25 04:05:51  pmichel
 Slave does polar align
 Slave: 25.8K of flash used
@@ -3194,7 +3316,7 @@ Revision 1.65  2012/01/21 03:39:50  pmichel
 This is exponential groath,
 from zero progress in 2 weeks to a state when I feel the need to checkin every 5 minutes because so much progress was made
 -> Exchanging 32 bytes
--> Telescope pos, debug_mode, current star, all sent to slave
+-> Telescope pos, debug_page, current star, all sent to slave
 
 Revision 1.64  2012/01/21 03:10:27  pmichel
 Few display changes to debug TWI
@@ -3202,7 +3324,7 @@ Few display changes to debug TWI
 Revision 1.63  2012/01/21 02:47:33  pmichel
 #################################3
 Master and Slave Write works in sequence
-Since this is becoming more and more complicated, added a "debug_mode" that decides what is shown in the debug section
+Since this is becoming more and more complicated, added a "debug_page" that decides what is shown in the debug section
 
 Revision 1.62  2012/01/21 02:13:08  pmichel
 Tested Master WRITE again
