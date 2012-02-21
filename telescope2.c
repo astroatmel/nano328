@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/02/12 18:14:13 $
-$Id: telescope2.c,v 1.74 2012/02/12 18:14:13 pmichel Exp pmichel $
+$Date: 2012/02/12 20:50:27 $
+$Id: telescope2.c,v 1.75 2012/02/12 20:50:27 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.74 $
+$Revision: 1.75 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -39,6 +39,7 @@ TODO:
 // Notes
 // in minicom, to see the degree character, call minicom: minicom -t VT100 
 //#include <pololu/orangutan.h>
+
 #include <avr/pgmspace.h>
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -71,10 +72,10 @@ TODO:
 #define DO_PB7_GREEN     (1<<7) 
 #define DO_PD5_YELLOW    (1<<5) 
 #define DO_PD6_RED       (1<<6) 
-#define DO_PB0_LCD_B0    (1<<0) 
-#define DO_PB1_LCD_B1    (1<<1) 
-#define DO_PB2_LCD_B2    (1<<2) 
-#define DO_PB3_LCD_B3    (1<<3) 
+#define DO_PB0_LCD_B4    (1<<0) 
+#define DO_PB1_LCD_B5    (1<<1) 
+#define DO_PB2_LCD_B6    (1<<2) 
+#define DO_PB3_LCD_B7    (1<<3) 
 #define DO_PC0_LCD_EE    (1<<0) 
 #define DO_PC1_LCD_RW    (1<<1) 
 #define DO_PC2_LCD_RS    (1<<2) 
@@ -90,6 +91,13 @@ else      PP &= ~(BB); /* Clear bits of port */   \
 if ( CC ) PP &= ~(BB); /* Clear bits of port */  \
 else      PP |=  (BB); /* Set bits of port   */   \
 }                                     
+
+// Macro to force some bits to some value
+#define PORT_MASK_BIT(PP,MM,BB)                        \
+{                                                       \
+PP  =  (PP & (~(MM))) | (BB); /* Set bits of port   */   \
+}                                     
+
 
 void wait(long time,long mult);
 #define SEC 10000
@@ -139,8 +147,11 @@ char fast_portc=0;
 #define GEAR_BIG         120
 #define GEAR_SMALL       24
 #define STEP_P_REV       200
-#define RA_DEG_P_REV     3
-#define DEC_DEG_P_REV    6
+// Not TRUE:
+// #define RA_DEG_P_REV     3  
+// #define DEC_DEG_P_REV    6
+// After verification, the RA gear seems to have 130 teeths, and the DEC has 65 , thus RA_DEG_P_REV = 2.76923...not 3.000000
+// Stupid me... the two define above are not used anymore....
 #define POLOLU           1
 #define ACCEL_PERIOD     100
 // 450 = nb cycles per day / nb steps per full turn  = 24*60*60*10000Hz / [ (360/RA_DEG_P_REV) * 200 steps per motor turn * (GEAR_BIG/GEAR_SMALL) * 16 microstep
@@ -320,17 +331,17 @@ MASTER:\012\015\
    >RESET     (PCINT14/RESET)      PC6  < 01     15 > PC5 (ADC5/SCL/PCINT13)   SCL               \012\015\
    >RX        (PCINT16/RXD)        PD0  < 02     16 > PC4 (ADC4/SDA/PCINT12)   SDA               \012\015\
    <TX        (PCINT17/TXD)        PD1  < 03     17 > PC3 (ADC3/PCINT11)       BATTERY<          \012\015\
-              (PCINT18/INT0)       PD2  < 04     18 > PC2 (ADC2/PCINT10)                         \012\015\
-              (PCINT19/OC2B/INT1)  PD3  < 05     19 > PC1AREF (ADC1/PCINT9)                      \012\015\
-              (PCINT20/XCK/T0)     PD4  < 06     20 > PC0 (ADAVCCC0/PCINT8)                      \012\015\
+              (PCINT18/INT0)       PD2  < 04     18 > PC2 (ADC2/PCINT10)       LCD RS >          \012\015\
+              (PCINT19/OC2B/INT1)  PD3  < 05     19 > PC1AREF (ADC1/PCINT9)    LCD RW >          \012\015\
+              (PCINT20/XCK/T0)     PD4  < 06     20 > PC0 (ADAVCCC0/PCINT8)    LCD E  >          \012\015\
                                    VCC  < 07     21 > GND                                        \012\015\
                                    GND  < 08     22 > AREF                                       \012\015\
    >CLKOUT    (PCINT6/XTAL1/TOSC1) PB6  < 09     23 > AVCC                                       \012\015\
-   <LED RED   (PCINT7/XTAL2/TOSC2) PB7  < 10     24 > PB5 (SCK/PCINT5)                           \012\015\
+   <LED GREEN (PCINT7/XTAL2/TOSC2) PB7  < 10     24 > PB5 (SCK/PCINT5)                           \012\015\
    <LED YELLOW(PCINT21/OC0B/T1)    PD5  < 11     25 > PB4 (MISO/PCINT4)                          \012\015\
-   <LED GREEN (PCINT22/OC0A/AIN0)  PD6  < 12     26 > PB3 (MOSI/OC2A/PCINT3)   LCD B3<>          \012\015\
-              (PCINT23/AIN1)       PD7  < 13     27 > PB2 (SS/OC1B/PCINT2)     LCD B2<>          \012\015\
-  <>LCD B0    (PCINT0/CLKO/ICP1)   PB0  < 14     28 > PB1 (OC1A/PCINT1)        LCD B1<>          \012\015\
+   <LED RED   (PCINT22/OC0A/AIN0)  PD6  < 12     26 > PB3 (MOSI/OC2A/PCINT3)   LCD B7<>          \012\015\
+              (PCINT23/AIN1)       PD7  < 13     27 > PB2 (SS/OC1B/PCINT2)     LCD B6<>          \012\015\
+  <>LCD B4    (PCINT0/CLKO/ICP1)   PB0  < 14     28 > PB1 (OC1A/PCINT1)        LCD B5<>          \012\015\
 \012\015                                                                                                 \
 SLAVE:\012\015                                                                                           \
    >RESET     (PCINT14/RESET)      PC6  < 01     15 > PC5 (ADC5/SCL/PCINT13)   SCL               \012\015\
@@ -2460,10 +2471,10 @@ twi_rx_buf[TWI_C1] = -sum;   // Checksum
 //IF_NOT_CONDITION_PORT_BIT( dcay&0x02 , PORTD , DO_PD5_YELLOW );
 //IF_NOT_CONDITION_PORT_BIT( dcay&0x04 , PORTD , DO_PD6_RED    );
 
-IF_CONDITION_PORT_BIT( effectiv_torq&0x01 , PORTB , DO_PB0_LCD_B0 );
-IF_CONDITION_PORT_BIT( effectiv_torq&0x02 , PORTB , DO_PB1_LCD_B1 );
-IF_CONDITION_PORT_BIT( effectiv_torq&0x04 , PORTB , DO_PB2_LCD_B2 );
-IF_CONDITION_PORT_BIT( effectiv_torq&0x08 , PORTB , DO_PB3_LCD_B3 );
+IF_CONDITION_PORT_BIT( effectiv_torq&0x01 , PORTB , DO_PB0_LCD_B4 );
+IF_CONDITION_PORT_BIT( effectiv_torq&0x02 , PORTB , DO_PB1_LCD_B5 );
+IF_CONDITION_PORT_BIT( effectiv_torq&0x04 , PORTB , DO_PB2_LCD_B6 );
+IF_CONDITION_PORT_BIT( effectiv_torq&0x08 , PORTB , DO_PB3_LCD_B7 );
 
 IF_CONDITION_PORT_BIT( effectiv_torq&0x01 , PORTC , DO_PC2_LCD_RS );
 IF_CONDITION_PORT_BIT( effectiv_torq&0x02 , PORTC , DO_PC1_LCD_RW );
@@ -3066,7 +3077,7 @@ d_ram = get_free_memory();
 
    PORTC = 0x30; // Set outputs to 1...this is to avoid a glitch on the scope when monitoring TWI signals
 
-   DDRB  = DO_PB7_GREEN   | DO_PB0_LCD_B0  | DO_PB1_LCD_B1  | DO_PB2_LCD_B2  | DO_PB3_LCD_B3 ;
+   DDRB  = DO_PB7_GREEN   ; // start as inputs :  | DO_PB0_LCD_B4  | DO_PB1_LCD_B5  | DO_PB2_LCD_B6  | DO_PB3_LCD_B7 ;
    DDRC  = DO_PC4_TWI_SDA | DO_PC5_TWI_SCL | DO_PC2_LCD_RS  | DO_PC1_LCD_RW  | DO_PC0_LCD_EE ;   // set pins 4 5 of PORTC C as output     (logic 1 = output)    >>  TWI pins
    DDRD  = DO_PD5_YELLOW  | DO_PD6_RED   ; 
 
@@ -3163,7 +3174,7 @@ Data: 0244814E  0.01771560
 Data: FFD95173  -.00118047 
 Data: 7FFAD5AF  0.99984236 
 */
-#ifdef AT_MASTER
+#ifdef AT_MASTER_DISABLED
 twi_test = 1;
 wait(500,MSEC);
 twi_pos[0]    = 0xF433C764;
@@ -3205,6 +3216,216 @@ twi_test=0;
 #endif
 
 #ifdef AT_SLAVE
+
+// Test the LCD display
+// Note: I'm an idiot and wired B0 to B3 instead of B4 to B7 which are the pins used in 4 bits mode
+//
+#ifdef ASASAS
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Wait for the busy flag to clear on a 4-bit interface
+// This is necessarily more complicated than the 8-bit interface
+// because E must be strobed twice to get the full eight bits
+// back from the LCD, even though we're only interested in one
+// of them.
+void busyWait()
+{
+uint8_t temp_ddr, data;
+
+temp_ddr = DDRD; // Save our DDR information 
+DDRD &= ~(LCD_PORTD_MASK); // Set up the data DDR for input 
+// Set up RS and RW to read the state of the LCD's busy flag
+LCD_RS_E_PORT &= ~(1 << LCD_RS);
+LCD_RW_PORT |= (1 << LCD_RW);
+
+do
+   {
+   LCD_RS_E_PORT |= (1 << LCD_E); // Bring E high 
+   delayMicroseconds(1); // Wait at least 120ns (1us is excessive) 
+   data = PIND & LCD_PORTD_MASK; // Get the data back from the LCD 
+   // That excessive delay means our cycle time on E cannot be
+   // shorter than 1000ns (500ns being the spec), so no further
+   // delays are required
+
+   LCD_RS_E_PORT &= ~(1 << LCD_E); // Bring E low 
+   delayMicroseconds(1); // Wait a small bit 
+   // Strobe out the 4 bits we don't care about:
+
+   LCD_RS_E_PORT |= (1 << LCD_E); // Bring E high 
+   delayMicroseconds(1); // Wait at least 120ns (1us is excessive) 
+   LCD_RS_E_PORT &= ~(1 << LCD_E); // Bring E low
+}
+while (data & (1 << LCD_BF));
+
+// To reach here our busy flag must be zero, meaning the LCD is free
+DDRD = temp_ddr;
+// Restore our DDR information
+}
+
+
+
+// Send four bits out the 4-bit interface.  This assumes the busy flag
+// is clear, that our DDRs are all set, etc.  Basically all it does is
+// line up the bits and shove them out the appropriate I/O lines.
+void sendNibble(unsigned char nibble)
+{
+PORTB = (PORTB & ~LCD_PORTB_MASK) | LCD_PORTB_DATA(nibble);
+PORTD = (PORTD & ~LCD_PORTD_MASK) | LCD_PORTD_DATA(nibble);
+
+// At this point the four data lines are set, so the Enable pin 
+// is strobed to let the LCD latch them.
+
+LCD_RS_E_PORT |= (1 << LCD_E); // Bring E high 
+delayMicroseconds(1); // Wait => 450ns (1us is excessive) 
+LCD_RS_E_PORT &= ~(1 << LCD_E); // nibble on the falling edge of E 
+delayMicroseconds(1); 
+// Dropping out of the routine will take at least 10ns, the time
+// given by the datasheet for the LCD controller to read the
+// nibble on the falling edge of E
+
+}
+
+
+// Send either data or a command on a 4-bit interface
+
+void send(unsigned char data, unsigned char rs)
+{
+unsigned char temp_ddrb, temp_portb, temp_ddrd, temp_portd;
+
+init();  // initialize the LCD if we haven't already
+
+// Wait until the busy flag clears
+busyWait();
+
+// Save our DDR and port information
+temp_ddrb = DDRB;
+temp_portb = PORTB;
+temp_ddrd = DDRD;
+temp_portd = PORTD;
+
+// Clear RW and RS
+LCD_RS_E_PORT &= ~(1 << LCD_RS);
+LCD_RW_PORT &= ~(1 << LCD_RW);
+
+// Set RS according to what this routine was told to do
+LCD_RS_E_PORT |= (rs << LCD_RS);
+
+// Set the data pins as outputs
+DDRB |= LCD_PORTB_MASK;
+DDRD |= LCD_PORTD_MASK;
+
+// Send the high 4 bits
+sendNibble(data >> 4);
+
+// Send the low 4 bits
+sendNibble(data & 0x0F);
+
+// Restore our DDR and port information
+PORTD = temp_portd;
+DDRD = temp_ddrd;
+PORTB = temp_portb;
+DDRB = temp_ddrb;
+}
+
+void init2()
+{
+        // Set up the DDR for the LCD control lines
+        LCD_RS_E_DDR |= (1 << LCD_RS) | (1 << LCD_E);
+        LCD_RW_DDR |= (1 << LCD_RW);
+
+        delay(20); // Wait >15ms 
+        send_cmd(0x30); // Send 0x3 (last four bits ignored) 
+        delay(6); // Wait >4.1ms 
+        send_cmd(0x30); // Send 0x3 (last four bits ignored) 
+        delay(2); // Wait >120us 
+        send_cmd(0x30); // Send 0x3 (last four bits ignored) 
+        delay(2); // Wait >120us 
+        send_cmd(0x20); // Send 0x2 (last four bits ignored)  Sets 4-bit mode 
+        delay(2); // Wait >120us 
+        send_cmd(0x28); // Send 0x28 = 4-bit, 2-line, 5x8 dots per char 
+        // Busy Flag is now valid, so hard-coded delays are no longer required.  
+        send_cmd(0x08); // Send 0x08 = Display off, cursor off, blinking off 
+        send_cmd(0x01); // Send 0x01 = Clear display 
+        send_cmd(0x06); // Send 0x06 = Set entry mode: cursor shifts right, don't scroll 
+        send_cmd(0x0C); // Send 0x0C = Display on, cursor off, blinking off
+}
+#endif
+ 
+unsigned char lcd_state=0;
+while (1)
+   {
+   // PORT_MASK_BIT(PORTC,DO_PC0_LCD_EE|DO_PC1_LCD_RW|DO_PC2_LCD_RS , DO_PC0_LCD_EE|DO_PC1_LCD_RW|DO_PC2_LCD_RS);
+   unsigned char pvalh,pvall;
+
+   if ( lcd_state>3 )
+      {
+      wait(1,MSEC); 
+      DDRB  = DO_PB7_GREEN   ; // start as inputs :  | DO_PB0_LCD_B4  | DO_PB1_LCD_B5  | DO_PB2_LCD_B6  | DO_PB3_LCD_B7 ;    // Port set as input
+      PORT_MASK_BIT(PORTC,DO_PC0_LCD_EE|DO_PC1_LCD_RW|DO_PC2_LCD_RS ,               DO_PC1_LCD_RW              );         
+      wait(1,MSEC); 
+      PORT_MASK_BIT(PORTC,DO_PC0_LCD_EE|DO_PC1_LCD_RW|DO_PC2_LCD_RS , DO_PC0_LCD_EE|DO_PC1_LCD_RW              );           // Clock E _/-\_
+      wait(1,MSEC); 
+      pvalh = PINB;
+      PORT_MASK_BIT(PORTC,DO_PC0_LCD_EE|DO_PC1_LCD_RW|DO_PC2_LCD_RS ,               DO_PC1_LCD_RW              );         
+      wait(1,MSEC); 
+      PORT_MASK_BIT(PORTC,DO_PC0_LCD_EE|DO_PC1_LCD_RW|DO_PC2_LCD_RS , DO_PC0_LCD_EE|DO_PC1_LCD_RW              );           // Clock E _/-\_
+      wait(1,MSEC); 
+      pvall = PINB;
+      PORT_MASK_BIT(PORTC,DO_PC0_LCD_EE|DO_PC1_LCD_RW|DO_PC2_LCD_RS ,               DO_PC1_LCD_RW              );         
+      dd_v[DDS_DEBUG + 0x18] = (((long)pvalh)<<16) | pvall;
+      dd_v[DDS_DEBUG + 0x19] = lcd_state;
+      }
+
+   if ( (lcd_state<=3) || ((pvalh & DO_PB3_LCD_B7) == 0) ) // if not busy flag
+      {
+      PORT_MASK_BIT(PORTC,DO_PC0_LCD_EE|DO_PC1_LCD_RW|DO_PC2_LCD_RS ,               0                          );         
+      DDRB  = DO_PB7_GREEN | DO_PB0_LCD_B4  | DO_PB1_LCD_B5  | DO_PB2_LCD_B6  | DO_PB3_LCD_B7 ;                           // Port set as output
+      if ( lcd_state< 3 )  PORT_MASK_BIT(PORTB,DO_PB3_LCD_B7|DO_PB2_LCD_B6|DO_PB1_LCD_B5|DO_PB0_LCD_B4 ,    DO_PB1_LCD_B5           );         // Write 0x0010xxxx  :  which will set the mode to 4 bit
+      if ( lcd_state==3 )  PORT_MASK_BIT(PORTB,DO_PB3_LCD_B7|DO_PB2_LCD_B6|DO_PB1_LCD_B5|DO_PB0_LCD_B4 ,    DO_PB1_LCD_B5           );         // Write 0x0010xxxx  :  which will set the mode to 4 bit
+      if ( lcd_state==4 )  PORT_MASK_BIT(PORTB,DO_PB3_LCD_B7|DO_PB2_LCD_B6|DO_PB1_LCD_B5|DO_PB0_LCD_B4 ,                0           );         // Write 0x0000xxxx  :  
+      if ( lcd_state==5 )  PORT_MASK_BIT(PORTB,DO_PB3_LCD_B7|DO_PB2_LCD_B6|DO_PB1_LCD_B5|DO_PB0_LCD_B4 ,                0           );         // Write 0x0000xxxx  :  
+
+      wait(1,MSEC); 
+      PORT_MASK_BIT(PORTC,DO_PC0_LCD_EE|DO_PC1_LCD_RW|DO_PC2_LCD_RS , DO_PC0_LCD_EE                            );         // Clock E _/-\_
+      wait(1,MSEC); 
+      PORT_MASK_BIT(PORTC,DO_PC0_LCD_EE|DO_PC1_LCD_RW|DO_PC2_LCD_RS ,                              0           );         //
+      if ( lcd_state==3 )  PORT_MASK_BIT(PORTB,DO_PB3_LCD_B7|DO_PB2_LCD_B6|DO_PB1_LCD_B5|DO_PB0_LCD_B4 ,    DO_PB3_LCD_B7           );         // Write 0xxxxx1000  :  which will set 2 line 5x8 dots
+      if ( lcd_state==4 )  PORT_MASK_BIT(PORTB,DO_PB3_LCD_B7|DO_PB2_LCD_B6|DO_PB1_LCD_B5|DO_PB0_LCD_B4 , DO_PB3_LCD_B7|DO_PB2_LCD_B6|DO_PB1_LCD_B5|DO_PB0_LCD_B4);         // Write 0xxxxx1111  :  Display on Curson, flashing
+      if ( lcd_state==5 )  PORT_MASK_BIT(PORTB,DO_PB3_LCD_B7|DO_PB2_LCD_B6|DO_PB1_LCD_B5|DO_PB0_LCD_B4 ,               DO_PB2_LCD_B6|DO_PB1_LCD_B5              );         // Write 0xxxxx1111  :  Display on Curson, flashing
+   
+      if ( lcd_state>2  ) 
+         {
+         wait(1,MSEC); 
+         PORT_MASK_BIT(PORTC,DO_PC0_LCD_EE|DO_PC1_LCD_RW|DO_PC2_LCD_RS , DO_PC0_LCD_EE                            );         // Clock E _/-\_
+         wait(1,MSEC); 
+         PORT_MASK_BIT(PORTC,DO_PC0_LCD_EE|DO_PC1_LCD_RW|DO_PC2_LCD_RS ,                              0           );         //
+         DDRB  = DO_PB7_GREEN   ; // start as inputs :  | DO_PB0_LCD_B4  | DO_PB1_LCD_B5  | DO_PB2_LCD_B6  | DO_PB3_LCD_B7 ;    // Port set as input
+         }
+      else  
+         wait(4,MSEC);
+
+
+      if ( lcd_state==5 )  
+         {
+         lcd_state=0;
+         PORT_MASK_BIT(PORTB,DO_PB3_LCD_B7|DO_PB2_LCD_B6|DO_PB1_LCD_B5|DO_PB0_LCD_B4 , DO_PB3_LCD_B7|DO_PB2_LCD_B6|DO_PB1_LCD_B5|DO_PB0_LCD_B4 );
+         wait(50,MSEC); 
+         }
+      else lcd_state++; 
+      }
+   else 
+      {
+      PORT_MASK_BIT(PORTB,DO_PB3_LCD_B7|DO_PB2_LCD_B6|DO_PB1_LCD_B5|DO_PB0_LCD_B4 , DO_PB3_LCD_B7|DO_PB2_LCD_B6|DO_PB1_LCD_B5|DO_PB0_LCD_B4 );
+      PORT_MASK_BIT(PORTC,DO_PC0_LCD_EE|DO_PC1_LCD_RW|DO_PC2_LCD_RS ,               DO_PC1_LCD_RW              );         
+      DDRB  = DO_PB7_GREEN   ; // start as inputs :  | DO_PB0_LCD_B4  | DO_PB1_LCD_B5  | DO_PB2_LCD_B6  | DO_PB3_LCD_B7 ;    // Port set as input
+      wait(100,MSEC);
+      lcd_state=0;
+      }
+   }
+
+
+
   #if(TEST_POLAR)
   //            POLAR_RA      POLAR_DEC      TIME_SHIFT_RA
   // test_polar(0*TICKS_P_DEG,10*TICKS_P_DEG,0*TICKS_P_DEG);
@@ -3304,6 +3525,9 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.75  2012/02/12 20:50:27  pmichel
+Implemented minimum torq for movement and tracking
+
 Revision 1.74  2012/02/12 18:14:13  pmichel
 ### Important milestone
 Fixed torq problem
@@ -3583,3 +3807,4 @@ so I will go to 2236 * 9600 * 200 ticks per day
 
 
 */
+
