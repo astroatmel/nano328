@@ -1,5 +1,6 @@
 BEGIN{
 NB = 0
+NBNB = 0
 STAR_NAME_LEN=10
 CONSTEL_NAME_LEN=12
 KNOWN["24gam Ori"]="Bellatrix "
@@ -136,6 +137,8 @@ if ( match($0,"^[^#]"))   # if not a comment ...collect data
    CName[NB] = substr(Name[NB],length(Name[NB])-2) 
    KName[CName[NB]] = CName[NB]
    # print "NAME:"Name[NB] "  RA:"RA[NB] "  DE:"DE[NB] "  "SName[NB] " - "CName[NB]
+   if ( Fields[1] != "--" ) NBNB++
+   else KNOWN[NB]=Name[NB]
    NB++
    }
 }
@@ -166,11 +169,17 @@ print "   {                                     // Names are for only a few pref
 count=0
 for ( iii=0 ; iii<NB ; iii++)
    {
-   if ( KNOWN[Name[iii]]!="" )
+   if ( iii>=NBNB ) 
+      {
+      SSSN = substr(KNOWN[iii]"          ",1,STAR_NAME_LEN)
+      printf("   \"\\0%03o\\0%03o%s\"   /* Coord ID:%3d  */  \\\n",iii,511,SSSN,iii)
+      count++
+      }
+   else if ( KNOWN[Name[iii]]!="" )
       {
       SSSN = substr(KNOWN[Name[iii]]"          ",1,STAR_NAME_LEN)
       CCCN = substr(KCONST[CName[iii]]"          ",1,12)
-      printf("   \"\\%03o\\%03o%s\"   /* Star ID:%3d  Constellation:%s */  \\\n",iii,Kid[CName[iii]],SSSN,iii,CCCN)
+      printf("   \"\\0%03o\\0%03o%s\"   /*  Star ID:%3d  Constellation:%s */  \\\n",iii,Kid[CName[iii]],SSSN,iii,CCCN)
       req_const[CName[iii]]=1   # Lets define strings only for required Constellations
       count++
       }
@@ -186,8 +195,8 @@ count=0
 for ( iii=1 ; iii<qqq ; iii++)
    {
    CCCN = substr(KCONST[req_const[iii]]"          ",1,12)
-   printf("   \"\\%03o%s\"   /* Const ID:%3d  */  \\\n",Kid[req_const[iii]],CCCN,Kid[req_const[iii]])
-      count++
+   printf("   \"\\0%03o%s\"   /* Const ID:%3d  */  \\\n",Kid[req_const[iii]],CCCN,Kid[req_const[iii]])
+   count++
    }
 print "   };   // This table uses " count*(CONSTEL_NAME_LEN+1) " bytes..."
 print "#define CONSTEL_NAME_LEN " CONSTEL_NAME_LEN+1
@@ -208,20 +217,26 @@ print "#define CONSTEL_NAME_COUNT " count
 #-  }
 
 print ""
-print "PROGMEM const unsigned long pgm_stars_pos[] = "
+print "PROGMEM const unsigned long pgm_stars_pos[] = // The next "NBNB" stars are used for polar alignment : they are reference stars"
 print "   {"
 for ( iii=0 ; iii<NB ; iii++)
    {
    RR = my_split(RA[iii])
    DD = my_split(DE[iii])
+   if ( match (DE[iii],"^-")) DEDE = "    " DE[iii]
+   else                       DEDE = ""
    HIGHLIGHT=KCONST[CName[iii]]
    if ( HIGHLIGHT=="" ) HIGHLIGHT=CName[iii]
    NAME = KNOWN[Name[iii]];
    if ( NAME=="" ) NAME = SName[iii];
-   print "   ("RR,"),("DD"),    // "sprintf("%3d",iii)"  " NAME " " HIGHLIGHT # RA[iii]
+   if ( iii==NBNB ) print "   // Start of my own points of interest ..."
+   if ( iii <NBNB ) print "   ("RR,"),("DD"), // "sprintf("%3d",iii)" " NAME " " HIGHLIGHT "  " DEDE
+   else             print "   ("RR,"),("DD"), // "sprintf("%3d",iii)" >"KNOWN[iii]
    }
-print "   0,0, // origin"
+print "   0,0  // origin and Null terminator"
 print "   };   // This table uses " NB*8 " bytes..."
+print "#define STARS_COORD_TOTAL " NB
+print "#define STARS_COORD_ALIGN " NBNB
 
 }
 
@@ -245,5 +260,8 @@ else                           # RA
 
 }
 
-# $Log:  $
+# $Log: stars2atmel.awk,v $
+# Revision 1.2  2012/03/05 22:12:25  pmichel
+# Few fixes, almost complete
+#
 #
