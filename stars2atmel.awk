@@ -1,6 +1,7 @@
 BEGIN{
 NB = 0
 STAR_NAME_LEN=10
+CONSTEL_NAME_LEN=12
 KNOWN["24gam Ori"]="Bellatrix "
 KNOWN["19bet Ori"]="Rigel     "
 KNOWN["34del Ori"]="Mintaka   "
@@ -144,11 +145,13 @@ CCC=0
 qqq = asorti(KName)
 for( iii=1 ; iii<=qqq ; iii++ ) 
    {
-   print KName[iii] " -- " KCONST[KName[iii]]
+   # print KName[iii] " -- " KCONST[KName[iii]]
    Kid[KName[iii]]=iii
    CCC++
    }
-print "Nb of constellations:"CCC
+# print "Nb of constellations:"CCC
+
+
 # This is an example output:
 #-
 #-#define STAR_NAME_LEN 23
@@ -158,30 +161,43 @@ print "Nb of constellations:"CCC
 #-   "Orion:Betelgeuse (Red)\0"     /*  1   */  \
 #-   "Gynus:Sadr            \0"     /*  16  */  \
 #-   };
-print "#define STAR_NAME_LEN " STAR_NAME_LEN+2
 print "PROGMEM const char pgm_stars_name[]   =  // format: byte:StarID byte:ConstelationId Star Name string"
 print "   {                                     // Names are for only a few prefered stars to save memory space"
 count=0
 for ( iii=0 ; iii<NB ; iii++)
    {
-   #ttt = SName[iii]"                             "
-   #print "   \""substr(ttt,1,STAR_NAME_LEN)"\\0"sprintf("\\%03o",Kid[CName[iii]])"\"   /*      */  \\"
    if ( KNOWN[Name[iii]]!="" )
       {
       SSSN = substr(KNOWN[Name[iii]]"          ",1,STAR_NAME_LEN)
       CCCN = substr(KCONST[CName[iii]]"          ",1,12)
       printf("   \"\\%03o\\%03o%s\"   /* Star ID:%3d  Constellation:%s */  \\\n",iii,Kid[CName[iii]],SSSN,iii,CCCN)
-      req_const[CName[iii]]=CName[iii]   # Lets define strings only for required Constellations
+      req_const[CName[iii]]=1   # Lets define strings only for required Constellations
       count++
       }
    }
 print "   };   // This table uses " count*(STAR_NAME_LEN+2) " bytes..."
+print "#define STAR_NAME_LEN " STAR_NAME_LEN+2
+print "#define STAR_NAME_COUNT " count
+print ""
+print "PROGMEM const char pgm_const_name[]   =  // format: byte:ConstelationId Constellation Name string"
+print "   {                                     // Names are for only a few prefered stars to save memory space"
+qqq=asorti(req_const)
+count=0
+for ( iii=1 ; iii<qqq ; iii++)
+   {
+   CCCN = substr(KCONST[req_const[iii]]"          ",1,12)
+   printf("   \"\\%03o%s\"   /* Const ID:%3d  */  \\\n",Kid[req_const[iii]],CCCN,Kid[req_const[iii]])
+      count++
+   }
+print "   };   // This table uses " count*(CONSTEL_NAME_LEN+1) " bytes..."
+print "#define CONSTEL_NAME_LEN " CONSTEL_NAME_LEN+1
+print "#define CONSTEL_NAME_COUNT " count
 
 
 
 # This is an example output:
 #-
-#-PROGMEM const unsigned long pgm_stars_pos[] =    // Note, the positions below must match the above star names
+#-PROGMEM const unsigned long pgm_stars_pos[] =  
 #-  {                  //   RA                                                DEC
 #-  0                                              ,    0                                                     ,     // 0  origin 
 #-  ( 5*TICKS_P_HOUR+55*TICKS_P_MIN+10.3*TICKS_P_SEC), (  7*TICKS_P_DEG+24*TICKS_P_DEG_MIN+25  *TICKS_P_DEG_SEC),     // 1  Orion: Betelgeuse (Red)  5h55m10.3  +7;24'25.0
@@ -192,7 +208,7 @@ print "   };   // This table uses " count*(STAR_NAME_LEN+2) " bytes..."
 #-  }
 
 print ""
-print "PROGMEM const unsigned long pgm_stars_pos[] =    // Note, the positions below must match the above star names"
+print "PROGMEM const unsigned long pgm_stars_pos[] = "
 print "   {"
 for ( iii=0 ; iii<NB ; iii++)
    {
@@ -205,7 +221,7 @@ for ( iii=0 ; iii<NB ; iii++)
    print "   ("RR,"),("DD"),    // "sprintf("%3d",iii)"  " NAME " " HIGHLIGHT # RA[iii]
    }
 print "   0,0, // origin"
-print "   };   // This table uses " NB*8 "bytes..."
+print "   };   // This table uses " NB*8 " bytes..."
 
 }
 
@@ -229,4 +245,5 @@ else                           # RA
 
 }
 
-
+# $Log:  $
+#
