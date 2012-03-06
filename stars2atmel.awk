@@ -133,9 +133,10 @@ KCONST["Vul"]=""
 if ( match($0,"^[^#]"))   # if not a comment ...collect data
    {
    split($0,Fields,"\t")
-   Name[NB]  = Fields[4] ;  gsub(" *$","",Name[NB])
    RA[NB]    = Fields[2] 
    DE[NB]    = Fields[3] 
+   Name[NB]  = Fields[4] ;  gsub(" *$","",Name[NB])
+   COM[NB]   = Fields[5] 
    SName[NB] = substr(Name[NB],1,length(Name[NB])-3) ; gsub(" *$","",SName[NB])
    CName[NB] = substr(Name[NB],length(Name[NB])-2) 
    KName[CName[NB]] = CName[NB]
@@ -175,7 +176,8 @@ for ( iii=0 ; iii<NB ; iii++)
    if ( iii>=NBNB ) 
       {
       SSSN = substr(KNOWN[iii]"          ",1,STAR_NAME_LEN)
-      printf("   \"\\0%03o\\0%03o%s\"   /* Coord ID:%3d  */  \\\n",iii,511,SSSN,iii)
+      printf("   \"\\0%03o\\0%03o%s\"   /* Coord ID:%3d  ; %s */  \\\n",iii,511,SSSN,iii,COM[iii])
+      printf("   RA:%s / DEC:%s -  %s   Coord ID:%3d  ; %s\n",RA[iii],DE[iii],SSSN,iii,COM[iii]) > "stars.doc"
       count++
       }
    else if ( KNOWN[Name[iii]]!="" )
@@ -183,6 +185,7 @@ for ( iii=0 ; iii<NB ; iii++)
       SSSN = substr(KNOWN[Name[iii]]"          ",1,STAR_NAME_LEN)
       CCCN = substr(KCONST[CName[iii]]"          ",1,12)
       printf("   \"\\0%03o\\0%03o%s\"   /*  Star ID:%3d  Constellation:%s */  \\\n",iii,Kid[CName[iii]],SSSN,iii,CCCN)
+      printf("   RA:%s / DEC:%s - %s   Coord ID:%3d  ; Constellation:%s   \n",RA[iii],DE[iii],SSSN,iii,CCCN) > "stars.doc"
       req_const[CName[iii]]=1   # Lets define strings only for required Constellations
       count++
       }
