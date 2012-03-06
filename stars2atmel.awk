@@ -1,4 +1,7 @@
 BEGIN{
+#
+# cat coords_85stars_mag3.txt coords_my_points.txt | awk -f stars2atmel.awk
+#
 NB = 0
 NBNB = 0
 STAR_NAME_LEN=10
@@ -261,6 +264,9 @@ else                           # RA
 }
 
 # $Log: stars2atmel.awk,v $
+# Revision 1.3  2012/03/05 22:41:13  pmichel
+# more is more
+#
 # Revision 1.2  2012/03/05 22:12:25  pmichel
 # Few fixes, almost complete
 #
