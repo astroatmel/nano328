@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/02/12 20:50:27 $
-$Id: telescope2.c,v 1.75 2012/02/12 20:50:27 pmichel Exp pmichel $
+$Date: 2012/02/21 01:10:38 $
+$Id: telescope2.c,v 1.76 2012/02/21 01:10:38 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.75 $
+$Revision: 1.76 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -154,32 +154,38 @@ char fast_portc=0;
 // Stupid me... the two define above are not used anymore....
 #define POLOLU           1
 #define ACCEL_PERIOD     100
-// 450 = nb cycles per day / nb steps per full turn  = 24*60*60*10000Hz / [ (360/RA_DEG_P_REV) * 200 steps per motor turn * (GEAR_BIG/GEAR_SMALL) * 16 microstep
-#define EARTH_COMP       450    
 // Maximum number of step per full circle on RA axis
-// one turn on RA is 3 deg, so 360 deg is 120 turns
-// the gear ration is 120 for 24, so the ration is 5 (5 turn of the stepper moter is one turn on the RA axis)
-// one turn is 200 steps, each steps is devided in 16 by the stepper controler
-// so, there are 120 * 5 * 200 * 16  steps on the RA axis : 1920000 : 0x1D4C00
-// so , each step is 0x100000000 / 0x1D4C00 = 2236.962133 ~= 0x8BD
-// so 2236 is the highest value of ticks that we can use for one step
-// si if we use 6*360 = 2160, we are close to 2236 and we have a value that makes the math a lot easyer
+// FALSE: one turn on RA is 3 deg, so 360 deg is 120 turns
+// FALSE: the gear ration is 120 for 24, so the ration is 5 (5 turn of the stepper moter is one turn on the RA axis)
+// FALSE: one turn is 200 steps, each steps is devided in 16 by the stepper controler
+// FALSE: so, there are 120 * 5 * 200 * 16  steps on the RA axis : 1920000 : 0x1D4C00
+// FALSE: so , each step is 0x100000000 / 0x1D4C00 = 2236.962133 ~= 0x8BD
+// FALSE: so 2236 is the highest value of ticks that we can use for one step
+// FALSE: if we use 6*360 = 2160, we are close to 2236 and we have a value that makes the math a lot easyer
+/////////////////////   135 * 5 * 200 * 16  steps on the RA axis : 2160000 : 0x20F580
+/////////////////////       0x100000000 / 0x20F580 = 1988.4107
+/////////////////////  so use 1620 which is close to 1988.4
 //
-/// 1 Day = 86400 Seconds                   100 Steps = 3 degrees (Dec axis)  
-///       = 9600 * 9 (seconds)              200 Steps = 9 Seconds = 3 degrees (RA axis)     
-///       = 9600 * 200 steps                  1 Step  = 0.045 Sec
-///
-#define DEAD_BAND        (147767296)                        //  147767296    // 0x08CEC000  // This is 0x100000000 - TICKS_P_DAY = 147767296
-#define TICKS_P_STEP     (6*360)                            //       2160    //             // 2160 which is easy to sub divide without fractions
-#define TICKS_P_DAY      (9600UL*200UL*TICKS_P_STEP      )  // 4147200000    // 0xF7314000  // One day = 360deg = 9600*200 micro steps
-#define TICKS_P_DEG      (9600UL*200UL*TICKS_P_STEP/360UL)  //   11520000    //             // One day = 360deg = 9600*200 steps
-#define TICKS_P_180_DEG  (9600UL*200UL*TICKS_P_STEP/2UL  )  // 2073600000    // 0x7B98A000  // One day = 360deg = 9600*200 micro steps
-#define TICKS_P_45_DEG   (9600UL*25UL*TICKS_P_STEP       )  //  518400000    // 0x1EE62800  //
-#define TICKS_P_DEG_MIN  (TICKS_P_DEG/60UL)                 //     192000    //             // 
-#define TICKS_P_DEG_SEC  (TICKS_P_DEG/3600UL)               //       3200    //             // 
-#define TICKS_P_HOUR     (9600UL*200UL*TICKS_P_STEP/24UL)   //  172800000    //             // 
-#define TICKS_P_MIN      (TICKS_P_HOUR/60UL)                //    2880000    //             // 
-#define TICKS_P_SEC      (TICKS_P_HOUR/3600UL)              //      48000    //             // 
+/// 1 Day = 86400 Seconds    ... but we do 1 + 1/365.25 turn : 1.002737 turn so that the sun rises in the morning each day
+///                              in reality one 360 degree rottation is one day minus 236.55 seconds
+/// 1 Day = 86400 Seconds - 236.55 seconds   = 86163.449 seconds
+/// so to compensate the earth rottation we must do 86163.449 seconds / TICKS_P_DAY = 0.041424735   (every 41ms or every 414 iterations) 
+///  but 414 strait will cause 6956 excessive steps per day.... if every 1674 we dont increment, then all will fall vary close
+///  
+#define EARTH_COMP       414    
+#define EARTH_SKIP       1674   
+  
+#define DEAD_BAND        (925367296)                        //  925367296    // 0x3727FC00  // This is 0x100000000 - TICKS_P_DAY = 925367296
+#define TICKS_P_STEP     (4*81*5)                           //       1620    //             // 1620 which is easy to sub divide without fractions 
+#define TICKS_P_DAY      (2080000UL   *TICKS_P_STEP      )  // 3369600000    // 0xD      0  // One day = 360deg = 2080000 micro steps
+#define TICKS_P_DEG      (2080000UL   *TICKS_P_STEP/360UL)  //    9360000    //   0x8ED280  // 
+#define TICKS_P_45_DEG   (2080000UL   *TICKS_P_STEP/8UL  )  //  421200000    // 0x191B0080  //
+#define TICKS_P_180_DEG  (2080000UL   *TICKS_P_STEP/2UL  )  // 1684800000    // 0x646C0200  // 
+#define TICKS_P_DEG_MIN  (TICKS_P_DEG/60UL)                 //    1560000    //             // 
+#define TICKS_P_DEG_SEC  (TICKS_P_DEG/3600UL)               //      26000    //             // 
+#define TICKS_P_HOUR     (2080000UL   *TICKS_P_STEP/24UL)   //  140400000    //             // 
+#define TICKS_P_MIN      (TICKS_P_HOUR/60UL)                //    2340000    //             // 
+#define TICKS_P_SEC      (TICKS_P_HOUR/3600UL)              //      39000    //             // 
 
 #define MAX_SPEED        (TICKS_P_STEP-TICKS_P_STEP/EARTH_COMP-2)
 
@@ -2796,6 +2802,7 @@ unsigned long histo;
 //static char TMP1;
 static char IR0,IR1,IR2,IR,l_IR,code_started=0,count_bit;
 static short earth_comp=0;
+static short earth_skip=0;
 static short count_0;
 static long loc_ir_code;
 static unsigned short ir_key_off=0;  // limit the inputs to 4 per seconds
@@ -2885,7 +2892,12 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
    ///////////// Process earth compensation
    // this takes a lot of time . . . .:earth_comp = (earth_comp+1)%EARTH_COMP;
    earth_comp++ ; if ( earth_comp == EARTH_COMP ) earth_comp = 0;
-   if ( earth_comp == 0 && earth_tracking !=0 ) add_value_to_pos(TICKS_P_STEP,&ra->pos_earth);    // Correct for the Earth's rotation
+   if ( earth_comp == 0 && earth_tracking !=0 ) 
+      {
+      earth_skip++ ; 
+      if ( earth_skip == EARTH_SKIP ) earth_skip = 0;
+      else add_value_to_pos(TICKS_P_STEP,&ra->pos_earth);    // Correct for the Earth's rotation but skip every 1674
+      }
    
    ///////////// Process goto
 
@@ -3525,6 +3537,11 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.76  2012/02/21 01:10:38  pmichel
+Found big bug... the RA and DEC axis dont have 3 and 6 deg per turn
+which would mean 120 and 60 teeth for the gears
+instead, the geers seems to have 130 and 65 teeth
+
 Revision 1.75  2012/02/12 20:50:27  pmichel
 Implemented minimum torq for movement and tracking
 
