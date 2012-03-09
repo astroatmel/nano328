@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/02/21 01:10:38 $
-$Id: telescope2.c,v 1.76 2012/02/21 01:10:38 pmichel Exp pmichel $
+$Date: 2012/03/07 10:05:01 $
+$Id: telescope2.c,v 1.77 2012/03/07 10:05:01 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.76 $
+$Revision: 1.77 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -368,49 +368,63 @@ SLAVE:\012\015                                                                  
    #endif
 #endif
 
-#define STAR_NAME_LEN 23
-PROGMEM const char pgm_stars_name[]   =  // format: Constellation:Star Name , the s/w will use the first 2 letters to tell when we reach the next constellation
-                    {
-                     "Origin: Ra=0, Dec=0   \0"     /*  0   */  \
-                     "Orion:Betelgeuse (Red)\0"     /*  1   */  \
-                     "Orion:Rigel (Blue)    \0"     /*  2   */  \
-                     "Orion:Saiph           \0"     /*  3   */  \
-                     "Orion:Bellatrix       \0"     /*  4   */  \
-                     "Orion-Belt:Alnitak    \0"     /*  5   */  \
-                     "Orion-Belt:Mintaka    \0"     /*  6   */  \
-                     "Orion-Belt:Alnilam    \0"     /*  7   */  \
-                     "Pisces:19psc          \0"     /*  8   */  \
-                     "Q1 RA+,DEC+           \0"     /*  9   */  \
-                     "Q2 RA-,DEC+           \0"     /*  10  */  \
-                     "Q3 RA+,DEC-           \0"     /*  11  */  \
-                     "Q4 RA-,DEC-           \0"     /*  12  */  \
-                     "Pignon Maison         \0"     /*  13  */  \
-                     "Lyra:Vega             \0"     /*  14  */  \
-                     "Gynus:Deneb           \0"     /*  15  */  \
-                     "Gynus:Sadr            \0"     /*  16  */  \
-                    };
+#include "coords.h"  // file generated from star data from http://vizier.u-strasbg.fr/viz-bin/VizieR
+// PROGMEM const char pgm_stars_name_reduced[]   =  // format: byte:StarID byte:ConstelationId Star Name string
+//                    pgm_stars_name_reduced is a huge contigous string with only a few stars name (not all stars in the coords list have a name)
+//                                           first two bytes are unsigned char and contains StarID followed by Constellation ID
+
+char current_star_name[STAR_NAME_LEN+CONSTEL_NAME_LEN] = "Name not set yet..."; // place to store the current star name and constellation name (set by slave) 
+// As for the star coordinates lets use:
+// dd_v[DDS_CUR_STAR] for: 
+// dd_v[DDS_STAR_DEC_POS]           // place to store the current star DEC (set by slave)
+// dd_v[DDS_STAR_RA_POS]            // place to store the current star RA (set by slave)
+// dd_v[DDS_STAR_Ra_POS2]           // place to store the current star RA (set by slave)
+
+// To be removed , Now, the Slave needs to look in pgm_stars_name_reduced[] to see if the star has a known name
+// remove: PROGMEM const char pgm_stars_name[]   =  // format: Constellation:Star Name , the s/w will use the first 2 letters to tell when we reach the next constellation
+// remove:    {
+// remove:    "Origin: Ra=0, Dec=0   \0"     /*  0   */  
+// remove:    "Orion:Betelgeuse (Red)\0"     /*  1   */  
+// remove:    "Orion:Rigel (Blue)    \0"     /*  2   */  
+// remove:    "Orion:Saiph           \0"     /*  3   */  
+// remove:    "Orion:Bellatrix       \0"     /*  4   */  
+// remove:    "Orion-Belt:Alnitak    \0"     /*  5   */  
+// remove:    "Orion-Belt:Mintaka    \0"     /*  6   */  
+// remove:    "Orion-Belt:Alnilam    \0"     /*  7   */  
+// remove:    "Pisces:19psc          \0"     /*  8   */  
+// remove:    "Q1 RA+,DEC+           \0"     /*  9   */  
+// remove:    "Q2 RA-,DEC+           \0"     /*  10  */  
+// remove:    "Q3 RA+,DEC-           \0"     /*  11  */  
+// remove:    "Q4 RA-,DEC-           \0"     /*  12  */  
+// remove:    "Pignon Maison         \0"     /*  13  */  
+// remove:    "Lyra:Vega             \0"     /*  14  */  
+// remove:    "Gynus:Deneb           \0"     /*  15  */  
+// remove:    "Gynus:Sadr            \0"     /*  16  */  
+// remove:    };
 // pignon: -83°58'30.6"  (E) 075°03'39.1"  05h00m14.61s
-PROGMEM const unsigned long pgm_stars_pos[] =    // Note, the positions below must match the above star names
-                    {                  //   RA                                                DEC
-                        0                                              ,    0                                                     ,     // 0  origin 
-                      ( 5*TICKS_P_HOUR+55*TICKS_P_MIN+10.3*TICKS_P_SEC), (  7*TICKS_P_DEG+24*TICKS_P_DEG_MIN+25  *TICKS_P_DEG_SEC),     // 1  Orion: Betelgeuse (Red)  5h55m10.3  +7;24'25.0
-                      ( 5*TICKS_P_HOUR+14*TICKS_P_MIN+32.3*TICKS_P_SEC), (351*TICKS_P_DEG+47*TICKS_P_DEG_MIN+54.0*TICKS_P_DEG_SEC),     // 2  Orion: Rigel (Blue)      5h14m32.3  -8;12'06.0
-                      ( 5*TICKS_P_HOUR+47*TICKS_P_MIN+45.4*TICKS_P_SEC), (350*TICKS_P_DEG+19*TICKS_P_DEG_MIN+49  *TICKS_P_DEG_SEC),     // 3  Orion: Saiph     7h47m45.4s -9;40;11.0
-                      ( 5*TICKS_P_HOUR+25*TICKS_P_MIN+ 7.9*TICKS_P_SEC), (  6*TICKS_P_DEG+20*TICKS_P_DEG_MIN+59.0*TICKS_P_DEG_SEC),     // 4  Orion: Bellatrix 5h25m7.9s   6;20;59.0
-                      ( 5*TICKS_P_HOUR+40*TICKS_P_MIN+45.5*TICKS_P_SEC), (358*TICKS_P_DEG+3 *TICKS_P_DEG_MIN+27.0*TICKS_P_DEG_SEC),     // 5  Orion: Alnitak   5h40m45.5  -1;56;33.0
-                      ( 5*TICKS_P_HOUR+32*TICKS_P_MIN+ 0.4*TICKS_P_SEC), (359*TICKS_P_DEG+42*TICKS_P_DEG_MIN+ 3.0*TICKS_P_DEG_SEC),     // 6  Orion: Mintaka   5h32m0.4   -0;17.57.0
-                      ( 5*TICKS_P_HOUR+36*TICKS_P_MIN+ 12 *TICKS_P_SEC), (358*TICKS_P_DEG+48*TICKS_P_DEG_MIN+ 0.0*TICKS_P_DEG_SEC),     // 7  Orion: Alnilam   5h36m12s   -1;12;00.00
-                      (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // 8  Pisces:19psc           23h46m23.5s  3;29'12.0
-                      ( 1*TICKS_P_HOUR+16*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // 9  Inhouse test point Q1
-                      (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // 10 Inhouse test point Q2
-                      ( 1*TICKS_P_HOUR+16*TICKS_P_MIN+23.5*TICKS_P_SEC), (353*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // 11 Inhouse test point Q3
-                      (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (353*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),     // 12 Inhouse test point Q4
-                      ( 5*TICKS_P_HOUR+ 0*TICKS_P_MIN+14.6*TICKS_P_SEC), (276*TICKS_P_DEG+ 1*TICKS_P_DEG_MIN+29.4*TICKS_P_DEG_SEC),     // 13 Pignon maison
-                      (18*TICKS_P_HOUR+36*TICKS_P_MIN+56.3*TICKS_P_SEC), ( 38*TICKS_P_DEG+47*TICKS_P_DEG_MIN+ 3  *TICKS_P_DEG_SEC),     // 14 Lyra:Vega              18h36m56.3 +38;47'03.0
-                      (20*TICKS_P_HOUR+41*TICKS_P_MIN+25.9*TICKS_P_SEC), ( 45*TICKS_P_DEG+16*TICKS_P_DEG_MIN+49  *TICKS_P_DEG_SEC),     // 15 Gynus:Deneb            20h41m25.9 +45;16'49.0
-                      (20*TICKS_P_HOUR+22*TICKS_P_MIN+13.7*TICKS_P_SEC), ( 40*TICKS_P_DEG+15*TICKS_P_DEG_MIN+24  *TICKS_P_DEG_SEC),     // 16 Gynus:Sadr             20h22m13.7 +40;15'24.0
-                    };
-#define NB_PGM_STARS (sizeof(pgm_stars_pos)/8)
+
+// remove: The table is now automatically generated , see coords.h
+// remove:PROGMEM const unsigned long pgm_stars_pos[] =    // Note, the positions below must match the above star names
+// remove: {                  //   RA                                                DEC
+// remove: 0                                              ,    0                                                     ,  // 0  origin 
+// remove: ( 5*TICKS_P_HOUR+55*TICKS_P_MIN+10.3*TICKS_P_SEC), (  7*TICKS_P_DEG+24*TICKS_P_DEG_MIN+25  *TICKS_P_DEG_SEC),// 1  Orion: Betelgeuse (Red)  5h55m10.3  +7;24'25.0
+// remove: ( 5*TICKS_P_HOUR+14*TICKS_P_MIN+32.3*TICKS_P_SEC), (351*TICKS_P_DEG+47*TICKS_P_DEG_MIN+54.0*TICKS_P_DEG_SEC),// 2  Orion: Rigel (Blue)      5h14m32.3  -8;12'06.0
+// remove: ( 5*TICKS_P_HOUR+47*TICKS_P_MIN+45.4*TICKS_P_SEC), (350*TICKS_P_DEG+19*TICKS_P_DEG_MIN+49  *TICKS_P_DEG_SEC),// 3  Orion: Saiph     7h47m45.4s -9;40;11.0
+// remove: ( 5*TICKS_P_HOUR+25*TICKS_P_MIN+ 7.9*TICKS_P_SEC), (  6*TICKS_P_DEG+20*TICKS_P_DEG_MIN+59.0*TICKS_P_DEG_SEC),// 4  Orion: Bellatrix 5h25m7.9s   6;20;59.0
+// remove: ( 5*TICKS_P_HOUR+40*TICKS_P_MIN+45.5*TICKS_P_SEC), (358*TICKS_P_DEG+3 *TICKS_P_DEG_MIN+27.0*TICKS_P_DEG_SEC),// 5  Orion: Alnitak   5h40m45.5  -1;56;33.0
+// remove: ( 5*TICKS_P_HOUR+32*TICKS_P_MIN+ 0.4*TICKS_P_SEC), (359*TICKS_P_DEG+42*TICKS_P_DEG_MIN+ 3.0*TICKS_P_DEG_SEC),// 6  Orion: Mintaka   5h32m0.4   -0;17.57.0
+// remove: ( 5*TICKS_P_HOUR+36*TICKS_P_MIN+ 12 *TICKS_P_SEC), (358*TICKS_P_DEG+48*TICKS_P_DEG_MIN+ 0.0*TICKS_P_DEG_SEC),// 7  Orion: Alnilam   5h36m12s   -1;12;00.00
+// remove: (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),// 8  Pisces:19psc           23h46m23.5s  3;29'12.0
+// remove: ( 1*TICKS_P_HOUR+16*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),// 9  Inhouse test point Q1
+// remove: (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),// 10 Inhouse test point Q2
+// remove: ( 1*TICKS_P_HOUR+16*TICKS_P_MIN+23.5*TICKS_P_SEC), (353*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),// 11 Inhouse test point Q3
+// remove: (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (353*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),// 12 Inhouse test point Q4
+// remove: ( 5*TICKS_P_HOUR+ 0*TICKS_P_MIN+14.6*TICKS_P_SEC), (276*TICKS_P_DEG+ 1*TICKS_P_DEG_MIN+29.4*TICKS_P_DEG_SEC),// 13 Pignon maison
+// remove: (18*TICKS_P_HOUR+36*TICKS_P_MIN+56.3*TICKS_P_SEC), ( 38*TICKS_P_DEG+47*TICKS_P_DEG_MIN+ 3  *TICKS_P_DEG_SEC),// 14 Lyra:Vega              18h36m56.3 +38;47'03.0
+// remove: (20*TICKS_P_HOUR+41*TICKS_P_MIN+25.9*TICKS_P_SEC), ( 45*TICKS_P_DEG+16*TICKS_P_DEG_MIN+49  *TICKS_P_DEG_SEC),// 15 Gynus:Deneb            20h41m25.9 +45;16'49.0
+// remove: (20*TICKS_P_HOUR+22*TICKS_P_MIN+13.7*TICKS_P_SEC), ( 40*TICKS_P_DEG+15*TICKS_P_DEG_MIN+24  *TICKS_P_DEG_SEC),// 16 Gynus:Sadr             20h22m13.7 +40;15'24.0
+// remove: };
+// remove:#define NB_PGM_STARS (sizeof(pgm_stars_pos)/8)
 
 PROGMEM const char pgm_free_mem[]="Free Memory:";
 #ifdef AT_MASTER
@@ -710,28 +724,31 @@ PROGMEM const char display_main[]={"short"};   // I'm too close to the 32K limit
 volatile long dd_v[DD_FIELDS]; 
 volatile long dd_p[DD_FIELDS];
 
-//                                             0    1    2    3    4    5    6    7    8    9    A    B    C    D    E    F
-PROGMEM const unsigned char dd_x[DD_FIELDS]={ 22 , 32 , 42 , 52 , 64 , 74 , 84 , 94 , 22 , 32 , 42 , 52 , 64 , 74 , 84 , 94     // 0x00: DEBUG  0->15
-                                            , 22 , 32 , 42 , 52 , 64 , 74 , 84 , 94 , 22 , 32 , 42 , 52 , 64 , 74 , 84 , 94     // 0x10: DEBUG 16->31
-                                            , 22 , 27 , 32 , 37 , 42 , 47 , 52 , 57 , 64 , 69 , 74 , 79 , 84 , 89 , 94 , 99     // 0x20: Histogram 0->15
-                                            , 39 , 39 , 39 , 72 , 97 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x30: RA structure values  [pos, pos_cor,pos_hw, speed, state
-                                            , 22 , 22 , 22 , 72 , 97 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x40: DEC structure values [pos, pos_cor,pos_hw, speed, state
-                                            , 57 , 57 , 57 , 35 , 22 , 39 , 57 , 31 , 22 , 22 , 22 , 72 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds, start pos dec,ra,ra
-                                            };
-PROGMEM const unsigned char dd_y[DD_FIELDS]={ 36 , 36 , 36 , 36 , 36 , 36 , 36 , 36 , 37 , 37 , 37 , 37 , 37 , 37 , 37 , 37     // 0x00: DEBUG  0->15
-                                            , 38 , 38 , 38 , 38 , 38 , 38 , 38 , 38 , 39 , 39 , 39 , 39 , 39 , 39 , 39 , 39     // 0x10: DEBUG 16->31
-                                            , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35     // 0x20: Histogram 0->15
-                                            , 25 , 26 , 27 , 31 , 31 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x30: RA structure values   [pos, pos_cor,pos_hw, speed, state
-                                            , 25 , 26 , 27 , 32 , 32 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x40: DEC structure values  [pos, pos_cor,pos_hw, speed, state
-                                            , 25 , 26 , 27 , 22 , 29 , 29 , 29 , 31 , 31 , 32 , 28 , 34 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
-                                            };
-PROGMEM const unsigned char dd_f[DD_FIELDS]={0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18    // 0x00: DEBUG  0->15      all HEX 8 bytes
-                                            ,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18    // 0x10: DEBUG 16->31      all HEX 8 bytes
-                                            ,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14    // 0x20: Histogram 0->15   all HEX 4 bytes
-                                            ,0x50,0x50,0x50,0x26,0x24,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x30: RA structure values
-                                            ,0x40,0x40,0x40,0x26,0x24,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x40: DEC structure values 
-                                            ,0x60,0x60,0x60,0x38,0x40,0x50,0x60,0x14,0x18,0x18,0xB0,0x14,0x00,0x00,0x00,0x00    // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
-                                            };  
+PROGMEM const unsigned char dd_x[DD_FIELDS]=
+//     0    1    2    3    4    5    6    7    8    9    A    B    C    D    E    F
+    { 22 , 32 , 42 , 52 , 64 , 74 , 84 , 94 , 22 , 32 , 42 , 52 , 64 , 74 , 84 , 94     // 0x00: DEBUG  0->15
+    , 22 , 32 , 42 , 52 , 64 , 74 , 84 , 94 , 22 , 32 , 42 , 52 , 64 , 74 , 84 , 94     // 0x10: DEBUG 16->31
+    , 22 , 27 , 32 , 37 , 42 , 47 , 52 , 57 , 64 , 69 , 74 , 79 , 84 , 89 , 94 , 99     // 0x20: Histogram 0->15
+    , 39 , 39 , 39 , 72 , 97 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x30: RA structure values  [pos, pos_cor,pos_hw, speed, state
+    , 22 , 22 , 22 , 72 , 97 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x40: DEC structure values [pos, pos_cor,pos_hw, speed, state
+    , 57 , 57 , 57 , 35 , 22 , 39 , 57 , 31 , 22 , 22 , 22 , 72 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds, start pos dec,ra,ra
+    }; //
+PROGMEM const unsigned char dd_y[DD_FIELDS]=
+    { 36 , 36 , 36 , 36 , 36 , 36 , 36 , 36 , 37 , 37 , 37 , 37 , 37 , 37 , 37 , 37     // 0x00: DEBUG  0->15
+    , 38 , 38 , 38 , 38 , 38 , 38 , 38 , 38 , 39 , 39 , 39 , 39 , 39 , 39 , 39 , 39     // 0x10: DEBUG 16->31
+    , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35     // 0x20: Histogram 0->15
+    , 25 , 26 , 27 , 31 , 31 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x30: RA structure values   [pos, pos_cor,pos_hw, speed, state
+    , 25 , 26 , 27 , 32 , 32 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x40: DEC structure values  [pos, pos_cor,pos_hw, speed, state
+    , 25 , 26 , 27 , 22 , 29 , 29 , 29 , 31 , 31 , 32 , 28 , 34 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
+    }; //
+PROGMEM const unsigned char dd_f[DD_FIELDS]=
+    {0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18    // 0x00: DEBUG  0->15      all HEX 8 bytes
+    ,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18    // 0x10: DEBUG 16->31      all HEX 8 bytes
+    ,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14    // 0x20: Histogram 0->15   all HEX 4 bytes
+    ,0x50,0x50,0x50,0x26,0x24,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x30: RA structure values
+    ,0x40,0x40,0x40,0x26,0x24,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x40: DEC structure values 
+    ,0x60,0x60,0x60,0x38,0x40,0x50,0x60,0x14,0x18,0x18,0x70,0x14,0x00,0x00,0x00,0x00    // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
+    }; //                                               ^^^ was 0xB0 for Star name
 // define the Start of each variable in the array
 #define DDS_DEBUG         0x00
 #define DDS_HISTO         0x20   // dd_v[DDS_HISTO]
@@ -741,9 +758,9 @@ PROGMEM const unsigned char dd_f[DD_FIELDS]={0x18,0x18,0x18,0x18,0x18,0x18,0x18,
 #define DDS_RA_POS2_COR   0x51 
 #define DDS_RA_POS2_HW    0x52 
 #define DDS_SECONDS       0x53 
-#define DDS_STAR_DEC_POS  0x54 
-#define DDS_STAR_RA_POS   0x55 
-#define DDS_STAR_RA_POS2  0x56 
+#define DDS_STAR_DEC_POS  0x54  // dd_v[DDS_STAR_DEC_POS]        // place to store the current star DEC (set by slave)
+#define DDS_STAR_RA_POS   0x55  // dd_v[DDS_STAR_RA_POS]        // place to store the current star RA (set by slave)
+#define DDS_STAR_RA_POS2  0x56  // dd_v[DDS_STAR_Ra_POS2]      // place to store the current star RA (set by slave)
 #define DDS_IR_COUNT      0x57  // dd_v[DDS_IR_COUNT]
 #define DDS_IR_CODE       0x58  // dd_v[DDS_IR_CODE]
 #define DDS_IR_L_CODE     0x59  // dd_v[DDS_IR_L_CODE]
@@ -753,7 +770,9 @@ PROGMEM const unsigned char dd_f[DD_FIELDS]={0x18,0x18,0x18,0x18,0x18,0x18,0x18,
 
 unsigned char dd_go(unsigned char task,char first)
 {
-if ( dd_p[task] != dd_v[task] || first)
+static unsigned string_seq;
+if ( task == DDS_CUR_STAR ) string_seq++;
+if ( dd_p[task] != dd_v[task] || first || (string_seq==255))
    {
    short XXX = pgm_read_byte(&dd_x[task]);
    short YYY = pgm_read_byte(&dd_y[task]);
@@ -761,25 +780,84 @@ if ( dd_p[task] != dd_v[task] || first)
 
    if ( (XXX == 0) && (YYY == 0) ) return 0; // found nothing to display
 
-   if ( task == DDS_CUR_STAR )     display_data((char*)rs232_tx_buf,XXX,YYY,pgm_stars_name + dd_v[DDS_CUR_STAR] * STAR_NAME_LEN ,0,FMT);   // special cases strings stored in FLASH
-//   else if ( task == DDS_RX_IDX )  display_data((char*)rs232_tx_buf,XXX,YYY,0,(short)rs232_rx_buf                                 ,FMT);   // special cases strings stored in FLASH
-   else                            display_data((char*)rs232_tx_buf,XXX,YYY,0,dd_v[task]                                          ,FMT);   // special cases strings stored in FLASH
+   if ( task == DDS_CUR_STAR )     
+      {
+      if ( string_seq ==255 ) string_seq = 0;
+      display_data((char*)rs232_tx_buf,XXX,YYY,0, (short) current_star_name                          ,FMT);   // special cases strings stored in FLASH
+      }
+   else 
+      display_data((char*)rs232_tx_buf,XXX,YYY,0,dd_v[task]                                          ,FMT);   // strings stored in FLASH
 
    dd_p[task] = dd_v[task];
    return 1;
    }
 
-// a bit inneficient, but here for now
+// a bit cpu inneficient, a bit exessive, but here for now
 dd_v[DDS_RA_POS2]     = ra->pos;
 dd_v[DDS_RA_POS2_COR] = ra->pos_cor;
 dd_v[DDS_RA_POS2_HW]  = ra->pos_hw;
 
-dd_v[DDS_STAR_DEC_POS] = pgm_read_dword(&pgm_stars_pos[dd_v[DDS_CUR_STAR]*2+1]);
-dd_v[DDS_STAR_RA_POS]  = pgm_read_dword(&pgm_stars_pos[dd_v[DDS_CUR_STAR]*2+0]);
-dd_v[DDS_STAR_RA_POS2] = dd_v[DDS_STAR_RA_POS];
+#ifdef AT_SLAVE
+   dd_v[DDS_STAR_DEC_POS] = pgm_read_dword( & pgm_stars_pos[dd_v[DDS_CUR_STAR]*2+1]);
+   dd_v[DDS_STAR_RA_POS]  = pgm_read_dword( & pgm_stars_pos[dd_v[DDS_CUR_STAR]*2+0]);
+   dd_v[DDS_STAR_RA_POS2] = dd_v[DDS_STAR_RA_POS];
+   // current_star_name
+      { 
+      static unsigned char s_pointed=0,c_pointed,l_star_id,scan=0;
+      unsigned char star_id,const_id;
+      unsigned char star_jj,const_jj;
+
+
+      star_id = dd_v[DDS_CUR_STAR];
+      if ( star_id != l_star_id ) 
+         { // need to find the new match
+         l_star_id = star_id;
+         for ( s_pointed=0 ; s_pointed < STAR_NAME_COUNT-1 ; s_pointed++ )
+            {
+            star_jj  = pgm_read_byte ( & pgm_stars_name_reduced[s_pointed*STAR_NAME_LEN+0] );  // Get Star ID of current selection
+            const_id = pgm_read_byte ( & pgm_stars_name_reduced[s_pointed*STAR_NAME_LEN+1] );  // Get Constellation ID of current selection
+            if ( star_jj==star_id ) break; // found it
+            }
+         for ( c_pointed=0 ; c_pointed < CONSTEL_NAME_COUNT-1  ; c_pointed++ )
+            {
+            const_jj = pgm_read_byte ( & pgm_const_name[c_pointed*CONSTEL_NAME_LEN+0] );  // Get Constellation ID of current selection
+            if ( const_jj==const_id ) break; // found it
+            }
+dd_v[DDS_DEBUG + 0x0b] = const_jj;  // 0x19   =25
+dd_v[DDS_DEBUG + 0x0c] = star_id;   // 0x11  
+dd_v[DDS_DEBUG + 0x0d] = const_id;  // 0x19
+dd_v[DDS_DEBUG + 0x0e] = star_jj;   // 0x11
+         }
+          
+dd_v[DDS_DEBUG + 0x1b] = dd_v[DDS_CUR_STAR]; ////////////// 0x11
+dd_v[DDS_DEBUG + 0x1c] = s_pointed;                      // 0x0 
+dd_v[DDS_DEBUG + 0x1d] = c_pointed;                      // 0x1
+      // update the strings
+      scan++;
+      if ( scan == (STAR_NAME_LEN - STAR_NAME_CODES) + (CONSTEL_NAME_LEN - CONSTEL_NAME_CODES) ) 
+         {
+         current_star_name[scan]=0;  // put the null
+         scan=0;
+         }
+      if ( scan >= STAR_NAME_LEN - STAR_NAME_CODES )  
+         {
+         current_star_name[scan]= pgm_read_byte ( & pgm_const_name[ c_pointed*CONSTEL_NAME_LEN + scan - (STAR_NAME_LEN - STAR_NAME_CODES) + CONSTEL_NAME_CODES] );  
+//       current_star_name[scan]= 'a'+scan;
+         }
+      else
+         {
+         current_star_name[scan]= pgm_read_byte ( & pgm_stars_name_reduced[ s_pointed*STAR_NAME_LEN + scan + STAR_NAME_CODES] );  
+         }
+      }
+ 
+#else
+   dd_v[DDS_STAR_DEC_POS] = TICKS_P_45_DEG;  // temp for debug  set by twi (slave)
+   dd_v[DDS_STAR_RA_POS]  = TICKS_P_45_DEG;  // temp for debug  set by twi (slave)
+   dd_v[DDS_STAR_RA_POS2] = TICKS_P_45_DEG;  // temp for debug  set by twi (slave)
+#endif
 
 return 0; // found nothing to display
-}
+} // Function : unsigned char dd_go(unsigned char task,char first)
 
 
 ////////////////////////////////////////// DISPLAY SECTION //////////////////////////////////////////
@@ -1330,8 +1408,8 @@ for ( pass = 1 ; pass <=2 ; pass ++ )
                if ( ref !=0 )  // for every star with a corrected position
                   {
                   display_next();
-                  ra  = pgm_read_dword(&pgm_stars_pos[ref*2+0]);
-                  dec = pgm_read_dword(&pgm_stars_pos[ref*2+1]);
+                  ra  = pgm_read_dword( & pgm_stars_pos[ref*2+0]);
+                  dec = pgm_read_dword( & pgm_stars_pos[ref*2+1]);
                   set_vector(     &star, &ra, &dec);
                   set_vector(&real_star, &saved[star_idx+10].ra, &saved[star_idx+10].dec);
                   apply_polar_correction(&PoleMatrix,&star);
@@ -1558,11 +1636,13 @@ char standby_goto;
 
 void goto_pgm_pos(short pos)
 {
-if ( pos >= NB_PGM_STARS ) return;  // out of bound . . .
+if ( pos >= STARS_COORD_TOTAL ) return;  // out of bound . . .
 if ( ! ( moving || goto_cmd ) )
    {
-   ra->pos_target  = pgm_read_dword(&pgm_stars_pos[pos*2+0]);
-   dec->pos_target = pgm_read_dword(&pgm_stars_pos[pos*2+1]);
+// was:   ra->pos_target  = pgm_read_dword(&pgm_stars_pos[pos*2+0]);
+// was:   dec->pos_target = pgm_read_dword(&pgm_stars_pos[pos*2+1]);
+   ra->pos_target  = dd_v[DDS_STAR_RA_POS];   // Set by slave
+   dec->pos_target = dd_v[DDS_STAR_DEC_POS];  // Set by slave
    standby_goto = 1;   // ask to fix the error
    while ( standby_goto > 0 ) display_next();   // wait until we are corrected
    standby_goto = 0;
@@ -1779,12 +1859,12 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
          }
       else if ( code_idx == IDX_VCR1_FWD     ) 
          {
-         if ( dd_v[DDS_CUR_STAR] == NB_PGM_STARS -1 ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
-         else                                         dd_v[DDS_CUR_STAR]++;
+         if ( dd_v[DDS_CUR_STAR] == STARS_COORD_TOTAL -1 ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
+         else                                              dd_v[DDS_CUR_STAR]++;
          }
       else if ( code_idx == IDX_VCR1_REW ) 
          {
-         if ( dd_v[DDS_CUR_STAR] == 0 )               dd_v[DDS_CUR_STAR] = NB_PGM_STARS-1; // we reached the first star
+         if ( dd_v[DDS_CUR_STAR] == 0 )               dd_v[DDS_CUR_STAR] = STARS_COORD_TOTAL-1; // we reached the first star
          else                                         dd_v[DDS_CUR_STAR]--;  
          }
  
@@ -1792,8 +1872,8 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
    }
 #endif  // AT_MASTER process IR
 // make sure CUR_STAR is inbound   
-if ( dd_v[DDS_CUR_STAR] >= NB_PGM_STARS ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
-if ( dd_v[DDS_CUR_STAR] <  0            ) dd_v[DDS_CUR_STAR] = NB_PGM_STARS-1;
+if ( dd_v[DDS_CUR_STAR] >= STARS_COORD_TOTAL ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
+if ( dd_v[DDS_CUR_STAR] <  0                 ) dd_v[DDS_CUR_STAR] = STARS_COORD_TOTAL-1;
 }
 
 void wait(long time,long mult)
@@ -3537,6 +3617,9 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.77  2012/03/07 10:05:01  pmichel
+Ready to try to compile
+
 Revision 1.76  2012/02/21 01:10:38  pmichel
 Found big bug... the RA and DEC axis dont have 3 and 6 deg per turn
 which would mean 120 and 60 teeth for the gears

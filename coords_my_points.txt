@@ -13,6 +13,7 @@
 --	05 41 45.150	-01 51 15.30	Near Horsehead	From Aladin: North of horse head, left of Alnitak
 --	06 31 27.380	+04 56 11.80	Rosette 	From Aladin: Rosette Nebula in Monoceros
 --	07 04 52.480	-10 30 56.48	Sirius Nebula	From Google Earth: Nebula near Sirius
+--	14 03 12.500	+54 20 56.10	Messier 101	From Google: Galaxy at the tip of Ursa Major
 --	19 43 10.830	+23 17 45.70	Vulpecula Nebula	From Aladin: 
 --	19 59 54.240	+35 17 52.00	Cygnus Star	From Aladin: center is Star in Cyg at torso
 --	20 26 04.320	+40 23 41.20	Cygnus Star	From Aladin: center is Star in cloud near the Cyg at +
