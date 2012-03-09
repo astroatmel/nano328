@@ -26,17 +26,17 @@ clean:
 %.hex: %.obj
 	$(OBJ2HEX) -R .eeprom -O ihex $< $@
 
-telescope2_master.o: telescope2_master.c
-telescope2_slave.o: telescope2_slave.c
+telescope2_master.o: telescope2_master.c coords.h
+telescope2_slave.o: telescope2_slave.c coords.h
 
 #%.obj: $(OBJECT_FILES)
 #	$(CC) $(CFLAGS) -D$@ $(ASFLAGS) ($@.obj:.c)
 #	$(CC) $(CFLAGS) -D$@ $(OBJECT_FILES) $(LDFLAGS) -o $@
 
-telescope2_master.obj: telescope2_master.c
+telescope2_master.obj: telescope2_master.c coords.h
 	$(CC) $(CFLAGS) -DAT_MASTER $(ASFLAGS) telescope2_master.c
 	$(CC) $(CFLAGS) -DAT_MASTER telescope2_master.c $(LDFLAGS) -o $@
-telescope2_slave.obj: telescope2_slave.c
+telescope2_slave.obj: telescope2_slave.c coords.h
 	$(CC) $(CFLAGS) -DAT_SLAVE $(ASFLAGS) telescope2_slave.c
 	$(CC) $(CFLAGS) -DAT_SLAVE telescope2_slave.c $(LDFLAGS) -o $@
 
@@ -44,9 +44,15 @@ master:
 	./chmod_ttyACM0
 	$(AVRDUDE) -v -p $(AVRDUDE_DEVICE) -c avrisp2 -P $(PORT) -U flash:w:$(TARGET)_master.hex
 
+mst: 
+	avrdude -v -p m328p -c jtag2isp -P usb -U flash:w:telescope2_master.hex
+
 slave: 
 	./chmod_ttyACM0
 	$(AVRDUDE) -v -p $(AVRDUDE_DEVICE) -c avrisp2 -P $(PORT) -U flash:w:$(TARGET)_slave.hex
+slv: 
+	avrdude -v -p m328p -c jtag2isp -P usb -U flash:w:telescope2_slave.hex
+
 
 
 # Normal Fuses for Polopu A328P
@@ -67,3 +73,5 @@ slave:
 # to change the fuse setting:
 # avrdude -v -p m328p -c avrisp2 -P /dev/ttyACM0 -U lfuse:w:0xb6:m
 
+# test:
+# avrdude -v -p x128a1 -c jtag2 -P usb -U flash:w:telescope2_master.hex
