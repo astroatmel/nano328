@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/03/07 10:05:01 $
-$Id: telescope2.c,v 1.77 2012/03/07 10:05:01 pmichel Exp pmichel $
+$Date: 2012/03/09 11:19:28 $
+$Id: telescope2.c,v 1.78 2012/03/09 11:19:28 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.77 $
+$Revision: 1.78 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -110,6 +110,7 @@ void wait(long time,long mult);
 // Debug Page 3 : 
 char debug_page=3; // depending of the debug mode, change what the debug shows 
 char nb_debug_page=4;
+
 
 char fast_portc=0;
 // Use all pins of PORTB for fast outputs  ... B0 B1 cant be used, and B4 B5 causes problem at download time
@@ -373,7 +374,7 @@ SLAVE:\012\015                                                                  
 //                    pgm_stars_name_reduced is a huge contigous string with only a few stars name (not all stars in the coords list have a name)
 //                                           first two bytes are unsigned char and contains StarID followed by Constellation ID
 
-char current_star_name[STAR_NAME_LEN+CONSTEL_NAME_LEN] = "Name not set yet..."; // place to store the current star name and constellation name (set by slave) 
+char current_star_name[STAR_NAME_LEN+CONSTEL_NAME_LEN] = ""; // place to store the current star name and constellation name (set by slave) 
 // As for the star coordinates lets use:
 // dd_v[DDS_CUR_STAR] for: 
 // dd_v[DDS_STAR_DEC_POS]           // place to store the current star DEC (set by slave)
@@ -634,14 +635,14 @@ unsigned short console_idx=0;                    // when 0, we are not currently
 //25|       SKY POSITION: (N)-90 59'59.0"  (W)-179 59'59.0"  23h59m59.000s  0x12345678 / 0x12345678                                         
 //26| CORRECTED STAR POS: (N)-90 59'59.0"  (W)-179 59'59.0"  23h59m59.000s  0x12345678 / 0x12345678                                       
 //27|      TELESCOPE POS: (N)-90 59'59.0"  (W)-179 59'59.0"  23h59m59.000s  0x12345678 / 0x12345678                                       
-//28|       CATALOG STAR: BETLEGEUSE       / ORION         
-//29|   CATALOG STAR POS: (N)-90 59'59.0"  (W)-179 59'59.0"  23h59m59.000s   
+//28|       CATALOG STAR: BETLEGEUSE       / ORION                                         
+//29|   CATALOG STAR POS: (N)-90 59'59.0"  (W)-179 59'59.0"  23h59m59.000s                 COORD ID:
 //30|   IR CODE RECEIVED: DECODED STRING                                                                                       
 //31|   IR CODE RECEIVED: 12345678 12345678 / 1234                RA SPEED:                RA STATE:  
 //32| PREV CODE RECEIVED: 12345678 12345678                      DEC SPEED:               DEC STATE:  
-//33| PREV PREV RECEIVED: 12345678 12345678                                              
-//34|    BATTERY VOLTAGE: 12.0V                                 DEBUG PAGE:
-//35|          HISTOGRAM: 1234 1234 1234 1234 1234 1234 1234 1234  1234 1234 1234 1234 1234 1234 1234 1234            <-- once one reaches 65535, values are latched and printed 
+//33| PREV PREV RECEIVED: 12345678 12345678                                                
+//34|    BATTERY VOLTAGE: 12.0V                                 DEBUG PAGE:  
+//35|          HISTOGRAM: 1234 1234 1234 1234 1234 1234 1234 1234  1234 1234 1234 1234 1234 1234 1234 1234      <-- once one reaches 65535, values are latched and printed 
 //36|              DEBUG: 12345678  12345678  12345678  12345678   12345678  12345678  12345678  12345678                                               
 //37|                     12345678  12345678  12345678  12345678   12345678  12345678  12345678  12345678                                               
 //38|                     12345678  12345678  12345678  12345678   12345678  12345678  12345678  12345678                                               
@@ -666,11 +667,11 @@ PROGMEM const char display_main[]={"\012\015\
  CORRECTED STAR POS: \012\015\
       TELESCOPE POS: \012\015\
        CATALOG STAR: \012\015\
-   CATALOG STAR POS: \012\015\
+   CATALOG STAR POS:                                                                  COORD ID:\012\015\
    IR CODE RECEIVED: \012\015\
    IR CODE RECEIVED:                                         RA SPEED:                RA STATE:\012\015\
  PREV CODE RECEIVED:                                        DEC SPEED:               DEC STATE:\012\015\
- PREV PREV RECEIVED: \012\015\
+ PREV PREV RECEIVED:\012\015\
     BATTERY VOLTAGE:                                       DEBUG PAGE: \012\015\
       SP0 HISTOGRAM: \012\015\
               DEBUG: \012\015\
@@ -731,7 +732,7 @@ PROGMEM const unsigned char dd_x[DD_FIELDS]=
     , 22 , 27 , 32 , 37 , 42 , 47 , 52 , 57 , 64 , 69 , 74 , 79 , 84 , 89 , 94 , 99     // 0x20: Histogram 0->15
     , 39 , 39 , 39 , 72 , 97 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x30: RA structure values  [pos, pos_cor,pos_hw, speed, state
     , 22 , 22 , 22 , 72 , 97 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x40: DEC structure values [pos, pos_cor,pos_hw, speed, state
-    , 57 , 57 , 57 , 35 , 22 , 39 , 57 , 31 , 22 , 22 , 22 , 72 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds, start pos dec,ra,ra
+    , 57 , 57 , 57 , 35 , 22 , 39 , 57 , 31 , 22 , 22 , 22 , 72 , 97 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds, start pos dec,ra,ra
     }; //
 PROGMEM const unsigned char dd_y[DD_FIELDS]=
     { 36 , 36 , 36 , 36 , 36 , 36 , 36 , 36 , 37 , 37 , 37 , 37 , 37 , 37 , 37 , 37     // 0x00: DEBUG  0->15
@@ -739,7 +740,7 @@ PROGMEM const unsigned char dd_y[DD_FIELDS]=
     , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35     // 0x20: Histogram 0->15
     , 25 , 26 , 27 , 31 , 31 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x30: RA structure values   [pos, pos_cor,pos_hw, speed, state
     , 25 , 26 , 27 , 32 , 32 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x40: DEC structure values  [pos, pos_cor,pos_hw, speed, state
-    , 25 , 26 , 27 , 22 , 29 , 29 , 29 , 31 , 31 , 32 , 28 , 34 ,  0 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
+    , 25 , 26 , 27 , 22 , 29 , 29 , 29 , 31 , 31 , 32 , 28 , 34 , 29 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
     }; //
 PROGMEM const unsigned char dd_f[DD_FIELDS]=
     {0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18    // 0x00: DEBUG  0->15      all HEX 8 bytes
@@ -747,7 +748,7 @@ PROGMEM const unsigned char dd_f[DD_FIELDS]=
     ,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14    // 0x20: Histogram 0->15   all HEX 4 bytes
     ,0x50,0x50,0x50,0x26,0x24,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x30: RA structure values
     ,0x40,0x40,0x40,0x26,0x24,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x40: DEC structure values 
-    ,0x60,0x60,0x60,0x38,0x40,0x50,0x60,0x14,0x18,0x18,0x70,0x14,0x00,0x00,0x00,0x00    // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
+    ,0x60,0x60,0x60,0x38,0x40,0x50,0x60,0x14,0x18,0x18,0x70,0x24,0x24,0x24,0x00,0x00    // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
     }; //                                               ^^^ was 0xB0 for Star name
 // define the Start of each variable in the array
 #define DDS_DEBUG         0x00
@@ -766,13 +767,15 @@ PROGMEM const unsigned char dd_f[DD_FIELDS]=
 #define DDS_IR_L_CODE     0x59  // dd_v[DDS_IR_L_CODE]
 #define DDS_CUR_STAR      0x5A  // dd_v[DDS_CUR_STAR]
 #define DDS_DEBUG_PAGE    0x5B  // dd_v[DDS_DEBUG_PAGE]
+#define DDS_CUR_STAR_REQ  0x5C  // dd_v[DDS_CUR_STAR_REQ]
 //#define DDS_RX_IDX        0x5B  // dd_v[DDS_RX_IDX]
 
 unsigned char dd_go(unsigned char task,char first)
 {
-static unsigned string_seq;
-if ( task == DDS_CUR_STAR ) string_seq++;
-if ( dd_p[task] != dd_v[task] || first || (string_seq==255))
+// static unsigned string_seq;
+// if ( task == DDS_CUR_STAR ) string_seq++;
+//if ( dd_p[task] != dd_v[task] || first || (string_seq==255))
+if ( dd_p[task] != dd_v[task] || first )
    {
    short XXX = pgm_read_byte(&dd_x[task]);
    short YYY = pgm_read_byte(&dd_y[task]);
@@ -781,10 +784,10 @@ if ( dd_p[task] != dd_v[task] || first || (string_seq==255))
    if ( (XXX == 0) && (YYY == 0) ) return 0; // found nothing to display
 
    if ( task == DDS_CUR_STAR )     
-      {
-      if ( string_seq ==255 ) string_seq = 0;
+//       {
+//       if ( string_seq ==255 ) string_seq = 0;
       display_data((char*)rs232_tx_buf,XXX,YYY,0, (short) current_star_name                          ,FMT);   // special cases strings stored in FLASH
-      }
+//       }
    else 
       display_data((char*)rs232_tx_buf,XXX,YYY,0,dd_v[task]                                          ,FMT);   // strings stored in FLASH
 
@@ -796,10 +799,13 @@ if ( dd_p[task] != dd_v[task] || first || (string_seq==255))
 dd_v[DDS_RA_POS2]     = ra->pos;
 dd_v[DDS_RA_POS2_COR] = ra->pos_cor;
 dd_v[DDS_RA_POS2_HW]  = ra->pos_hw;
+dd_v[DDS_DEBUG_PAGE]  = debug_page;
 
 #ifdef AT_SLAVE
-   dd_v[DDS_STAR_DEC_POS] = pgm_read_dword( & pgm_stars_pos[dd_v[DDS_CUR_STAR]*2+1]);
-   dd_v[DDS_STAR_RA_POS]  = pgm_read_dword( & pgm_stars_pos[dd_v[DDS_CUR_STAR]*2+0]);
+//   dd_v[DDS_STAR_DEC_POS] = pgm_read_dword( & pgm_stars_pos[dd_v[DDS_CUR_STAR]*2+1]);
+//   dd_v[DDS_STAR_RA_POS]  = pgm_read_dword( & pgm_stars_pos[dd_v[DDS_CUR_STAR]*2+0]);
+   dd_v[DDS_STAR_DEC_POS] = pgm_read_dword( & pgm_stars_pos[dd_v[DDS_CUR_STAR_REQ]*2+1]);
+   dd_v[DDS_STAR_RA_POS]  = pgm_read_dword( & pgm_stars_pos[dd_v[DDS_CUR_STAR_REQ]*2+0]);
    dd_v[DDS_STAR_RA_POS2] = dd_v[DDS_STAR_RA_POS];
    // current_star_name
       { 
@@ -808,10 +814,11 @@ dd_v[DDS_RA_POS2_HW]  = ra->pos_hw;
       unsigned char star_jj,const_jj;
 
 
-      star_id = dd_v[DDS_CUR_STAR];
+      star_id = dd_v[DDS_CUR_STAR_REQ];  
       if ( star_id != l_star_id ) 
          { // need to find the new match
-         l_star_id = star_id;
+         l_star_id = star_id;  
+         scan = 0;
          for ( s_pointed=0 ; s_pointed < STAR_NAME_COUNT-1 ; s_pointed++ )
             {
             star_jj  = pgm_read_byte ( & pgm_stars_name_reduced[s_pointed*STAR_NAME_LEN+0] );  // Get Star ID of current selection
@@ -829,7 +836,7 @@ dd_v[DDS_DEBUG + 0x0d] = const_id;  // 0x19
 dd_v[DDS_DEBUG + 0x0e] = star_jj;   // 0x11
          }
           
-dd_v[DDS_DEBUG + 0x1b] = dd_v[DDS_CUR_STAR]; ////////////// 0x11
+dd_v[DDS_DEBUG + 0x1b] = dd_v[DDS_CUR_STAR_REQ];   ////////////// 0x11
 dd_v[DDS_DEBUG + 0x1c] = s_pointed;                      // 0x0 
 dd_v[DDS_DEBUG + 0x1d] = c_pointed;                      // 0x1
       // update the strings
@@ -838,6 +845,7 @@ dd_v[DDS_DEBUG + 0x1d] = c_pointed;                      // 0x1
          {
          current_star_name[scan]=0;  // put the null
          scan=0;
+         dd_v[DDS_CUR_STAR] = dd_v[DDS_CUR_STAR_REQ];  // Only once the string has been copied that dd_v[DDS_CUR_STAR] gets set -> thus upating the string on screen
          }
       if ( scan >= STAR_NAME_LEN - STAR_NAME_CODES )  
          {
@@ -933,7 +941,7 @@ else
       buf[iii] = val%10 + '0';
       }
    if ( nnn ) buf[0] = '-';
-   else       buf[0] = '+';
+   else       buf[0] = ' ';  // was buf[0] = '+';
    }
 buf[digit] = 0;
 return &buf[digit];
@@ -1594,26 +1602,26 @@ Declin :
 - goto ra position                                                  [EW]123 45 67 /           [VOL     + 123 45 67 + SEARCH]
 - goto dec position                                                 [NS]123 45 67 /           [CH      + 12 34 56 78 + SEARCH]
 - calculate polar error based on corrected star position            ! /                       [ANTENA  + SEARCH]
-- Code to toggle motor on/off                                       ~  (no shift required)    [POWER]
+- Code to toggle motor on/off                                       ~  (` no shift required)  [POWER]
 - Slew                                                              [esc][O[ABCD]             [UP/DOWN/LEFT/RIGHT]
 - Slew stop                                                         <enter> / s               [OK/STOP]
 - Start/stop tracking                                               + / -                     [TRACKING +/-] 
 - add a command that displays at the console : time, position, star name (corrected star position)
 */
 
-PROGMEM unsigned long PROSCANs[]= {   // The order is important   3                     4                     5                     6                     7
-PROSCAN_VCR1_0      , PROSCAN_VCR1_1      , PROSCAN_VCR1_2      , PROSCAN_VCR1_3      , PROSCAN_VCR1_4      , PROSCAN_VCR1_5      , PROSCAN_VCR1_6      , PROSCAN_VCR1_7      ,  // 0
-PROSCAN_VCR1_8      , PROSCAN_VCR1_9      , PROSCAN_VCR1_NORTH  , PROSCAN_VCR1_SOUTH  , PROSCAN_VCR1_WEST   , PROSCAN_VCR1_EAST   , PROSCAN_VCR1_OK     , PROSCAN_VCR1_STOP   ,  // 8
-PROSCAN_VCR1_PLAY   , PROSCAN_VCR1_RECORD , PROSCAN_VCR1_CH_P   , PROSCAN_VCR1_CH_M   , PROSCAN_VCR1_VOL_P  , PROSCAN_VCR1_VOL_M  , PROSCAN_VCR1_FWD    , PROSCAN_VCR1_REW    ,  // 16
-PROSCAN_VCR1_SEARCH , PROSCAN_VCR1_GOBACK , PROSCAN_VCR1_INPUT  , PROSCAN_VCR1_ANTENA , PROSCAN_VCR1_CLEAR  , PROSCAN_VCR1_GUIDE  , PROSCAN_VCR1_INFO   , PROSCAN_VCR1_POWER  ,  // 24
-PROSCAN_VCR1_TRAK_P , PROSCAN_VCR1_TRAK_M , PROSCAN_VCR1_MUTE   , PROSCAN_VCR1_SPEED                                                                                             // 32
+PROGMEM unsigned long PROSCANs[]= {   // The order is important   3                    4                    5                    6                    7
+PROSCAN_VCR1_0      ,PROSCAN_VCR1_1      ,PROSCAN_VCR1_2      ,PROSCAN_VCR1_3      ,PROSCAN_VCR1_4      ,PROSCAN_VCR1_5      ,PROSCAN_VCR1_6      ,PROSCAN_VCR1_7      ,// 0
+PROSCAN_VCR1_8      ,PROSCAN_VCR1_9      ,PROSCAN_VCR1_NORTH  ,PROSCAN_VCR1_SOUTH  ,PROSCAN_VCR1_WEST   ,PROSCAN_VCR1_EAST   ,PROSCAN_VCR1_OK     ,PROSCAN_VCR1_STOP   ,// 8
+PROSCAN_VCR1_PLAY   ,PROSCAN_VCR1_RECORD ,PROSCAN_VCR1_CH_P   ,PROSCAN_VCR1_CH_M   ,PROSCAN_VCR1_VOL_P  ,PROSCAN_VCR1_VOL_M  ,PROSCAN_VCR1_FWD    ,PROSCAN_VCR1_REW    ,// 16
+PROSCAN_VCR1_SEARCH ,PROSCAN_VCR1_GOBACK ,PROSCAN_VCR1_INPUT  ,PROSCAN_VCR1_ANTENA ,PROSCAN_VCR1_CLEAR  ,PROSCAN_VCR1_GUIDE  ,PROSCAN_VCR1_INFO   ,PROSCAN_VCR1_POWER  ,// 24
+PROSCAN_VCR1_TRAK_P ,PROSCAN_VCR1_TRAK_M ,PROSCAN_VCR1_MUTE   ,PROSCAN_VCR1_SPEED                                                                                             // 32
                                   };
 PROGMEM short         RS232EQVs[]= {  // The order is important, each rs232 character is assigned a PROSCAN equivalent
-'0'                 , '1'                 , '2'                 , '3'                 , '4'                 , '5'                 , '6'                 , '7'                 , 
-'8'                 , '9'                 , 0x5B41              , 0x5B42              , 0x5B44              , 0x5B43              , 13                  , 's'                 ,
-'p'                 , 'r'                 , 'i'                 , 'm'                 , 'k'                 , 'j'                 , '>'                 , '<'                 , 
-'/'                 , '*'                 , '.'                 , '!'                 , 0x7E                , 'g'                 , '?'                 , 0x60                ,
-'+'                 , '-'                 , '%'                 , '$'
+'0'                 ,'1'                 ,'2'                 ,'3'                 ,'4'                 ,'5'                 ,'6'                 ,'7'                 , 
+'8'                 ,'9'                 ,0x5B41              ,0x5B42              ,0x5B44              ,0x5B43              ,13                  ,'s'                 ,
+'p'                 ,'r'                 ,'i'                 ,'m'                 ,'k'                 ,'j'                 ,'>'                 ,'<'                 , 
+'/'                 ,'*'                 ,'.'                 ,'!'                 ,0x7E                ,'g'                 ,'?'                 ,0x60                ,
+'+'                 ,'-'                 ,'%'                 ,'$'
                                   };  
 char idx_code,next_input;
 
@@ -1647,7 +1655,7 @@ if ( ! ( moving || goto_cmd ) )
    while ( standby_goto > 0 ) display_next();   // wait until we are corrected
    standby_goto = 0;
    goto_cmd = 1;
-   dd_v[DDS_CUR_STAR] = pos;
+   dd_v[DDS_CUR_STAR_REQ] = pos;
    }
 }
 
@@ -1859,21 +1867,21 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
          }
       else if ( code_idx == IDX_VCR1_FWD     ) 
          {
-         if ( dd_v[DDS_CUR_STAR] == STARS_COORD_TOTAL -1 ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
-         else                                              dd_v[DDS_CUR_STAR]++;
+         if ( dd_v[DDS_CUR_STAR_REQ] == STARS_COORD_TOTAL  ) dd_v[DDS_CUR_STAR_REQ]  =0; // we reached the last star
+         else                                                dd_v[DDS_CUR_STAR_REQ]  ++;
          }
       else if ( code_idx == IDX_VCR1_REW ) 
          {
-         if ( dd_v[DDS_CUR_STAR] == 0 )               dd_v[DDS_CUR_STAR] = STARS_COORD_TOTAL-1; // we reached the first star
-         else                                         dd_v[DDS_CUR_STAR]--;  
+         if ( dd_v[DDS_CUR_STAR_REQ] == 0 )  dd_v[DDS_CUR_STAR_REQ]   = STARS_COORD_TOTAL-1; // we reached the first star
+         else                                dd_v[DDS_CUR_STAR_REQ]  --;  
          }
  
       }
    }
 #endif  // AT_MASTER process IR
 // make sure CUR_STAR is inbound   
-if ( dd_v[DDS_CUR_STAR] >= STARS_COORD_TOTAL ) dd_v[DDS_CUR_STAR]=0; // we reached the last star
-if ( dd_v[DDS_CUR_STAR] <  0                 ) dd_v[DDS_CUR_STAR] = STARS_COORD_TOTAL-1;
+if ( dd_v[DDS_CUR_STAR_REQ] >= STARS_COORD_TOTAL ) dd_v[DDS_CUR_STAR_REQ] = 0; // we reached the last star
+if ( dd_v[DDS_CUR_STAR_REQ] <  0                 ) dd_v[DDS_CUR_STAR_REQ] = STARS_COORD_TOTAL-1;
 }
 
 void wait(long time,long mult)
@@ -2514,15 +2522,16 @@ PROGMEM char twi_states[] = {   0x01 , 0xFF , 0xF8 , 0xA4 , 0xC0 ,  0x00   //   
 void twi_rx(void)
 {
 #ifdef AT_SLAVE
-unsigned char *pc = (unsigned char*)&dd_v[DDS_CUR_STAR];
-unsigned char *pp = (unsigned char*)twi_pos;
+//unsigned char *pc = (unsigned char*)&dd_v[DDS_CUR_STAR];
+unsigned char *pc = (unsigned char *)& dd_v[DDS_CUR_STAR_REQ]  ;
+unsigned char *pp = (unsigned char *)  twi_pos;
 unsigned char iii,sum=0,found=0;
 if ( twi_tx_buf[3] == 0xC0 )  // Current position
    {
    for ( iii=1 ; iii<TWI_C1 ; iii++ ) twi_rx_buf[iii]=0xFA;
 
-   pc[0] = twi_tx_buf[4];   // Current star
-   pc[1] = twi_tx_buf[5];   // Current star
+   pc[0] = twi_tx_buf[4];   // Current requested star
+   pc[1] = twi_tx_buf[5];   // Current requested star
    if ( debug_page != twi_tx_buf[7] ) for ( iii=0 ; iii<32 ; iii++ ) dd_v[DDS_DEBUG + iii] = 0; // Debug info
    debug_page = twi_tx_buf[7];
    for ( iii=0 ; iii<8      ; iii++ ) pp[iii] = twi_tx_buf[8+iii]; // update current position
@@ -2575,8 +2584,9 @@ dd_v[DDS_DEBUG + 0x1E] = ((long)effectiv_torq<<16) + dcay;
 void twi_tx(void)
 {
 #ifdef AT_MASTER
-unsigned char *pc = (unsigned char*)&dd_v[DDS_CUR_STAR];
-unsigned char *pp = (unsigned char*)twi_pos;
+//unsigned char *pc = (unsigned char*)&dd_v[DDS_CUR_STAR];
+unsigned char *pc = (unsigned char *)& dd_v[DDS_CUR_STAR_REQ]  ;
+unsigned char *pp = (unsigned char *)twi_pos;
 unsigned char iii,sum=0;
 
 twi_hold = 1;         // Tell foreground that if it interrupts us, it must not drive the twi position because we are reading them...
@@ -3132,6 +3142,7 @@ long iii;
 ///////////////////////////////// Init /////////////////////////////////////////
 ra  = (AXIS*)&dd_v[DDS_RA];   // init pointers
 dec = (AXIS*)&dd_v[DDS_DEC];  // init pointers
+dd_v[DDS_CUR_STAR_REQ] = STARS_COORD_TOTAL-1;  // requested new star start with the last one
 
 init_rs232();
 init_disp();
@@ -3271,37 +3282,37 @@ twi_test = 1;
 wait(500,MSEC);
 twi_pos[0]    = 0xF433C764;
 twi_pos[1]    = 0x031455D5;
-dd_v[DDS_CUR_STAR]  = 0x08;  // 19 psc
+DDS_CUR_STAR_req    = 0x08;  // 19 psc
 wait(500,MSEC); twi_seq+=2; wait(500,MSEC);   // Tell the slave to record that position
 
 twi_pos[0]    = 0x0C77551F;
 twi_pos[1]    = 0x030A8BC5;
-dd_v[DDS_CUR_STAR]  = 0x09;
+DDS_CUR_STAR_req    = 0x09;
 wait(500,MSEC); twi_seq+=2; wait(500,MSEC);   // Tell the slave to record that position
 
 twi_pos[0]    = 0x0C6BD457;
 twi_pos[1]    = 0xF35CD11C;
-dd_v[DDS_CUR_STAR]  = 0x0B;
+DDS_CUR_STAR_req    = 0x0B;
 wait(500,MSEC); twi_seq+=2; wait(500,MSEC);   // Tell the slave to record that position
 
 twi_pos[0]    = 0xF431271C;
 twi_pos[1]    = 0xF36EFB73;
-dd_v[DDS_CUR_STAR]  = 0x0C;
+DDS_CUR_STAR_req    = 0x0C;
 wait(500,MSEC); twi_seq+=2; wait(500,MSEC);   // Tell the slave to record that position
 
 twi_pos[0]    = 0x3C629AA5;
 twi_pos[1]    = 0x0510E764;
-dd_v[DDS_CUR_STAR]  = 0x01;
+DDS_CUR_STAR_req    = 0x01;
 wait(500,MSEC); twi_seq+=2; wait(500,MSEC);   // Tell the slave to record that position
 
 twi_pos[0]    = 0x353C32E1;
 twi_pos[1]    = 0xF1A45541;
-dd_v[DDS_CUR_STAR]  = 0x02;
+DDS_CUR_STAR_req    = 0x02;
 wait(500,MSEC); twi_seq+=2; wait(500,MSEC);   // Tell the slave to record that position
 
 twi_pos[0]    = 0x3739E783;
 twi_pos[1]    = 0x046A5F79;
-dd_v[DDS_CUR_STAR]  = 0x04;
+DDS_CUR_STAR_req    = 0x04;
 wait(500,MSEC); twi_seq+=2; wait(500,MSEC);   // Tell the slave to record that position
 wait(500,MSEC); twi_seq=255; wait(500,MSEC);   // Tell the slave to do a Polar align
 twi_test=0;
@@ -3617,6 +3628,9 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.78  2012/03/09 11:19:28  pmichel
+Few fixes, Star names are ok on the slave side...
+
 Revision 1.77  2012/03/07 10:05:01  pmichel
 Ready to try to compile
 
