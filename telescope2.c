@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/03/09 11:19:28 $
-$Id: telescope2.c,v 1.78 2012/03/09 11:19:28 pmichel Exp pmichel $
+$Date: 2012/03/11 11:00:09 $
+$Id: telescope2.c,v 1.79 2012/03/11 11:00:09 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.78 $
+$Revision: 1.79 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -108,6 +108,7 @@ void wait(long time,long mult);
 // Debug Page 1 : Shows TWI buffer of what the Master sends (on the master console)    and what the Slave receives (on the slave console)
 // Debug Page 2 : Shows TWI buffer of what the Master receives (on the master console) and what the Slave sends (on the slave console)
 // Debug Page 3 : 
+// Debug Page 4 : 
 char debug_page=3; // depending of the debug mode, change what the debug shows 
 char nb_debug_page=4;
 
@@ -246,14 +247,15 @@ unsigned char last_antena=0;
 // TWI exchanged data
 void twitt(void);
 unsigned char twi_seq=0;       // Seq: sequence counter , incremented by 2 to indicate to store a new correced star position, first bit =1 means do polar correction
-unsigned char twi_success_tx, twi_success_rx;
 unsigned char twi_fb_count=0;  // How many bytes should we send back 
 unsigned char twi_hold=0;      // tell foreground to not update the current pos
 long twi_test=0;               // when active, the foreground will not drive the twi_pos
 long twi_pos[2];               // Current pos sent to Slave
-long twi_star_ra,twi_star_dec; // Currently Selected Star pos sent from Slave
+//long twi_star_ra,twi_star_dec; // Currently Selected Star pos sent from Slave
 long twi_ra_corr,twi_dec_corr; // Polar correction calculated by Slave
-short twi_star;                // Current Star index
+//short twi_star;              // Current Star index
+unsigned char twi_star_ptr;    // Offset and Char to transfer the Star name from the Slave to the Master
+char          twi_star_char;   // Offset and Char to transfer the Star name from the Slave to the Master
 
 unsigned char torq=0,dcay=0;   // Requested Torq and Decay value
 unsigned char effectiv_torq=0; // Effective Torq
@@ -373,59 +375,7 @@ SLAVE:\012\015                                                                  
 // PROGMEM const char pgm_stars_name_reduced[]   =  // format: byte:StarID byte:ConstelationId Star Name string
 //                    pgm_stars_name_reduced is a huge contigous string with only a few stars name (not all stars in the coords list have a name)
 //                                           first two bytes are unsigned char and contains StarID followed by Constellation ID
-
 char current_star_name[STAR_NAME_LEN+CONSTEL_NAME_LEN] = ""; // place to store the current star name and constellation name (set by slave) 
-// As for the star coordinates lets use:
-// dd_v[DDS_CUR_STAR] for: 
-// dd_v[DDS_STAR_DEC_POS]           // place to store the current star DEC (set by slave)
-// dd_v[DDS_STAR_RA_POS]            // place to store the current star RA (set by slave)
-// dd_v[DDS_STAR_Ra_POS2]           // place to store the current star RA (set by slave)
-
-// To be removed , Now, the Slave needs to look in pgm_stars_name_reduced[] to see if the star has a known name
-// remove: PROGMEM const char pgm_stars_name[]   =  // format: Constellation:Star Name , the s/w will use the first 2 letters to tell when we reach the next constellation
-// remove:    {
-// remove:    "Origin: Ra=0, Dec=0   \0"     /*  0   */  
-// remove:    "Orion:Betelgeuse (Red)\0"     /*  1   */  
-// remove:    "Orion:Rigel (Blue)    \0"     /*  2   */  
-// remove:    "Orion:Saiph           \0"     /*  3   */  
-// remove:    "Orion:Bellatrix       \0"     /*  4   */  
-// remove:    "Orion-Belt:Alnitak    \0"     /*  5   */  
-// remove:    "Orion-Belt:Mintaka    \0"     /*  6   */  
-// remove:    "Orion-Belt:Alnilam    \0"     /*  7   */  
-// remove:    "Pisces:19psc          \0"     /*  8   */  
-// remove:    "Q1 RA+,DEC+           \0"     /*  9   */  
-// remove:    "Q2 RA-,DEC+           \0"     /*  10  */  
-// remove:    "Q3 RA+,DEC-           \0"     /*  11  */  
-// remove:    "Q4 RA-,DEC-           \0"     /*  12  */  
-// remove:    "Pignon Maison         \0"     /*  13  */  
-// remove:    "Lyra:Vega             \0"     /*  14  */  
-// remove:    "Gynus:Deneb           \0"     /*  15  */  
-// remove:    "Gynus:Sadr            \0"     /*  16  */  
-// remove:    };
-// pignon: -83°58'30.6"  (E) 075°03'39.1"  05h00m14.61s
-
-// remove: The table is now automatically generated , see coords.h
-// remove:PROGMEM const unsigned long pgm_stars_pos[] =    // Note, the positions below must match the above star names
-// remove: {                  //   RA                                                DEC
-// remove: 0                                              ,    0                                                     ,  // 0  origin 
-// remove: ( 5*TICKS_P_HOUR+55*TICKS_P_MIN+10.3*TICKS_P_SEC), (  7*TICKS_P_DEG+24*TICKS_P_DEG_MIN+25  *TICKS_P_DEG_SEC),// 1  Orion: Betelgeuse (Red)  5h55m10.3  +7;24'25.0
-// remove: ( 5*TICKS_P_HOUR+14*TICKS_P_MIN+32.3*TICKS_P_SEC), (351*TICKS_P_DEG+47*TICKS_P_DEG_MIN+54.0*TICKS_P_DEG_SEC),// 2  Orion: Rigel (Blue)      5h14m32.3  -8;12'06.0
-// remove: ( 5*TICKS_P_HOUR+47*TICKS_P_MIN+45.4*TICKS_P_SEC), (350*TICKS_P_DEG+19*TICKS_P_DEG_MIN+49  *TICKS_P_DEG_SEC),// 3  Orion: Saiph     7h47m45.4s -9;40;11.0
-// remove: ( 5*TICKS_P_HOUR+25*TICKS_P_MIN+ 7.9*TICKS_P_SEC), (  6*TICKS_P_DEG+20*TICKS_P_DEG_MIN+59.0*TICKS_P_DEG_SEC),// 4  Orion: Bellatrix 5h25m7.9s   6;20;59.0
-// remove: ( 5*TICKS_P_HOUR+40*TICKS_P_MIN+45.5*TICKS_P_SEC), (358*TICKS_P_DEG+3 *TICKS_P_DEG_MIN+27.0*TICKS_P_DEG_SEC),// 5  Orion: Alnitak   5h40m45.5  -1;56;33.0
-// remove: ( 5*TICKS_P_HOUR+32*TICKS_P_MIN+ 0.4*TICKS_P_SEC), (359*TICKS_P_DEG+42*TICKS_P_DEG_MIN+ 3.0*TICKS_P_DEG_SEC),// 6  Orion: Mintaka   5h32m0.4   -0;17.57.0
-// remove: ( 5*TICKS_P_HOUR+36*TICKS_P_MIN+ 12 *TICKS_P_SEC), (358*TICKS_P_DEG+48*TICKS_P_DEG_MIN+ 0.0*TICKS_P_DEG_SEC),// 7  Orion: Alnilam   5h36m12s   -1;12;00.00
-// remove: (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),// 8  Pisces:19psc           23h46m23.5s  3;29'12.0
-// remove: ( 1*TICKS_P_HOUR+16*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),// 9  Inhouse test point Q1
-// remove: (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (  3*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),// 10 Inhouse test point Q2
-// remove: ( 1*TICKS_P_HOUR+16*TICKS_P_MIN+23.5*TICKS_P_SEC), (353*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),// 11 Inhouse test point Q3
-// remove: (23*TICKS_P_HOUR+46*TICKS_P_MIN+23.5*TICKS_P_SEC), (353*TICKS_P_DEG+29*TICKS_P_DEG_MIN+12  *TICKS_P_DEG_SEC),// 12 Inhouse test point Q4
-// remove: ( 5*TICKS_P_HOUR+ 0*TICKS_P_MIN+14.6*TICKS_P_SEC), (276*TICKS_P_DEG+ 1*TICKS_P_DEG_MIN+29.4*TICKS_P_DEG_SEC),// 13 Pignon maison
-// remove: (18*TICKS_P_HOUR+36*TICKS_P_MIN+56.3*TICKS_P_SEC), ( 38*TICKS_P_DEG+47*TICKS_P_DEG_MIN+ 3  *TICKS_P_DEG_SEC),// 14 Lyra:Vega              18h36m56.3 +38;47'03.0
-// remove: (20*TICKS_P_HOUR+41*TICKS_P_MIN+25.9*TICKS_P_SEC), ( 45*TICKS_P_DEG+16*TICKS_P_DEG_MIN+49  *TICKS_P_DEG_SEC),// 15 Gynus:Deneb            20h41m25.9 +45;16'49.0
-// remove: (20*TICKS_P_HOUR+22*TICKS_P_MIN+13.7*TICKS_P_SEC), ( 40*TICKS_P_DEG+15*TICKS_P_DEG_MIN+24  *TICKS_P_DEG_SEC),// 16 Gynus:Sadr             20h22m13.7 +40;15'24.0
-// remove: };
-// remove:#define NB_PGM_STARS (sizeof(pgm_stars_pos)/8)
 
 PROGMEM const char pgm_free_mem[]="Free Memory:";
 #ifdef AT_MASTER
@@ -636,7 +586,7 @@ unsigned short console_idx=0;                    // when 0, we are not currently
 //26| CORRECTED STAR POS: (N)-90 59'59.0"  (W)-179 59'59.0"  23h59m59.000s  0x12345678 / 0x12345678                                       
 //27|      TELESCOPE POS: (N)-90 59'59.0"  (W)-179 59'59.0"  23h59m59.000s  0x12345678 / 0x12345678                                       
 //28|       CATALOG STAR: BETLEGEUSE       / ORION                                         
-//29|   CATALOG STAR POS: (N)-90 59'59.0"  (W)-179 59'59.0"  23h59m59.000s                 COORD ID:
+//29|   CATALOG STAR POS: (N)-90 59'59.0"  (W)-179 59'59.0"  23h59m59.000s                 COORD ID: 
 //30|   IR CODE RECEIVED: DECODED STRING                                                                                       
 //31|   IR CODE RECEIVED: 12345678 12345678 / 1234                RA SPEED:                RA STATE:  
 //32| PREV CODE RECEIVED: 12345678 12345678                      DEC SPEED:               DEC STATE:  
@@ -767,15 +717,21 @@ PROGMEM const unsigned char dd_f[DD_FIELDS]=
 #define DDS_IR_L_CODE     0x59  // dd_v[DDS_IR_L_CODE]
 #define DDS_CUR_STAR      0x5A  // dd_v[DDS_CUR_STAR]
 #define DDS_DEBUG_PAGE    0x5B  // dd_v[DDS_DEBUG_PAGE]
-#define DDS_CUR_STAR_REQ  0x5C  // dd_v[DDS_CUR_STAR_REQ]
+#define DDS_CUR_STAR_REQ  0x5C  // dd_v[DDS_CUR_STAR_REQ]   /// shown as COORD ID
 //#define DDS_RX_IDX        0x5B  // dd_v[DDS_RX_IDX]
 
 unsigned char dd_go(unsigned char task,char first)
 {
+// the twi logic became too complex ..using monkey method
+static unsigned char p_chksum;
+unsigned char          chksum=0;
+short iii;
+for ( iii=0 ; iii<STAR_NAME_LEN+CONSTEL_NAME_LEN ; iii++ ) chksum+=current_star_name[iii];
+
 // static unsigned string_seq;
 // if ( task == DDS_CUR_STAR ) string_seq++;
 //if ( dd_p[task] != dd_v[task] || first || (string_seq==255))
-if ( dd_p[task] != dd_v[task] || first )
+if ( dd_p[task] != dd_v[task] || first || task == DDS_CUR_STAR)
    {
    short XXX = pgm_read_byte(&dd_x[task]);
    short YYY = pgm_read_byte(&dd_y[task]);
@@ -784,10 +740,11 @@ if ( dd_p[task] != dd_v[task] || first )
    if ( (XXX == 0) && (YYY == 0) ) return 0; // found nothing to display
 
    if ( task == DDS_CUR_STAR )     
-//       {
+      {
 //       if ( string_seq ==255 ) string_seq = 0;
-      display_data((char*)rs232_tx_buf,XXX,YYY,0, (short) current_star_name                          ,FMT);   // special cases strings stored in FLASH
-//       }
+      if ( p_chksum != chksum ) display_data((char*)rs232_tx_buf,XXX,YYY,0, (short) current_star_name,FMT);   // special cases strings 
+      p_chksum = chksum;
+      }
    else 
       display_data((char*)rs232_tx_buf,XXX,YYY,0,dd_v[task]                                          ,FMT);   // strings stored in FLASH
 
@@ -2471,58 +2428,60 @@ unsigned char twi_rx_buf[40];
 
  
 #ifdef AT_SLAVE
-//                              NEXT   ERROR  ON     DO     SPECIAL NEXT   ON
-//                              STATE  STATE  TWSR   TWCR   CODE    STATE2 TWSR2            //   TWI SLAVE STATES
-PROGMEM char twi_states[] = {   0x01 , 0x00 , 0x60 , 0xC4 , 0x00 ,  0x06 , 0xA8             //   0  Wait for SLA+W or SLA+R  
-                            ,   0x02 , 0x04 , 0x80 , 0xC4 , 0xE0 ,  0x00 , 0xFF             //   1  SLA+W get the size byte, init counter
-                            ,   0x02 , 0x04 , 0x80 , 0xC4 , 0xA0 ,  0x00 , 0xFF             //   2  SLA+W get the data, update counter 
-                            ,   0x00 , 0x04 , 0xA0 , 0xC4 , 0x80 ,  0x00 , 0xFF             //   3  SLA+W get the last data byte 
-                            ,   0x00 , 0xFF , 0xFF , 0xC4 , 0x00 ,  0x00 , 0xFF             //   4  SLA+W Error 
+PROGMEM char twi_states[] =
+//      NEXT   ERROR  ON     DO     SPECIAL NEXT   ON
+//      STATE  STATE  TWSR   TWCR   CODE    STATE2 TWSR2            //   TWI SLAVE STATES
+    {   0x01 , 0x00 , 0x60 , 0xC4 , 0x00 ,  0x06 , 0xA8             //   0  Wait for SLA+W or SLA+R  
+    ,   0x02 , 0x04 , 0x80 , 0xC4 , 0xE0 ,  0x00 , 0xFF             //   1  SLA+W get the size byte, init counter
+    ,   0x02 , 0x04 , 0x80 , 0xC4 , 0xA0 ,  0x00 , 0xFF             //   2  SLA+W get the data, update counter 
+    ,   0x00 , 0x04 , 0xA0 , 0xC4 , 0x80 ,  0x00 , 0xFF             //   3  SLA+W get the last data byte 
+    ,   0x00 , 0xFF , 0xFF , 0xC4 , 0x00 ,  0x00 , 0xFF             //   4  SLA+W Error 
 
-                            ,   0x06 , 0x08 , 0xB8 , 0xC4 , 0xB0 ,  0x00 , 0xFF             //   5  SLA+R Init the Counter 
-               /* 6 */      ,   0x06 , 0x0B , 0xB8 , 0xC4 , 0x90 ,  0x00 , 0xFF             //   6  SLA+R Send Data, update counter
-                            ,   0x00 , 0x0C , 0xC0 , 0xC4 , 0x10 ,  0x00 , 0xFF             //   7  SLA+R Send the last data byte
-                            ,   0x00 , 0xFF , 0xFF , 0xC4 , 0x00 ,  0x00 , 0xFF             //   8  SLA+R Error TWSR=0x00 seems to hapen when slave thinks it must send more, but master sends STOP
-                            ,   0x09 , 0xFF , 0xFF , 0xC4 , 0x00 ,  0x00 , 0xFF             //   9  STOP
-                            ,   0x00 , 0xFF , 0xFF , 0xC4 , 0x00 ,  0x00 , 0xFF             //  10  SLA+R Error 
-                            ,   0x00 , 0xFF , 0xFF , 0xC4 , 0x00 ,  0x00 , 0xFF             //  11  SLA+R Error TWSR=0x00 seems to hapen when slave thinks it must send more, but master sends STOP
-                            ,   0x00 , 0xFF , 0xFF , 0xC4 , 0x00 ,  0x00 , 0xFF             //  12  SLA+R Error TWSR=0x00 seems to hapen when slave thinks it must send more, but master sends STOP
-                            };
+    ,   0x06 , 0x08 , 0xB8 , 0xC4 , 0xB0 ,  0x00 , 0xFF             //   5  SLA+R Init the Counter 
+    ,   0x06 , 0x0B , 0xB8 , 0xC4 , 0x90 ,  0x00 , 0xFF             //   6  SLA+R Send Data, update counter
+    ,   0x00 , 0x0C , 0xC0 , 0xC4 , 0x10 ,  0x00 , 0xFF             //   7  SLA+R Send the last data byte
+    ,   0x00 , 0xFF , 0xFF , 0xC4 , 0x00 ,  0x00 , 0xFF             //   8  SLA+R Error TWSR=0x00 seems to hapen when slave thinks it must send more, but master sends STOP
+    ,   0x09 , 0xFF , 0xFF , 0xC4 , 0x00 ,  0x00 , 0xFF             //   9  STOP
+    ,   0x00 , 0xFF , 0xFF , 0xC4 , 0x00 ,  0x00 , 0xFF             //  10  SLA+R Error 
+    ,   0x00 , 0xFF , 0xFF , 0xC4 , 0x00 ,  0x00 , 0xFF             //  11  SLA+R Error TWSR=0x00 seems to hapen when slave thinks it must send more, but master sends STOP
+    ,   0x00 , 0xFF , 0xFF , 0xC4 , 0x00 ,  0x00 , 0xFF             //  12  SLA+R Error TWSR=0x00 seems to hapen when slave thinks it must send more, but master sends STOP
+    };
    #define TWI_ROW 7   // 8 data per line
 #else                
-//                              NEXT   ERROR  ON     DO     SPECIAL DELAY
-//                              STATE  STATE  TWSR   TWCR   CODE    TO WAIT                 //   TWI MASTER STATES
-PROGMEM char twi_states[] = {   0x01 , 0xFF , 0xF8 , 0xA4 , 0xC0 ,  0x00   //   0  The bus is available ->  lets transmit a START , and initialize the count and pointer
-                            ,   0x02 , 0xFF , 0x08 , 0x84 , 0xA0 ,  0x00   //   1  START sent -> Send SLA address
-                            ,   0x03 , 0x05 , 0x18 , 0x84 , 0xA0 ,  0x00   //   2  SLA sent -> send data , decrement count
-                            ,   0x03 , 0x08 , 0x28 , 0x84 , 0xA0 ,  0x00   //   3  data sent -> continue until count is zero in which case twi_state++
-                  /* 4 */   ,   0x09 , 0x07 , 0x28 , 0x94 , 0x00 ,  0x50   //   4  Reached the end of the bytes to transmit -> send STOP, no wait, then go to state 9  (wait 5ms for slave to process data)
-                            ,   0x00 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x03   //   5  On error, come here -> on any status, send a stop, no wait, then go to state 0
-                            ,   0x00 , 0x00 , 0x00 , 0x00 , 0xFF ,  0x00   //   6 
-                            ,   0x00 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x00   //   7  STOP
-                            ,   0x00 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x00   //   8  STOP
-/*OGMEM char twi_states[]*/ ,   0x0A , 0xFF , 0xF8 , 0xA4 , 0x80 ,  0x00   //   9  The bus is available ->  lets transmit a START , and initialize the count and pointer
-                            ,   0x0B , 0xFF , 0x08 , 0x84 , 0xD0 ,  0x00   //   A  START sent -> Send SLA address
-                            ,   0x0C , 0x13 , 0x40 , 0xC4 , 0xC8 ,  0x00   //   B  SLA sent -> receive data , decrement count
-                            ,   0x0C , 0x11 , 0x50 , 0xC4 , 0x88 ,  0x00   //   C  data received. -> continue until count is zero in which case twi_state++
-                            ,   0x0E , 0x12 , 0x50 , 0x84 , 0x88 ,  0x00   //   D  receiving last byte -> send Nack
-               /* F */      ,   0x0F , 0x11 , 0x58 , 0x94 , 0x08 ,  0x00   //   E  Reached the end of the bytes to receive -> send STOP, no wait, then go to state 0
-                            ,   0x00 , 0x11 , 0xF8 , 0x84 , 0x00 ,  0x03   //   F  STOP Sent
-                            ,   0x10 , 0xFF , 0xFF , 0x84 , 0x00 ,  0x00   //  10  STOP
-               /* 11 */     ,   0x11 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x03   //  11  On error, come here -> on any status, send a stop, no wait, then go to state 0
-                            ,   0x12 , 0xFF , 0xFF , 0x84 , 0x00 ,  0x00   //  12  STOP
-                            ,   0x09 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x03   //  13  On error, come here -> on any status, send a stop, no wait, then go to state 0
-                            };
+PROGMEM char twi_states[] =
+//      NEXT   ERROR  ON     DO     SPECIAL DELAY
+//      STATE  STATE  TWSR   TWCR   CODE    TO WAIT                 //   TWI MASTER STATES
+    {   0x01 , 0xFF , 0xF8 , 0xA4 , 0xC0 ,  0x00   //   0  The bus is available ->  lets transmit a START , and initialize the count and pointer
+    ,   0x02 , 0xFF , 0x08 , 0x84 , 0xA0 ,  0x00   //   1  START sent -> Send SLA address
+    ,   0x03 , 0x05 , 0x18 , 0x84 , 0xA0 ,  0x00   //   2  SLA sent -> send data , decrement count
+    ,   0x03 , 0x08 , 0x28 , 0x84 , 0xA0 ,  0x00   //   3  data sent -> continue until count is zero in which case twi_state++
+    ,   0x09 , 0x07 , 0x28 , 0x94 , 0x00 ,  0x50   //   4  Last byte transmit -> send STOP, no wait, then go to state 9  (wait 5ms for slave to process data)
+    ,   0x00 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x03   //   5  On error, come here -> on any status, send a stop, no wait, then go to state 0
+    ,   0x00 , 0x00 , 0x00 , 0x00 , 0xFF ,  0x00   //   6 
+    ,   0x00 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x00   //   7  STOP
+    ,   0x00 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x00   //   8  STOP
+    ,   0x0A , 0xFF , 0xF8 , 0xA4 , 0x80 ,  0x00   //   9  The bus is available ->  lets transmit a START , and initialize the count and pointer
+    ,   0x0B , 0xFF , 0x08 , 0x84 , 0xD0 ,  0x00   //   A  START sent -> Send SLA address
+    ,   0x0C , 0x13 , 0x40 , 0xC4 , 0xC8 ,  0x00   //   B  SLA sent -> receive data , decrement count
+    ,   0x0C , 0x11 , 0x50 , 0xC4 , 0x88 ,  0x00   //   C  data received. -> continue until count is zero in which case twi_state++
+    ,   0x0E , 0x12 , 0x50 , 0x84 , 0x88 ,  0x00   //   D  receiving last byte -> send Nack
+    ,   0x0F , 0x11 , 0x58 , 0x94 , 0x08 ,  0x00   //   E  Reached the end of the bytes to receive -> send STOP, no wait, then go to state 0
+    ,   0x00 , 0x11 , 0xF8 , 0x84 , 0x00 ,  0x03   //   F  STOP Sent
+    ,   0x10 , 0xFF , 0xFF , 0x84 , 0x00 ,  0x00   //  10  STOP
+    ,   0x11 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x03   //  11  On error, come here -> on any status, send a stop, no wait, then go to state 0
+    ,   0x12 , 0xFF , 0xFF , 0x84 , 0x00 ,  0x00   //  12  STOP
+    ,   0x09 , 0xFF , 0xFF , 0x94 , 0x00 ,  0x03   //  13  On error, come here -> on any status, send a stop, no wait, then go to state 0
+    };
    #define TWI_ROW 6   // 8 data per line
-#endif
+#endif  // AT_MASTER
 
 // a full message with a valid checksum was received in twi_tx_buf ...process it
 //#define TWI_C1 32
 #define TWI_C1 32
 void twi_rx(void)
 {
+unsigned char *pd = (unsigned char *)& dd_v[DDS_CUR_STAR];
 #ifdef AT_SLAVE
-//unsigned char *pc = (unsigned char*)&dd_v[DDS_CUR_STAR];
 unsigned char *pc = (unsigned char *)& dd_v[DDS_CUR_STAR_REQ]  ;
 unsigned char *pp = (unsigned char *)  twi_pos;
 unsigned char iii,sum=0,found=0;
@@ -2550,10 +2509,27 @@ if ( twi_tx_buf[3] == 0xC0 )  // Current position
       twi_seq = twi_tx_buf[6]; 
       }
    }
+   twi_star_ptr = twi_tx_buf[20];   // Value fromm master
    ///////// Prepare responce
    twi_rx_buf[1]  = twi_fb_count; 
    twi_rx_buf[2]  = twi_tx_buf[2];  // command feedback
    twi_rx_buf[3]  = twi_tx_buf[3];  // data feedback 
+   if ( twi_star_ptr >= STAR_NAME_LEN+CONSTEL_NAME_LEN )
+      {
+      twi_rx_buf[4]  = 0;                     // Send to Master
+      twi_rx_buf[5]  = current_star_name[0];  // Send to Master the Current Character
+      }
+   else
+      {
+      twi_rx_buf[4]  = twi_star_ptr+1;                     // Send to Master
+      twi_rx_buf[5]  = current_star_name[twi_star_ptr+1];  // Send to Master the Current Character
+      }
+   twi_rx_buf[6] = pd[0];   // Return Slave's active star
+   twi_rx_buf[7] = pd[1];   // Return Slave's active star
+   
+   twi_rx_buf[8]  = 160;            // Debug Marker
+   twi_rx_buf[9]  = 161;            // Debug Marker
+   twi_rx_buf[10] = 162;            // Debug Marker
    dcay = twi_tx_buf[17];
    effectiv_torq = twi_tx_buf[18];
    motor_disable = twi_tx_buf[19];
@@ -2578,6 +2554,16 @@ IF_CONDITION_PORT_BIT( effectiv_torq&0x04 , PORTC , DO_PC0_LCD_EE );
 dd_v[DDS_DEBUG + 0x1E] = ((long)effectiv_torq<<16) + dcay;
 
 #endif  // AT_SLAVE
+#ifdef AT_MASTER
+
+twi_star_ptr = twi_rx_buf[4];   // Master: set twi_star_ptr to what the Slave says it should be
+current_star_name[twi_star_ptr] = twi_rx_buf[5];  // Master set the sting...
+if ( twi_star_ptr >= STAR_NAME_LEN+CONSTEL_NAME_LEN-1 ) 
+   { 
+   pd[0] = twi_rx_buf[6];   // Update Master Current Star
+   pd[1] = twi_rx_buf[7];   // Update Master Current Star
+   }
+#endif  // AT_MASTER
 }
 
 // Prepare the next message to transmit
@@ -2596,16 +2582,21 @@ twi_tx_buf[0]  = 0x20;   // Slave address
 twi_tx_buf[1]  = TWI_C1+1;     // Byte count
 twi_tx_buf[2]  = 0xD0;   // Req Data : tell the Slave what we want to receive next  
 twi_tx_buf[3]  = 0xC0;   // Sup Data : tell the Slave what we are about to supply in terms of data in this packet
-twi_tx_buf[4]  = pc[0];   // Current Selected Star (LSB)
-twi_tx_buf[5]  = pc[1];   // Current Selected Star (MSB)
+twi_tx_buf[4]  = pc[0];   // Requested Star (LSB)
+twi_tx_buf[5]  = pc[1];   // Requested Star (MSB)
 twi_tx_buf[6]  = twi_seq;   // Seq: sequence counter , incremented each time we record a new corrected star position
 twi_tx_buf[7]  = debug_page;   // for the display
-for ( iii=0 ; iii<8      ; iii++ ) twi_tx_buf[8+iii] = pp[iii];
+for ( iii=0 ; iii<8      ; iii++ ) twi_tx_buf[8+iii] = pp[iii];   // LAT/LON
 twi_tx_buf[16]  = standby_goto;   // fix error before move request
 twi_tx_buf[17]  = dcay;   // test LED
 twi_tx_buf[18]  = effectiv_torq;   // test LCD
 twi_tx_buf[19]  = motor_disable; 
-// 12 bytes available here
+twi_tx_buf[20]  = twi_star_ptr;   // let the slave know where we are...
+   
+ 
+// 11 bytes available here
+twi_tx_buf[21]  = 160;   // debug marker
+twi_tx_buf[22]  = 161;   // debug marker
 
 for ( iii=1 ; iii<TWI_C1 ; iii++ ) sum +=twi_tx_buf[iii];
 twi_tx_buf[TWI_C1] = -sum;   // Checksum
@@ -2667,9 +2658,9 @@ lstate = twi_state;
       if ( SC & 0x40 ) twi_idx = 0;      // 0x40 : Bit that ways that we should initialize the Counter
       if ( SC & 0x38 )                   // 0x20 : Bit that ways that we drive TWDR and update the counter
          {
-         if      ( SC & 0x20 ) TWDR = twi_tx_buf[twi_idx++];   // 0x20 : Bit that ways that we drive TWDR and update the counter
-         else if ( SC & 0x10 ) TWDR = twi_rx_buf[twi_idx++];   // 0x10 : Bit that ways that we drive TWDR only for the Slave address, then read
-         else                  twi_rx_buf[twi_idx++] = TWDR;   // 0x08 : Bit that ways that we read TWDR
+         if      ( SC & 0x20 ) TWDR = twi_tx_buf[twi_idx++];   // 0x20 : Bit that says that we drive TWDR and update the counter
+         else if ( SC & 0x10 ) TWDR = twi_rx_buf[twi_idx++];   // 0x10 : Bit that says that we drive TWDR only for the Slave address, then read
+         else                  twi_rx_buf[twi_idx++] = TWDR;   // 0x08 : Bit that says that we read TWDR
          }
       CR = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_CR ] ); 
       TWCR = CR;
@@ -2689,13 +2680,23 @@ lstate = twi_state;
    ddll = pgm_read_byte ( &twi_states[ twi_state*TWI_ROW + TWI_DL ] );
    if ( twi_state== 0x04 )   // TODO this is in SLAVE RECEIVE ... this is hardcoded
       {
-      twi_success_rx++; 
-      if ( debug_page==0 ) aa[1]++;  // High part          // Nb bytes sent so far...
+      if ( debug_page==0 ) aa[1]++;  // Nb messages sent so far...
       }
    else if ( twi_state== 0x0F )  // TODO this is in SLAVE TRANSMIT ... this is hardcoded to the state
       {
-      twi_success_rx++;  
-      if ( debug_page==0 ) aa[0]++;  // High part          // Nb bytes received so far...
+      unsigned char sum=0,iii;
+      if ( debug_page==0 ) aa[0]++;  // Nb messages received so far...
+
+      for ( iii=1 ; iii<=twi_rx_buf[1] ; iii++ ) sum +=twi_rx_buf[iii];  // Check for valid Checksum
+      if ( debug_page==2 ) 
+         {
+      /* DEBUG */ p = (unsigned char*)&dd_v[DDS_DEBUG + 0x1F]; 
+      /* DEBUG */ p[0] = sum;
+      /* DEBUG */ if ( sum == 0 ) p[1] +=0x10;
+      /* DEBUG */ else            p[2] ++;
+         }
+
+      if ( sum == 0 ) twi_rx(); // Master to process message from slave
       }
    if ( twi_state== 0 ) twi_tx();
 #endif
@@ -2753,7 +2754,7 @@ wait = 0x80;
 
      if ( twi_state== 0 ) twi_tx();  // TODO not sure it's the right place
 
-#endif
+#endif  // AT_SLAVE
 if ( debug_page==1 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08]; for ( ES = 0 ; ES <= TWI_C1 ; ES++ ) p[ES] = twi_tx_buf[ES]; }
 if ( debug_page==2 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08]; for ( ES = 0 ; ES <= TWI_C1 ; ES++ ) p[ES] = twi_rx_buf[ES]; }
 
@@ -3628,6 +3629,10 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.79  2012/03/11 11:00:09  pmichel
+Slave can use the new Star format
+Remains to transmit to Master for display
+
 Revision 1.78  2012/03/09 11:19:28  pmichel
 Few fixes, Star names are ok on the slave side...
 
