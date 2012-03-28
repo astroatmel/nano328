@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/03/11 11:00:09 $
-$Id: telescope2.c,v 1.79 2012/03/11 11:00:09 pmichel Exp pmichel $
+$Date: 2012/03/28 07:31:51 $
+$Id: telescope2.c,v 1.80 2012/03/28 07:31:51 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.79 $
+$Revision: 1.80 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -816,9 +816,9 @@ dd_v[DDS_DEBUG + 0x1d] = c_pointed;                      // 0x1
       }
  
 #else
-   dd_v[DDS_STAR_DEC_POS] = TICKS_P_45_DEG;  // temp for debug  set by twi (slave)
-   dd_v[DDS_STAR_RA_POS]  = TICKS_P_45_DEG;  // temp for debug  set by twi (slave)
-   dd_v[DDS_STAR_RA_POS2] = TICKS_P_45_DEG;  // temp for debug  set by twi (slave)
+//   dd_v[DDS_STAR_DEC_POS] = TICKS_P_45_DEG;  // temp for debug  set by twi (slave)
+//   dd_v[DDS_STAR_RA_POS]  = TICKS_P_45_DEG;  // temp for debug  set by twi (slave)
+//   dd_v[DDS_STAR_RA_POS2] = TICKS_P_45_DEG;  // temp for debug  set by twi (slave)
 #endif
 
 return 0; // found nothing to display
@@ -2480,11 +2480,13 @@ PROGMEM char twi_states[] =
 #define TWI_C1 32
 void twi_rx(void)
 {
-unsigned char *pd = (unsigned char *)& dd_v[DDS_CUR_STAR];
+//unsigned char *pd = (unsigned char *)& dd_v[DDS_CUR_STAR];
+unsigned char *sp = (unsigned char *)& dd_v[DDS_STAR_DEC_POS];
+unsigned char iii;
 #ifdef AT_SLAVE
 unsigned char *pc = (unsigned char *)& dd_v[DDS_CUR_STAR_REQ]  ;
 unsigned char *pp = (unsigned char *)  twi_pos;
-unsigned char iii,sum=0,found=0;
+unsigned char sum=0,found=0;
 if ( twi_tx_buf[3] == 0xC0 )  // Current position
    {
    for ( iii=1 ; iii<TWI_C1 ; iii++ ) twi_rx_buf[iii]=0xFA;
@@ -2524,12 +2526,13 @@ if ( twi_tx_buf[3] == 0xC0 )  // Current position
       twi_rx_buf[4]  = twi_star_ptr+1;                     // Send to Master
       twi_rx_buf[5]  = current_star_name[twi_star_ptr+1];  // Send to Master the Current Character
       }
-   twi_rx_buf[6] = pd[0];   // Return Slave's active star
-   twi_rx_buf[7] = pd[1];   // Return Slave's active star
-   
-   twi_rx_buf[8]  = 160;            // Debug Marker
-   twi_rx_buf[9]  = 161;            // Debug Marker
-   twi_rx_buf[10] = 162;            // Debug Marker
+   for ( iii=0 ; iii<8      ; iii++ ) twi_rx_buf[6+iii] = sp[iii]; // update current position
+//    twi_rx_buf[6] = pd[0];   // Return Slave's active star
+//    twi_rx_buf[7] = pd[1];   // Return Slave's active star
+//    
+//    twi_rx_buf[8]  = 160;            // Debug Marker
+//    twi_rx_buf[9]  = 161;            // Debug Marker
+//    twi_rx_buf[10] = 162;            // Debug Marker
    dcay = twi_tx_buf[17];
    effectiv_torq = twi_tx_buf[18];
    motor_disable = twi_tx_buf[19];
@@ -2558,11 +2561,14 @@ dd_v[DDS_DEBUG + 0x1E] = ((long)effectiv_torq<<16) + dcay;
 
 twi_star_ptr = twi_rx_buf[4];   // Master: set twi_star_ptr to what the Slave says it should be
 current_star_name[twi_star_ptr] = twi_rx_buf[5];  // Master set the sting...
-if ( twi_star_ptr >= STAR_NAME_LEN+CONSTEL_NAME_LEN-1 ) 
-   { 
-   pd[0] = twi_rx_buf[6];   // Update Master Current Star
-   pd[1] = twi_rx_buf[7];   // Update Master Current Star
-   }
+for ( iii=0 ; iii<8      ; iii++ ) sp[iii+0] = twi_rx_buf[6+iii]; // update current position
+for ( iii=4 ; iii<8      ; iii++ ) sp[iii+4] = twi_rx_buf[6+iii]; // update current position
+
+// if ( twi_star_ptr >= STAR_NAME_LEN+CONSTEL_NAME_LEN-1 ) 
+//    { 
+//    pd[0] = twi_rx_buf[6];   // Update Master Current Star
+//    pd[1] = twi_rx_buf[7];   // Update Master Current Star
+//    }
 #endif  // AT_MASTER
 }
 
@@ -3629,6 +3635,10 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.80  2012/03/28 07:31:51  pmichel
+Using monkey method to find if the star string should be drawn
+Need to remove complicated logic on slave
+
 Revision 1.79  2012/03/11 11:00:09  pmichel
 Slave can use the new Star format
 Remains to transmit to Master for display
