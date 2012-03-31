@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/03/28 07:31:51 $
-$Id: telescope2.c,v 1.80 2012/03/28 07:31:51 pmichel Exp pmichel $
+$Date: 2012/03/28 07:48:26 $
+$Id: telescope2.c,v 1.81 2012/03/28 07:48:26 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.80 $
+$Revision: 1.81 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -111,7 +111,12 @@ void wait(long time,long mult);
 // Debug Page 4 : 
 char debug_page=3; // depending of the debug mode, change what the debug shows 
 char nb_debug_page=4;
-
+char align_state=0; // 0 : Waiting Reference RA     -> the first PLAY X X X tells the controler that we did point the telescope at a known bright star, thus setting the RA
+                    //     The transition occurs when we do the first REC X X X
+                    // 1 : Star Position Correction -> ask the controler to go to known stars, and manually correct the position
+                    // 2 : Polar Align              -> after 5 or more corrected stars , the slave will do the polar align
+                    // 3 : Aligned                  -> Ready to operate
+                       
 
 char fast_portc=0;
 // Use all pins of PORTB for fast outputs  ... B0 B1 cant be used, and B4 B5 causes problem at download time
@@ -290,6 +295,10 @@ typedef struct   // those values are required per axis to be able to execute got
    unsigned char  next;             // no units (should there be a step at the next iteration ? )                    
    unsigned char  direction;        // no units (which direction ? )                    
    } AXIS;
+
+#ifdef AT_MASTER
+static char set_ra_armed=0;
+#endif
 
 AXIS *ra;   // points in the display array dd_v
 AXIS *dec;  // points in the display array dd_v
@@ -1547,7 +1556,7 @@ Declin :
 - goto  generic position 1-10  (complex command sequence)           p.X                       [PLAY    + INPUT + X]
 - Store corrected star position 1-10  (complex command sequence)    r!X                       [RECORD  + ANTENA + X]  //  10 slots for star correction
 - goto  corrected star position 1-10  (complex command sequence)    p!X                       [PLAY    + ANTENA + X]  //     each slot also contains the index of the star (reference)
-- goto  directory start position 1-??  (complex command sequence)   pXXX                      [PLAY    + X + X + X]
+- goto  directory start position 1-??  (complex command sequence)   pXXX                      [PLAY    + X + X + X]  // The first play sets the reference RA
 - Go to Catalog star                                                *                         [GO BACK] 
 - Select next/previous star from catalog                            < / >                     [FWD/REV] 
 - clear all generic recorded positions                              <del> .                   [CLEAR   + INPUT]
@@ -1760,17 +1769,24 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
    if ( cmd_state >= 100 ) // a command is complete, need to process it
       {
       if ( cmd_state==100 ) // PLAY X X X : goto direct to catalog star 
-         { goto_pgm_pos(cmd_val[cmd_val_idx-3]*100 + cmd_val[cmd_val_idx-2]*10 + jjj); }
+         {
+         if ( align_state != 0 )  goto_pgm_pos(cmd_val[cmd_val_idx-3]*100 + cmd_val[cmd_val_idx-2]*10 + jjj); 
+         else {
+              dd_v[DDS_CUR_STAR_REQ] = cmd_val[cmd_val_idx-3]*100 + cmd_val[cmd_val_idx-2]*10 + jjj;   // ask the slave
+              set_ra_armed = 1;
+              }
+         }
       if ( cmd_state==101 ) // PLAY INPUT X : goto user position X
          { goto_pos(jjj); }
       if ( cmd_state==102 ) // PLAY ANTENA X : goto star corrected position X
-         { goto_pos(10+jjj);  last_antena=10+jjj;}
+         { goto_pos(10+jjj);  last_antena=10+jjj; }
       if ( cmd_state==103 ) // RECORD INPUT X : record user position X
          { record_pos(jjj);  }
       if ( cmd_state==104 ) // RECORD ANTENA X : record star corrected position X
          { 
          record_pos(10+jjj); 
          twi_seq+=2;  // tell the slave to update the active star's corrected position
+         if ( align_state == 0 ) align_state++; // The initial RA is set...  now a play will make the telescope move
          }
       if ( cmd_state==105 ) // CLEAR INPUT : clear all user positinos
          { for(iii=0;iii<10;iii++) saved[iii].ra = saved[iii].dec = saved[iii].ref_star=0; }
@@ -1836,6 +1852,7 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
       }
    }
 #endif  // AT_MASTER process IR
+
 // make sure CUR_STAR is inbound   
 if ( dd_v[DDS_CUR_STAR_REQ] >= STARS_COORD_TOTAL ) dd_v[DDS_CUR_STAR_REQ] = 0; // we reached the last star
 if ( dd_v[DDS_CUR_STAR_REQ] <  0                 ) dd_v[DDS_CUR_STAR_REQ] = STARS_COORD_TOTAL-1;
@@ -2480,7 +2497,7 @@ PROGMEM char twi_states[] =
 #define TWI_C1 32
 void twi_rx(void)
 {
-//unsigned char *pd = (unsigned char *)& dd_v[DDS_CUR_STAR];
+unsigned char *pd = (unsigned char *)& dd_v[DDS_CUR_STAR];
 unsigned char *sp = (unsigned char *)& dd_v[DDS_STAR_DEC_POS];
 unsigned char iii;
 #ifdef AT_SLAVE
@@ -2511,6 +2528,9 @@ if ( twi_tx_buf[3] == 0xC0 )  // Current position
       twi_seq = twi_tx_buf[6]; 
       }
    }
+   dcay = twi_tx_buf[17];          
+   effectiv_torq = twi_tx_buf[18]; 
+   motor_disable = twi_tx_buf[19]; 
    twi_star_ptr = twi_tx_buf[20];   // Value fromm master
    ///////// Prepare responce
    twi_rx_buf[1]  = twi_fb_count; 
@@ -2526,16 +2546,14 @@ if ( twi_tx_buf[3] == 0xC0 )  // Current position
       twi_rx_buf[4]  = twi_star_ptr+1;                     // Send to Master
       twi_rx_buf[5]  = current_star_name[twi_star_ptr+1];  // Send to Master the Current Character
       }
-   for ( iii=0 ; iii<8      ; iii++ ) twi_rx_buf[6+iii] = sp[iii]; // update current position
-//    twi_rx_buf[6] = pd[0];   // Return Slave's active star
-//    twi_rx_buf[7] = pd[1];   // Return Slave's active star
-//    
-//    twi_rx_buf[8]  = 160;            // Debug Marker
-//    twi_rx_buf[9]  = 161;            // Debug Marker
-//    twi_rx_buf[10] = 162;            // Debug Marker
-   dcay = twi_tx_buf[17];
-   effectiv_torq = twi_tx_buf[18];
-   motor_disable = twi_tx_buf[19];
+   twi_rx_buf[6] = pd[0];   // Return Slave's active star
+   twi_rx_buf[7] = pd[1];   // Return Slave's active star
+   for ( iii=0 ; iii<8      ; iii++ ) twi_rx_buf[ 8+iii] = sp[iii];  // update current position
+   for ( iii=0 ; iii<8      ; iii++ ) twi_rx_buf[16+iii] = 0x50+iii; // update current polar correction
+
+   twi_rx_buf[24] = 160;     // Debug Marker
+   twi_rx_buf[25] = 161;     // Debug Marker
+   twi_rx_buf[26] = 162;     // Debug Marker
 
 for ( iii=1 ; iii<TWI_C1 ; iii++ ) sum +=twi_rx_buf[iii];
 twi_rx_buf[TWI_C1] = -sum;   // Checksum
@@ -2561,8 +2579,13 @@ dd_v[DDS_DEBUG + 0x1E] = ((long)effectiv_torq<<16) + dcay;
 
 twi_star_ptr = twi_rx_buf[4];   // Master: set twi_star_ptr to what the Slave says it should be
 current_star_name[twi_star_ptr] = twi_rx_buf[5];  // Master set the sting...
-for ( iii=0 ; iii<8      ; iii++ ) sp[iii+0] = twi_rx_buf[6+iii]; // update current position
-for ( iii=4 ; iii<8      ; iii++ ) sp[iii+4] = twi_rx_buf[6+iii]; // update current position
+pd[0] = twi_rx_buf[6]; // Slave's active star
+pd[1] = twi_rx_buf[7]; // Slave's active star
+for ( iii=0 ; iii<8      ; iii++ ) sp[iii+0] = twi_rx_buf[8+iii]; // update current position
+for ( iii=4 ; iii<8      ; iii++ ) sp[iii+4] = twi_rx_buf[8+iii]; // update current position
+
+////// for ( iii=0 ; iii<8      ; iii++ ) twi_rx_buf[16+iii] = 0x50+iii; // update current polar correction
+
 
 // if ( twi_star_ptr >= STAR_NAME_LEN+CONSTEL_NAME_LEN-1 ) 
 //    { 
@@ -2827,6 +2850,19 @@ long temp;
 // too long to complete !! set_digital_output(DO_PC2_DEC_STEP,0);   // eventually, I should use my routines...flush polopu...
 //FAST_SET_RA_STEP(0);
 //FAST_SET_DEC_STEP(0);
+
+if ( set_ra_armed )  // we are about to set the initial RA
+   {
+   if (dd_v[DDS_CUR_STAR_REQ] == dd_v[DDS_CUR_STAR])  
+      {
+      ra->pos_dem = ra->pos = dd_v[DDS_STAR_RA_POS];
+      add_value_to_pos(ra->pos_earth,&ra->pos_dem); 
+      ra->pos_cor = ra->pos_hw = ra->pos_dem;                        
+
+      dec->pos_cor = dec->pos_hw = dec->pos_dem = dec->pos = dd_v[DDS_STAR_DEC_POS]; 
+      set_ra_armed=0;
+   }  }
+
 
 temp = ra->pos_hw-ra->pos_cor;
 if ( temp >= TICKS_P_STEP )
@@ -3635,6 +3671,9 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.81  2012/03/28 07:48:26  pmichel
+Star name and position sent from slave to master
+
 Revision 1.80  2012/03/28 07:31:51  pmichel
 Using monkey method to find if the star string should be drawn
 Need to remove complicated logic on slave
