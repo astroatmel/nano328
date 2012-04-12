@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/03/28 07:48:26 $
-$Id: telescope2.c,v 1.81 2012/03/28 07:48:26 pmichel Exp pmichel $
+$Date: 2012/03/31 05:15:18 $
+$Id: telescope2.c,v 1.82 2012/03/31 05:15:18 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.81 $
+$Revision: 1.82 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 TODO:
@@ -1805,7 +1805,7 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
       if ( cmd_state==109 ) // ANTENA SEARCH : Calculate polar error
          { 
          // TODO to be done by the slave: if ( jjj==3) do_polar(); 
-         twi_seq|=1;  // tell the slave to update the polar matrix
+         twi_seq=-1;  // tell the slave to update the polar matrix
          }
       cmd_state=0; // we are done 
       }
@@ -2497,12 +2497,14 @@ PROGMEM char twi_states[] =
 #define TWI_C1 32
 void twi_rx(void)
 {
-unsigned char *pd = (unsigned char *)& dd_v[DDS_CUR_STAR];
-unsigned char *sp = (unsigned char *)& dd_v[DDS_STAR_DEC_POS];
+unsigned char *cra = (unsigned char *)& loc_ra_correction;
+unsigned char *cde = (unsigned char *)& loc_dec_correction;
+unsigned char *pd  = (unsigned char *)& dd_v[DDS_CUR_STAR];
+unsigned char *sp  = (unsigned char *)& dd_v[DDS_STAR_DEC_POS];
 unsigned char iii;
 #ifdef AT_SLAVE
-unsigned char *pc = (unsigned char *)& dd_v[DDS_CUR_STAR_REQ]  ;
-unsigned char *pp = (unsigned char *)  twi_pos;
+unsigned char *pc  = (unsigned char *)& dd_v[DDS_CUR_STAR_REQ]  ;
+unsigned char *pp  = (unsigned char *)  twi_pos;
 unsigned char sum=0,found=0;
 if ( twi_tx_buf[3] == 0xC0 )  // Current position
    {
@@ -2549,7 +2551,9 @@ if ( twi_tx_buf[3] == 0xC0 )  // Current position
    twi_rx_buf[6] = pd[0];   // Return Slave's active star
    twi_rx_buf[7] = pd[1];   // Return Slave's active star
    for ( iii=0 ; iii<8      ; iii++ ) twi_rx_buf[ 8+iii] = sp[iii];  // update current position
-   for ( iii=0 ; iii<8      ; iii++ ) twi_rx_buf[16+iii] = 0x50+iii; // update current polar correction
+
+   for ( iii=0 ; iii<4      ; iii++ ) twi_rx_buf[16+iii] = cra[iii]; // update current polar correction
+   for ( iii=0 ; iii<4      ; iii++ ) twi_rx_buf[20+iii] = cde[iii]; // update current polar correction
 
    twi_rx_buf[24] = 160;     // Debug Marker
    twi_rx_buf[25] = 161;     // Debug Marker
@@ -2584,8 +2588,8 @@ pd[1] = twi_rx_buf[7]; // Slave's active star
 for ( iii=0 ; iii<8      ; iii++ ) sp[iii+0] = twi_rx_buf[8+iii]; // update current position
 for ( iii=4 ; iii<8      ; iii++ ) sp[iii+4] = twi_rx_buf[8+iii]; // update current position
 
-////// for ( iii=0 ; iii<8      ; iii++ ) twi_rx_buf[16+iii] = 0x50+iii; // update current polar correction
-
+for ( iii=0 ; iii<4      ; iii++ ) cra[iii] = twi_rx_buf[16+iii]; // update current polar correction
+for ( iii=0 ; iii<4      ; iii++ ) cde[iii] = twi_rx_buf[20+iii]; // update current polar correction
 
 // if ( twi_star_ptr >= STAR_NAME_LEN+CONSTEL_NAME_LEN-1 ) 
 //    { 
@@ -2787,9 +2791,11 @@ wait = 0x80;
 if ( debug_page==1 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08]; for ( ES = 0 ; ES <= TWI_C1 ; ES++ ) p[ES] = twi_tx_buf[ES]; }
 if ( debug_page==2 ) { p = (unsigned char*)&dd_v[DDS_DEBUG + 0x08]; for ( ES = 0 ; ES <= TWI_C1 ; ES++ ) p[ES] = twi_rx_buf[ES]; }
 
+if ( debug_page==2 ) dd_v[DDS_DEBUG + 0x06] = ra_correction;
+if ( debug_page==2 ) dd_v[DDS_DEBUG + 0x07] = dec_correction;
 //if ( (PINC & 0x20) == 0) aa[0]++;
 //if ( (PINC & 0x10) == 0) aa[1]++;
-}
+}  // twitt()
 
 ////////////////////////////////////////// INTERRUPT SECTION ////////////////////////////////////////////
 ////////////////////////////////////////// INTERRUPT SECTION ////////////////////////////////////////////
@@ -3671,6 +3677,15 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.82  2012/03/31 05:15:18  pmichel
+After power up,
+we can slew around
+when we do PLAY X X X   it tells the controler where we are pointing
+and thus the controler sets the current position to the one where we are pointing
+we can do this a few times
+once we do RECORD ANTENA X  which records the first corrected star position
+then we switch mode to "star correction"
+
 Revision 1.81  2012/03/28 07:48:26  pmichel
 Star name and position sent from slave to master
 
