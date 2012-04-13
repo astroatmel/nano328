@@ -1,10 +1,42 @@
 /*
 $Author: pmichel $
-$Date: 2012/03/31 05:15:18 $
-$Id: telescope2.c,v 1.82 2012/03/31 05:15:18 pmichel Exp pmichel $
+$Date: 2012/04/12 21:18:40 $
+$Id: telescope2.c,v 1.83 2012/04/12 21:18:40 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.82 $
+$Revision: 1.83 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
+
+
+Back home test alignment:
+------------------------------------
+Telescope Master Starting...        
+Free Memory:000001BD                
+
+inserted an error of: 01°44'14.2" on the DEC axis only at point 51   at: 02h08m46.46s
+
+Rec pos: 0000000A                   
+RA :6D180F80                        
+DEC:0709A4F3                        
+ref:00000033                        
+Rec pos: 0000000B                   
+RA :87FBEF3A                        
+DEC:C7880FA4                        
+ref:0000003E                        
+Rec pos: 0000000C                   
+RA :A01A6DE7                        
+DEC:07EA89E9                        
+ref:00000047                        
+Rec pos: 0000000D                   
+RA :5148CC6E                        
+DEC:0DB500A9                        
+ref:00000029                        
+               
+
+TODO next version: 
+-easy way to enter fake alignments points
+-method to re-enter polar error RA/DEC and by-pass the alignment process (ex: need to recompile, but the stand does not move)
+
+
 
 TODO:
 *** Problems:
@@ -111,14 +143,17 @@ void wait(long time,long mult);
 // Debug Page 4 : 
 char debug_page=3; // depending of the debug mode, change what the debug shows 
 char nb_debug_page=4;
-char align_state=0; // 0 : Waiting Reference RA     -> the first PLAY X X X tells the controler that we did point the telescope at a known bright star, thus setting the RA
-                    //     The transition occurs when we do the first REC X X X
-                    // 1 : Star Position Correction -> ask the controler to go to known stars, and manually correct the position
-                    // 2 : Polar Align              -> after 5 or more corrected stars , the slave will do the polar align
-                    // 3 : Aligned                  -> Ready to operate
+char align_state=0; // 0 : Waiting Reference RA     -> the first PLAY X X X tells the controler that we did point the telescope at a known bright star, thus setting the RA and DEC
+                    // 1 : fake a first alignment correction  (debug)
+                    // 2 : fake a second alignment correction  (debug)
+                    // ...
+                    // 10 : Star Position Correction -> ask the controler to go to known stars, and manually correct the position
+                    // 11 : Polar Align              -> after 5 or more corrected stars , the slave will do the polar align
+                    // 12 : Aligned                  -> Ready to operate
                        
 
 char fast_portc=0;
+
 // Use all pins of PORTB for fast outputs  ... B0 B1 cant be used, and B4 B5 causes problem at download time
 ///- #define FAST_SET_RA_DIR_(VAL)                   
 ///-    {                                           
@@ -187,6 +222,7 @@ char fast_portc=0;
 #define TICKS_P_DAY      (2080000UL   *TICKS_P_STEP      )  // 3369600000    // 0xD      0  // One day = 360deg = 2080000 micro steps
 #define TICKS_P_DEG      (2080000UL   *TICKS_P_STEP/360UL)  //    9360000    //   0x8ED280  // 
 #define TICKS_P_45_DEG   (2080000UL   *TICKS_P_STEP/8UL  )  //  421200000    // 0x191B0080  //
+#define TICKS_P_90_DEG   (2080000UL   *TICKS_P_STEP/4UL  )  //  210900000    // 0x0C......  //
 #define TICKS_P_180_DEG  (2080000UL   *TICKS_P_STEP/2UL  )  // 1684800000    // 0x646C0200  // 
 #define TICKS_P_DEG_MIN  (TICKS_P_DEG/60UL)                 //    1560000    //             // 
 #define TICKS_P_DEG_SEC  (TICKS_P_DEG/3600UL)               //      26000    //             // 
@@ -194,7 +230,8 @@ char fast_portc=0;
 #define TICKS_P_MIN      (TICKS_P_HOUR/60UL)                //    2340000    //             // 
 #define TICKS_P_SEC      (TICKS_P_HOUR/3600UL)              //      39000    //             // 
 
-#define MAX_SPEED        (TICKS_P_STEP-TICKS_P_STEP/EARTH_COMP-2)
+//#define MAX_SPEED        (TICKS_P_STEP-TICKS_P_STEP/EARTH_COMP-2)
+#define MAX_SPEED        (TICKS_P_STEP-100)
 
 // This function makes sure we never stay in the dead band
 // using pointers to save space
@@ -1639,6 +1676,7 @@ if ( ! ( moving || goto_cmd ) )
    }
 }
 
+
 void record_pos(short pos)
 {
 twi_hold = 1;         // Tell foreground that if it interrupts us, it must not drive the twi position because we are reading them...
@@ -1786,7 +1824,8 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
          { 
          record_pos(10+jjj); 
          twi_seq+=2;  // tell the slave to update the active star's corrected position
-         if ( align_state == 0 ) align_state++; // The initial RA is set...  now a play will make the telescope move
+         if ( align_state == 0 ) align_state++; // The initial RA is set...  now fake a few alignments (to help inhouse debug)
+//         if ( align_state == 0 ) align_state=10 // The initial RA is set...  now a play will make the telescope move
          }
       if ( cmd_state==105 ) // CLEAR INPUT : clear all user positinos
          { for(iii=0;iii<10;iii++) saved[iii].ra = saved[iii].dec = saved[iii].ref_star=0; }
@@ -1806,6 +1845,7 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
          { 
          // TODO to be done by the slave: if ( jjj==3) do_polar(); 
          twi_seq=-1;  // tell the slave to update the polar matrix
+         align_state=11;
          }
       cmd_state=0; // we are done 
       }
@@ -1893,6 +1933,11 @@ unsigned char CCC;
 //dd_v[DDS_DEBUG + 0x07]=dec->state;
 //dd_v[DDS_DEBUG + 0x0D]=goto_cmd + 0x100*moving;
 //dd_v[DDS_DEBUG + 0x0F]=ra->state;
+if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x14] = ra_correction;
+if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x15] = dec_correction;
+if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x1C] = loc_ra_correction;
+if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x1D] = loc_dec_correction;
+if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x1E] = align_state + 0x123000; //temp
 
 if ( redraw ) 
    {
@@ -2029,6 +2074,7 @@ if ( use_polar )
       {
       if      ( polar_state == 1 ) 
          { 
+         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x10]=standby_goto + 0x321000; /// REMOVE
          if ( standby_goto )
             {
             ref_ra = ra->pos_target;    // use target position so that any goto will bring us right away to the propoer position  
@@ -2049,13 +2095,19 @@ if ( use_polar )
 //         dd_v[DDS_DEBUG + 0x09]=work.y;  // Actual value
 //         dd_v[DDS_DEBUG + 0x0A]=work.z;  // Actual value
          }
-      else if ( polar_state == 3 ) { set_vector(&desired , (unsigned long * ) &ref_ra, (unsigned long * ) &ref_dec); } 
+      else if ( polar_state == 3 ) 
+         { 
+         set_vector(&desired , (unsigned long * ) &ref_ra, (unsigned long * ) &ref_dec); 
+         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x11]=desired.x;
+         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x12]=desired.y;
+         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x13]=desired.z;
+         } 
       else if ( polar_state == 4 ) { apply_polar_correction(&PoleMatrix,&desired); } 
       else if ( polar_state == 5 )
          {
-//         dd_v[DDS_DEBUG + 0x10]=desired.x;
-//         dd_v[DDS_DEBUG + 0x11]=desired.y;
-//         dd_v[DDS_DEBUG + 0x12]=desired.z;
+         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x01]=desired.x;
+         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x02]=desired.y;
+         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x03]=desired.z;
          } 
       else polar_state = 10;   // go to next stage
       }
@@ -2084,44 +2136,69 @@ if ( use_polar )
          else                 use_x_instead_of_y = 1;    // use X to converge
          polar_state = 40;    // use X to converge
          cos_dec = fp_cos(desired_dec);            // Required for the next stages
+         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x04]=use_x_instead_of_y;
+         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x05]=abs_x;
+         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x06]=abs_y;
          }
       }
    else if ( polar_state<80 )  // states [40..79] where we find the required RA to get the same Y as the desired Y    (because abs(x) > abs(y)
       {
       if      ( polar_state == 41 ) // setup
          {
-         if ( desired.y & 0x80000000 ) desired_ra=0x80000000; // negative RA
-         else                          desired_ra=0x00000000;
-         test_bit = 0x40000000; 
+         if ( use_x_instead_of_y )
+            {
+            if ( desired.y & 0x80000000 ) desired_ra=0x80000000; // negative Y
+            else                          desired_ra=0x00000000;
+            test_bit = 0x40000000; 
+            }
+         else 
+            {
+            if ( desired.x & 0x80000000 )      desired_ra=0x00000000; // negative Y
+            else if ( desired.y & 0x80000000 ) desired_ra=0x80000000;
+            else                               desired_ra=0x00000000;
+            test_bit = 0x40000000; 
+            }
          }
       else if ( test_bit >= 0x00000400 ) // while this is true, polar_state will go from 11 to .... 31 
          {
+         // Important:
+         // lets not forget that fp_cos() fp_sin() uses TICKs as parameter and converts them to RAD
+         // so we need to be careful when trying all the bits in desired_ra... we need to exclude the deadband
          if ( use_x_instead_of_y )
             {
             work.x  = fp_mult(fp_cos(desired_ra | test_bit),cos_dec);  // try this bit     // Short version of set_vector() function
             if ( desired.y > 0) 
-               { if (work.x > desired.x)  desired_ra |= test_bit; } // ok, still under, set the bit
+               { if ( work.x > desired.x) desired_ra |= test_bit; } // ok, still under, set the bit
             else
                { if ( work.x < desired.x) desired_ra |= test_bit; } // ok, still under, set the bit
             }
          else
             {
-            work.y  = fp_mult(fp_sin(desired_ra | test_bit),cos_dec);  // try this bit     // Short version of set_vector() function
+            work.y  = fp_mult(fp_cos( ( desired_ra | test_bit) - TICKS_P_90_DEG),cos_dec);  // try this bit  // Be careful, because we are using Y, 
             if ( desired.x > 0) 
                { if ( work.y < desired.y ) desired_ra |= test_bit; } // ok, still under, set the bit
             else
                { if ( work.y > desired.y ) desired_ra |= test_bit; } // ok, still under, set the bit
             }
          test_bit = test_bit >> 1;
+
+         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x08]=work.x;
+         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x09]=work.y;
+         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x0A]=desired_ra;
          }
-      else polar_state = 80; // go to next stage
+      else 
+         {
+         polar_state = 80; // go to next stage
+         }
       } 
    else if ( polar_state<90 )  // states [80..89] final, generate the delta RA and delta DEC
       {
-//      dd_v[DDS_DEBUG + 0x18]=ref_ra;
-//      dd_v[DDS_DEBUG + 0x19]=desired_ra;
-//      dd_v[DDS_DEBUG + 0x1A]=ref_dec;
-//      dd_v[DDS_DEBUG + 0x1B]=desired_dec;
+      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x14]=ref_ra;
+      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x15]=desired_ra;
+      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x16]=ref_dec;
+      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x17]=desired_dec;
+      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x1A]++;
+
       loc_ra_correction  = desired_ra  - ref_ra;
       loc_dec_correction = desired_dec - ref_dec;
       if      ( desired_ra  >= 0 && ref_ra  <  0 ) loc_ra_correction  -= DEAD_BAND; 
@@ -2133,13 +2210,13 @@ if ( use_polar )
 
       if ( standby_goto == 2 )
          {
-         if ( ra_correction > loc_ra_correction )   { if ( ra_correction      - loc_ra_correction  < 200 ) standby_goto =3; }
-         else                                       { if ( loc_ra_correction  - ra_correction      < 200 ) standby_goto =3; }
+         if ( ra_correction > loc_ra_correction )   { if ( ra_correction      - loc_ra_correction  < 20 ) standby_goto =3; }
+         else                                       { if ( loc_ra_correction  - ra_correction      < 20 ) standby_goto =3; }
          }
       else if ( standby_goto == 3 )
          {
-         if ( dec_correction > loc_dec_correction ) { if ( dec_correction     - loc_dec_correction < 200 ) standby_goto =-1; }
-         else                                       { if ( loc_dec_correction - dec_correction     < 200 ) standby_goto =-1; }
+         if ( dec_correction > loc_dec_correction ) { if ( dec_correction     - loc_dec_correction < 20 ) standby_goto =-1; }
+         else                                       { if ( loc_dec_correction - dec_correction     < 20 ) standby_goto =-1; }
          }
       }
    else polar_state=0;
@@ -2555,7 +2632,7 @@ if ( twi_tx_buf[3] == 0xC0 )  // Current position
    for ( iii=0 ; iii<4      ; iii++ ) twi_rx_buf[16+iii] = cra[iii]; // update current polar correction
    for ( iii=0 ; iii<4      ; iii++ ) twi_rx_buf[20+iii] = cde[iii]; // update current polar correction
 
-   twi_rx_buf[24] = 160;     // Debug Marker
+   twi_rx_buf[24] = use_polar; 
    twi_rx_buf[25] = 161;     // Debug Marker
    twi_rx_buf[26] = 162;     // Debug Marker
 
@@ -2590,6 +2667,7 @@ for ( iii=4 ; iii<8      ; iii++ ) sp[iii+4] = twi_rx_buf[8+iii]; // update curr
 
 for ( iii=0 ; iii<4      ; iii++ ) cra[iii] = twi_rx_buf[16+iii]; // update current polar correction
 for ( iii=0 ; iii<4      ; iii++ ) cde[iii] = twi_rx_buf[20+iii]; // update current polar correction
+use_polar = twi_rx_buf[24];
 
 // if ( twi_star_ptr >= STAR_NAME_LEN+CONSTEL_NAME_LEN-1 ) 
 //    { 
@@ -2875,7 +2953,7 @@ if ( temp >= TICKS_P_STEP )
    {
    // too long to complete !!set_digital_output(DO_PC1_RA_DIR,0); // go backward
    //FAST_SET_RA_DIR(0);
-   ra->direction=DO_PC3_RA_DIR;
+   ra->direction=0x00;
    add_value_to_pos(-TICKS_P_STEP,&ra->pos_hw);
    ra->next=DO_PC2_RA_STEP;
    }
@@ -2883,7 +2961,7 @@ else if ( -temp >= TICKS_P_STEP )
    {
    // too long to complete !!set_digital_output(DO_PC1_RA_DIR,1); // go forward
    //FAST_SET_RA_DIR(1);
-   ra->direction=0x00;
+   ra->direction=DO_PC3_RA_DIR;
    add_value_to_pos(TICKS_P_STEP,&ra->pos_hw);
    ra->next=DO_PC2_RA_STEP;
    }
@@ -2939,6 +3017,7 @@ ISR(TIMER1_OVF_vect)    // my SP0C0 @ 10 KHz
 unsigned long histo;
 #ifdef AT_MASTER
 //static char TMP1;
+static unsigned char banding=0;
 static char IR0,IR1,IR2,IR,l_IR,code_started=0,count_bit;
 static short earth_comp=0;
 static short earth_skip=0;
@@ -3035,7 +3114,7 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
       {
       earth_skip++ ; 
       if ( earth_skip == EARTH_SKIP ) earth_skip = 0;
-      else add_value_to_pos(TICKS_P_STEP,&ra->pos_earth);    // Correct for the Earth's rotation but skip every 1674
+      else add_value_to_pos(-TICKS_P_STEP,&ra->pos_earth);    // Correct for the Earth's rotation but skip every 1674
       }
    
    ///////////// Process goto
@@ -3066,9 +3145,9 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
    if ( (ra->state == 0) && (dec->state == 0)) moving=0;
    else                                        moving=1;  // we are still moving 
 
-   if      ( moving )           minumum_torq = 2;  // If we are doing a GOTO or a SLEW, set the torq to a minimum of 75%
-   else if ( earth_tracking   ) minumum_torq = 1;  // If we are tracking , set the torq to a minimum of 50%
-   else                         minumum_torq = 0;  // No minimum required
+   if      ( moving )                       minumum_torq = 2;  // If we are doing a GOTO or a SLEW, set the torq to a minimum of 75%
+   else if ( earth_tracking || use_polar  ) minumum_torq = 1;  // If we are tracking , set the torq to a minimum of 50%
+   else                                     minumum_torq = 0;  // No minimum required
    effectiv_torq = torq;
    if ( effectiv_torq < minumum_torq ) effectiv_torq = minumum_torq;
 
@@ -3079,20 +3158,26 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
 //   dd_v[DDS_DEBUG + 0x1A]=moving;
 
    if ( moving ) slew_cmd=goto_cmd=0;                   // command received
-   else
-      { // also to avoid overruns
-      if ( ra_correction > loc_ra_correction )   { if ( ra_correction      - loc_ra_correction  > 200 ) ra_correction  -=200; }
-      else                                       { if ( loc_ra_correction  - ra_correction      > 200 ) ra_correction  +=200; }
-      if ( dec_correction > loc_dec_correction ) { if ( dec_correction     - loc_dec_correction > 200 ) dec_correction -=200; }
-      else                                       { if ( loc_dec_correction - dec_correction     > 200 ) dec_correction +=200; }
+
+   if      ( banding & 1 )
+      { // also to avoid overruns   // APPLY POLAR CORRECTION
+      if ( ra_correction > loc_ra_correction )   { if ( ra_correction      - loc_ra_correction  > 100 ) ra_correction  -= 100; }
+      else                                       { if ( loc_ra_correction  - ra_correction      > 100 ) ra_correction  += 100; }
+      }
+   else 
+      {
+      if ( dec_correction > loc_dec_correction ) { if ( dec_correction     - loc_dec_correction > 100 ) dec_correction -= 100; }
+      else                                       { if ( loc_dec_correction - dec_correction     > 100 ) dec_correction += 100; }
       }
    }
 
-if ( ((ssec & 0x7FF) == 0x3FF ) && (twi_hold==0) && (twi_test==0))
-   { // 5 times per seconds: update the position so that the background can use a snapshot of the position
-   twi_pos[0]  = ra->pos;
-   twi_pos[1] = dec->pos;
-   }
+// 40 times per seconds: update the position so that the background can use a snapshot of the position
+if      ( banding == 0x30 ) 
+   { if ( (twi_hold==0) && (twi_test==0) ) twi_pos[0]  = ra->pos; }
+else if ( banding == 0x40 ) 
+   { if ( (twi_hold==0) && (twi_test==0) ) twi_pos[1] = dec->pos; }
+
+banding = banding+1;  // 256 leg banding ...thats ~40hz
 
 close_loop();
 #endif
@@ -3182,6 +3267,26 @@ return free_memory;
 
 unsigned long d_ram;
 unsigned long d_state;
+
+
+/// align debug section
+PROGMEM const char pgm_debug       []="Breakpoint #:";
+void fake_align(short id,short rec_pos,long p_ra,long p_dec)
+{
+dd_v[DDS_CUR_STAR_REQ] = id;  // ask slave to get position # 62
+wait(1,SEC);
+goto_pgm_pos(id);
+display_data((char*)console_buf,0,20,pgm_debug ,1 ,FMT_FP + FMT_CONSOLE + 8);   // case #1
+while (  moving || goto_cmd || standby_goto ) wait(500,MSEC);  // wait for the end of displacement
+display_data((char*)console_buf,0,20,pgm_debug ,2 ,FMT_FP + FMT_CONSOLE + 8);   // case #1
+wait(1,SEC);
+ra->pos_target  = p_ra;
+dec->pos_target = p_dec;
+goto_cmd = 1;
+while (  moving || goto_cmd  ) wait(500,MSEC);
+display_data((char*)console_buf,0,20,pgm_debug ,3 ,FMT_FP + FMT_CONSOLE + 8);   // case #1
+wait(1,SEC); record_pos(rec_pos); twi_seq+=2; wait(1,SEC);
+}
 
 
 
@@ -3367,7 +3472,37 @@ wait(500,MSEC); twi_seq=255; wait(500,MSEC);   // Tell the slave to do a Polar a
 twi_test=0;
 #endif
 
+
+#ifdef AT_MASTER
+
+while ( align_state==0 ) wait(500,MSEC);  // wait for the first position
+
+//----
+fake_align(62,10,0x87FBEF3A,0xC7880FA4);
+fake_align(71,11,0xA01A6DE7,0x07EA89E9);
+fake_align(51,12,0x6D180F80,0x0709A4F3);
+fake_align(41,13,0x5148CC6E,0x0DC58F81);
+
+while ( align_state!=11 ) wait(500,MSEC);  // wait for the first
+wait(20,SEC);
+
+////////// end
+dd_v[DDS_CUR_STAR_REQ] = 51;  // ask slave to get position # 62
+display_data((char*)console_buf,0,20,pgm_debug ,100 ,FMT_FP + FMT_CONSOLE + 8);   // case #1
+wait(4,SEC);
+goto_pgm_pos(51);
+display_data((char*)console_buf,0,20,pgm_debug ,101 ,FMT_FP + FMT_CONSOLE + 8);   // case #1
+
+#endif
+
+
 #ifdef AT_SLAVE
+
+/// wait(5,SEC);
+/// loc_dec_correction = TICKS_P_DEG;   // to test the polar correctin
+/// wait(50,SEC);
+/// loc_dec_correction = 0;
+
 
 // Test the LCD display
 // Note: I'm an idiot and wired B0 to B3 instead of B4 to B7 which are the pins used in 4 bits mode
@@ -3677,6 +3812,9 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.83  2012/04/12 21:18:40  pmichel
+back home . . . restarting the alignment tests
+
 Revision 1.82  2012/03/31 05:15:18  pmichel
 After power up,
 we can slew around
