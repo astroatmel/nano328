@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/04/14 11:47:47 $
-$Id: telescope2.c,v 1.86 2012/04/14 11:47:47 pmichel Exp pmichel $
+$Date: 2012/04/14 12:27:41 $
+$Id: telescope2.c,v 1.87 2012/04/14 12:27:41 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.86 $
+$Revision: 1.87 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 
@@ -2179,15 +2179,14 @@ if ( use_polar )
             }
          else 
             {
-            if ( desired.x < 0 )      { desired_ra = TICKS_P_90_DEG; }                    // X > 0
-            else if ( desired.y < 0 ) { desired_ra = TICKS_P_180_DEG + TICKS_P_90_DEG; }  // X>0 and Y<0 near end
-            else                      { desired_ra = 0x00000000; }
+            desired_ra = TICKS_P_90_DEG;    // X < 0
+            //  a bit complicated for X>0 because of negative values and the dead band, so lets use a similar technique as for the DEC
             }
          }
       else if ( test_bit >= 0x00000400 ) // while this is true, polar_state will go from 11 to .... 31 
          {
          // Important:
-         // lets not forget that fp_cos() fp_sin() uses TICKs as parameter and converts them to RAD
+         // lets not forget that fp_cos() fp_sin() uses unsigned TICKs as parameter and converts them to RAD
          // so we need to be careful when trying all the bits in desired_ra... we need to exclude the deadband
          if ( use_x_instead_of_y )
             {
@@ -2200,7 +2199,8 @@ if ( use_polar )
          else
             {
             work.y  = fp_mult(fp_sin( ( desired_ra +  angle_test) ),cos_dec);  // try this bit  // Be careful, because we are using Y, 
-            if ( work.y > desired.y )   desired_ra += angle_test;             // ok, still under, use it
+            if ( work.y > desired.y )   desired_ra += angle_test;              // ok, still under, use it
+            //  a bit complicated for X>0 because of negative values and the dead band, so lets use a similar technique as for the DEC ...and fix the value at the end
 
             if ( ( debug_page==5 ) && ( kkk<23 ) ) dd_v[DDS_DEBUG + 0x01 + kkk]=work.y;
             if ( ( debug_page==6 ) && ( kkk<23 ) ) dd_v[DDS_DEBUG + 0x01 + kkk]=work.y > desired.y;
@@ -2212,6 +2212,17 @@ if ( use_polar )
          }
       else 
          {
+         if ( use_x_instead_of_y )
+            {
+            }
+         else  
+            {
+            if ( desired.x > 0 )   // fix the value we found to addapt it 
+               {
+               if ( desired_ra < TICKS_P_180_DEG ) desired_ra = TICKS_P_180_DEG - desired_ra ;              // RA above 0
+               else                                desired_ra = TICKS_P_180_DEG - desired_ra  - DEAD_BAND;  // RA below 0, remove deadband aswell
+               }
+            }
          if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x08] = work.x;
          if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x09] = work.y;
          if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x0A] = desired_ra;
@@ -3851,6 +3862,9 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.87  2012/04/14 12:27:41  pmichel
+RA works from 45 deg to -45 deg
+
 Revision 1.86  2012/04/14 11:47:47  pmichel
 DEC probably 100% ok now
 
