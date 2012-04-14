@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/04/14 12:27:41 $
-$Id: telescope2.c,v 1.87 2012/04/14 12:27:41 pmichel Exp pmichel $
+$Date: 2012/04/14 13:58:23 $
+$Id: telescope2.c,v 1.88 2012/04/14 13:58:23 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.87 $
+$Revision: 1.88 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 
@@ -39,6 +39,8 @@ TODO next version:
 
 
 TODO:
+****** Cleanup debug pages and make debug paper sheet so that I dont need to go search on the code each time ---- plus, one page per debug topic (polar align, states, )
+
 *** Problems:
 *** Seems the earth compensation is just a bit too slow
 *** Minimum tork too low 00 default tork whould be 10 (75%) and (100%) when GOTO or SLEWING /// Green light runs a PWM representing the % tork 20%, 50%, 75%, 100%
@@ -2098,14 +2100,6 @@ if ( use_polar )
             }
 
          set_vector(&work, (unsigned long * ) &ref_ra, (unsigned long * ) &ref_dec); 
-         if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x10]=ref_ra;
-         if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x11]=fp_sin(ref_ra);
-         test_bit = ref_ra << 2 ;
-         test_bit = fp_mult(test_bit,(long)0x4011CB11);
-         test_bit = test_bit << 1 ;
-         if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x12]=test_bit;
-         if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x13]=dec->pos;
-         if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x14]=ref_dec;
          }
       else if ( polar_state == 2 )
          {
@@ -2172,14 +2166,8 @@ if ( use_polar )
          kkk=0;
          test_bit = 0x40000000; 
          angle_test = TICKS_P_90_DEG;
-         if ( use_x_instead_of_y )
-            {
-            if ( desired.y < 0 )      { desired_ra = TICKS_P_180_DEG; } // negative Y
-            else                      { desired_ra = 0x00000000; }
-            }
-         else 
-            {
-            desired_ra = TICKS_P_90_DEG;    // X < 0
+         if ( use_x_instead_of_y ) desired_ra = TICKS_P_180_DEG;  // Y < 0
+         else                      desired_ra = TICKS_P_90_DEG;   // X < 0
             //  a bit complicated for X>0 because of negative values and the dead band, so lets use a similar technique as for the DEC
             }
          }
@@ -2191,20 +2179,13 @@ if ( use_polar )
          if ( use_x_instead_of_y )
             {
             work.x  = fp_mult(fp_cos(desired_ra + angle_test),cos_dec); 
-            if ( desired.y < 0 )  // negative Y
-               { if ( work.x < desired.x )   desired_ra += angle_test;   }          // ok, still under, use it 
-            else
-               { if ( work.x > desired.x )   desired_ra += angle_test;   }          // ok, still under, use it 
-             }
+            if ( work.x < desired.x )   desired_ra += angle_test; // ok, still under, use it
+            }
          else
             {
             work.y  = fp_mult(fp_sin( ( desired_ra +  angle_test) ),cos_dec);  // try this bit  // Be careful, because we are using Y, 
             if ( work.y > desired.y )   desired_ra += angle_test;              // ok, still under, use it
             //  a bit complicated for X>0 because of negative values and the dead band, so lets use a similar technique as for the DEC ...and fix the value at the end
-
-            if ( ( debug_page==5 ) && ( kkk<23 ) ) dd_v[DDS_DEBUG + 0x01 + kkk]=work.y;
-            if ( ( debug_page==6 ) && ( kkk<23 ) ) dd_v[DDS_DEBUG + 0x01 + kkk]=work.y > desired.y;
-            if ( ( debug_page==7 ) && ( kkk<23 ) ) dd_v[DDS_DEBUG + 0x01 + kkk]=desired_ra;
             }
          test_bit = test_bit >> 1;
          angle_test = angle_test >> 1;
@@ -2214,6 +2195,10 @@ if ( use_polar )
          {
          if ( use_x_instead_of_y )
             {
+            if ( desired.y > 0 )
+               {
+               desired_ra = TICKS_P_DAY - desired_ra ; 
+               }
             }
          else  
             {
@@ -2243,17 +2228,13 @@ if ( use_polar )
       } 
    else if ( polar_state<90 )  // states [80..89] final, generate the delta RA and delta DEC
       {
-      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x14]=ref_ra;
-      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x15]=desired_ra;
-      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x16]=ref_dec;
-      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x17]=desired_dec;
+//      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x14]=ref_ra;
+//      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x15]=desired_ra;
+//      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x16]=ref_dec;
+//      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x17]=desired_dec;
 
       loc_ra_correction  = desired_ra  - ref_ra;
       loc_dec_correction = desired_dec - ref_dec;
-//      if      ( desired_ra  >= 0 && ref_ra  <  0 ) loc_ra_correction  -= DEAD_BAND; 
-//      else if ( desired_ra  <  0 && ref_ra  >= 0 ) loc_ra_correction  += DEAD_BAND; 
-//      if      ( desired_dec >= 0 && ref_dec <  0 ) loc_dec_correction -= DEAD_BAND; 
-//      else if ( desired_dec <  0 && ref_dec >= 0 ) loc_dec_correction += DEAD_BAND; 
 
       polar_state = 0;
 
@@ -3862,6 +3843,10 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.88  2012/04/14 13:58:23  pmichel
+This version should be 100% for the polar correction
+but I will simplify it one bit.
+
 Revision 1.87  2012/04/14 12:27:41  pmichel
 RA works from 45 deg to -45 deg
 
