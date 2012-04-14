@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/04/13 15:50:39 $
-$Id: telescope2.c,v 1.84 2012/04/13 15:50:39 pmichel Exp pmichel $
+$Date: 2012/04/14 11:10:44 $
+$Id: telescope2.c,v 1.85 2012/04/14 11:10:44 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.84 $
+$Revision: 1.85 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 
@@ -2131,21 +2131,28 @@ if ( use_polar )
       }
    else if ( polar_state<40 )  // states [10..39] where we find the required DEC to get the same Z as the desired Z
       {
-      if      ( polar_state == 11 ) // setup
-         {
-         if ( desired.z & 0x80000000 ) desired_dec=0x80000000; // negative DEC
-         else                          desired_dec=0x00000000;
-         test_bit = 0x40000000; 
+      if      ( polar_state == 11 ) // setup  .... careful, RA is from 0 to 360, as all ticks values (positive)....but DEC is "signed" :(
+         {                          // so because DEC is signed, I will search from 0 to 180 deg
+         angle_test  = TICKS_P_90_DEG;
+         desired_dec = 0x00000000;
+         test_bit    = 0x40000000; 
          }
       else if ( test_bit >= 0x00000400 ) // while this is true, polar_state will go from 11 to .... 31 
          {
-         work.z = fp_sin(desired_dec | test_bit);  // try this bit    // Short version of set_vector() function
-         if ( work.z < desired.z ) desired_dec |= test_bit; // ok, still under, set the bit
+         work.z = fp_cos(desired_dec + angle_test);           
+         if ( work.z > desired.z ) desired_dec += angle_test; // ok, still over, add to the angle
          test_bit = test_bit >> 1;
+         angle_test = angle_test >> 1;
          }
       else  // go to next stage
          {
          long abs_x,abs_y;
+
+         // ok, I found desired_dec, but I need to do the math to bring desired_dec to the proper value: desired_dec = TICKS_P_90_DEG - desired_dec;
+         cos_dec = fp_sin(desired_dec);                 // Required for the next stages, since fp_functions work from -45 to 360 only, I use desired_dec+90 and sin()
+         if ( desired_dec < TICKS_P_90_DEG ) desired_dec = TICKS_P_90_DEG - desired_dec;              // DEC above 0
+         else                                desired_dec = TICKS_P_90_DEG - desired_dec - DEAD_BAND;  // DEC below 0, remove deadband aswell
+
          if ( desired.x < 0 ) abs_x = -desired.x;
          else                 abs_x =  desired.x;
          if ( desired.y < 0 ) abs_y = -desired.y;
@@ -2153,7 +2160,6 @@ if ( use_polar )
          if ( abs_x > abs_y ) use_x_instead_of_y = 0;    // use Y to converge
          else                 use_x_instead_of_y = 1;    // use X to converge
          polar_state = 40;    // use X to converge
-         cos_dec = fp_cos(desired_dec);            // Required for the next stages
          if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x04]=use_x_instead_of_y;
          if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x05]=abs_x;
          if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x06]=abs_y;
@@ -2174,18 +2180,9 @@ if ( use_polar )
             {
             angle_test = TICKS_P_90_DEG;
             test_bit = 0x40000000; // 
-            if ( desired.x < 0 )  // X < 0
-               {
-               desired_ra = TICKS_P_90_DEG; 
-               }
-            else if ( desired.y < 0 )  // X>0 and Y<0 near end
-               {
-               desired_ra = TICKS_P_180_DEG + TICKS_P_90_DEG;
-               }
-            else
-               {
-               desired_ra = 0;
-               }
+            if ( desired.x < 0 )      { desired_ra = TICKS_P_90_DEG; }                    // X > 0
+            else if ( desired.y < 0 ) { desired_ra = TICKS_P_180_DEG + TICKS_P_90_DEG; }  // X>0 and Y<0 near end
+            else                      { desired_ra = 0x00000000; }
             }
          }
       else if ( test_bit >= 0x00000400 ) // while this is true, polar_state will go from 11 to .... 31 
@@ -3855,6 +3852,11 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.85  2012/04/14 11:10:44  pmichel
+found a big error with fp_sin() -> a factor had to be adjusted when I changed the nb of tick per day
+some errors remains in the arcsin
+I will change all the arc sin methods in the next version
+
 Revision 1.84  2012/04/13 15:50:39  pmichel
 First version Master/Slave where the polar align works
 there is still a little glitch in the arcsin arccos...we see it when slewing
