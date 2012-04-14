@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/04/12 21:18:40 $
-$Id: telescope2.c,v 1.83 2012/04/12 21:18:40 pmichel Exp pmichel $
+$Date: 2012/04/13 15:50:39 $
+$Id: telescope2.c,v 1.84 2012/04/13 15:50:39 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.83 $
+$Revision: 1.84 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 
@@ -142,7 +142,7 @@ void wait(long time,long mult);
 // Debug Page 3 : 
 // Debug Page 4 : 
 char debug_page=3; // depending of the debug mode, change what the debug shows 
-char nb_debug_page=4;
+#define  NB_DEBUG_PAGE 7 
 char align_state=0; // 0 : Waiting Reference RA     -> the first PLAY X X X tells the controler that we did point the telescope at a known bright star, thus setting the RA and DEC
                     // 1 : fake a first alignment correction  (debug)
                     // 2 : fake a second alignment correction  (debug)
@@ -219,10 +219,10 @@ char fast_portc=0;
   
 #define DEAD_BAND        (925367296)                        //  925367296    // 0x3727FC00  // This is 0x100000000 - TICKS_P_DAY = 925367296
 #define TICKS_P_STEP     (4*81*5)                           //       1620    //             // 1620 which is easy to sub divide without fractions 
-#define TICKS_P_DAY      (2080000UL   *TICKS_P_STEP      )  // 3369600000    // 0xD      0  // One day = 360deg = 2080000 micro steps
+#define TICKS_P_DAY      (2080000UL   *TICKS_P_STEP      )  // 3369600000    // 0xC8D80400  // One day = 360deg = 2080000 micro steps   ///// Warning: fp_sin() has a factor that relies on TICKS_P_DAY being=3369600000
 #define TICKS_P_DEG      (2080000UL   *TICKS_P_STEP/360UL)  //    9360000    //   0x8ED280  // 
 #define TICKS_P_45_DEG   (2080000UL   *TICKS_P_STEP/8UL  )  //  421200000    // 0x191B0080  //
-#define TICKS_P_90_DEG   (2080000UL   *TICKS_P_STEP/4UL  )  //  210900000    // 0x0C......  //
+#define TICKS_P_90_DEG   (2080000UL   *TICKS_P_STEP/4UL  )  //  842400000    // 0x32360100  //
 #define TICKS_P_180_DEG  (2080000UL   *TICKS_P_STEP/2UL  )  // 1684800000    // 0x646C0200  // 
 #define TICKS_P_DEG_MIN  (TICKS_P_DEG/60UL)                 //    1560000    //             // 
 #define TICKS_P_DEG_SEC  (TICKS_P_DEG/3600UL)               //      26000    //             // 
@@ -561,9 +561,13 @@ else if ( tick_angle > TICKS_P_45_DEG * 3 ) tick = tick_angle - 4*TICKS_P_45_DEG
 else if ( tick_angle > TICKS_P_45_DEG * 1 ) tick = tick_angle - 2*TICKS_P_45_DEG;   // then use  cos(x)
 else                                        tick = tick_angle - 0*TICKS_P_45_DEG;   // then use  sin(x)
 
-tick = tick << 2 ; // multiply by 4 because the factor is 3.253529539    -> TICKS * 3.253529539 = RADIANS in fixed point
-                  // 3.25 exceeds the floating point range which is 1.0, so we multiply by 4 then by 0.813382384 (which is 3.253529539/4.0)
-rad = fp_mult(tick,(long)0x681CE9FB);
+///---tick = tick << 2 ; // multiply by 4 because the factor is 3.253529539    -> TICKS * 3.253529539 = RADIANS in fixed point    (this was with 1 Day  = 4147200000 ticks)
+///---                  // 3.25 exceeds the floating point range which is 1.0, so we multiply by 4 then by 0.813382384 (which is 3.253529539/4.0)
+///---rad = fp_mult(tick,(long)0x681CE9FB);
+tick = tick << 2 ;  // multiply by 8 because the factor is 4.004344048 * TICKS = RADIANS in fixed point
+                   // this value exceeds the floating point range which is 1.0, so we multiply by 8 then by 0.500543006 (which is 4.004344048/8.0)
+rad = fp_mult(tick,(long)0x4011CB11);
+rad = rad << 1 ;
 
 if      ( tick_angle > TICKS_P_45_DEG * 7 ) return  fp_sin_low(rad,0);                    // then  sin(x)
 else if ( tick_angle > TICKS_P_45_DEG * 5 ) return -fp_sin_low(rad,1);                    // then -cos(x)
@@ -581,9 +585,13 @@ else if ( tick_angle > TICKS_P_45_DEG * 3 ) tick = tick_angle - 4*TICKS_P_45_DEG
 else if ( tick_angle > TICKS_P_45_DEG * 1 ) tick = tick_angle - 2*TICKS_P_45_DEG;   // then use -sin(x)
 else                                        tick = tick_angle - 0*TICKS_P_45_DEG;   // then use  cos(x)
 
-tick = tick << 2 ; // multiply by 4 because the factor is 3.253529539    -> TICKS * 3.253529539 = RADIANS in fixed point
-                  // 3.25 exceeds the floating point range which is 1.0, so we multiply by 4 then by 0.813382384 (which is 3.253529539/4.0)
-rad = fp_mult(tick,(long)0x681CE9FB);
+///---tick = tick << 2 ; // multiply by 4 because the factor is 3.253529539    -> TICKS * 3.253529539 = RADIANS in fixed point
+///---                  // 3.25 exceeds the floating point range which is 1.0, so we multiply by 4 then by 0.813382384 (which is 3.253529539/4.0)
+///---rad = fp_mult(tick,(long)0x681CE9FB);
+tick = tick << 2 ;  // multiply by 8 because the factor is 4.004344048 * TICKS = RADIANS in fixed point
+                   // this value exceeds the floating point range which is 1.0, so we multiply by 8 then by 0.500543006 (which is 4.004344048/8.0)
+rad = fp_mult(tick,(long)0x4011CB11);
+rad = rad << 1 ;
 
 if      ( tick_angle > TICKS_P_45_DEG * 7 ) return  fp_sin_low(rad,1);                    // then  cos(x)
 else if ( tick_angle > TICKS_P_45_DEG * 5 ) return  fp_sin_low(rad,0);                    // then  sin(x)
@@ -833,15 +841,15 @@ dd_v[DDS_DEBUG_PAGE]  = debug_page;
             const_jj = pgm_read_byte ( & pgm_const_name[c_pointed*CONSTEL_NAME_LEN+0] );  // Get Constellation ID of current selection
             if ( const_jj==const_id ) break; // found it
             }
-dd_v[DDS_DEBUG + 0x0b] = const_jj;  // 0x19   =25
-dd_v[DDS_DEBUG + 0x0c] = star_id;   // 0x11  
-dd_v[DDS_DEBUG + 0x0d] = const_id;  // 0x19
-dd_v[DDS_DEBUG + 0x0e] = star_jj;   // 0x11
+dd_v[DDS_DEBUG + 0x0B] = const_jj;  // 0x19   =25
+dd_v[DDS_DEBUG + 0x0C] = star_id;   // 0x11  
+dd_v[DDS_DEBUG + 0x0D] = const_id;  // 0x19
+dd_v[DDS_DEBUG + 0x0E] = star_jj;   // 0x11
          }
           
-dd_v[DDS_DEBUG + 0x1b] = dd_v[DDS_CUR_STAR_REQ];   ////////////// 0x11
-dd_v[DDS_DEBUG + 0x1c] = s_pointed;                      // 0x0 
-dd_v[DDS_DEBUG + 0x1d] = c_pointed;                      // 0x1
+dd_v[DDS_DEBUG + 0x1B] = dd_v[DDS_CUR_STAR_REQ];   ////////////// 0x11
+dd_v[DDS_DEBUG + 0x1C] = s_pointed;                      // 0x0 
+dd_v[DDS_DEBUG + 0x1D] = c_pointed;                      // 0x1
       // update the strings
       scan++;
       if ( scan == (STAR_NAME_LEN - STAR_NAME_CODES) + (CONSTEL_NAME_LEN - CONSTEL_NAME_CODES) ) 
@@ -1865,7 +1873,7 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
       else if ( code_idx == IDX_VCR1_INFO    ) 
          {
          debug_page ++ ;
-         if ( debug_page> nb_debug_page ) debug_page = 0;
+         if ( debug_page> NB_DEBUG_PAGE ) debug_page = 0;
          for ( iii=0 ; iii<32 ; iii++ ) dd_v[DDS_DEBUG + iii] = 0;
          }
       else if ( code_idx == IDX_VCR1_POWER   ) 
@@ -1933,11 +1941,11 @@ unsigned char CCC;
 //dd_v[DDS_DEBUG + 0x07]=dec->state;
 //dd_v[DDS_DEBUG + 0x0D]=goto_cmd + 0x100*moving;
 //dd_v[DDS_DEBUG + 0x0F]=ra->state;
-if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x14] = ra_correction;
-if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x15] = dec_correction;
-if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x1C] = loc_ra_correction;
-if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x1D] = loc_dec_correction;
-if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x1E] = align_state + 0x123000; //temp
+if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x08] = ra_correction;
+if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x09] = dec_correction;
+if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x0A] = loc_ra_correction;
+if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x0B] = loc_dec_correction;
+if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x0C] = align_state + 0x123000; //temp
 
 if ( redraw ) 
    {
@@ -2065,10 +2073,12 @@ if ( use_polar )
    static VECTOR desired;
    static unsigned char polar_state=0;  // use states to spread the work into many little chunks...mainly because I can have AP0 with SP0
    static unsigned char use_x_instead_of_y=0;  //
-   static long desired_dec,ref_dec;
-   static long desired_ra,ref_ra;
-   static long test_bit;
+   static unsigned long desired_dec,ref_dec;
+   static unsigned long desired_ra,ref_ra;
+   static unsigned long test_bit;
    static long cos_dec;   // temp label
+   static long angle_test; // new method
+   static short kkk;
 
    if ( polar_state<10 )  // states [0..9] used to calculate desired X Y Z position
       {
@@ -2088,6 +2098,14 @@ if ( use_polar )
             }
 
          set_vector(&work, (unsigned long * ) &ref_ra, (unsigned long * ) &ref_dec); 
+         if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x10]=ref_ra;
+         if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x11]=fp_sin(ref_ra);
+         test_bit = ref_ra << 2 ;
+         test_bit = fp_mult(test_bit,(long)0x4011CB11);
+         test_bit = test_bit << 1 ;
+         if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x12]=test_bit;
+         if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x13]=dec->pos;
+         if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x14]=ref_dec;
          }
       else if ( polar_state == 2 )
          {
@@ -2145,6 +2163,7 @@ if ( use_polar )
       {
       if      ( polar_state == 41 ) // setup
          {
+         kkk=0;
          if ( use_x_instead_of_y )
             {
             if ( desired.y & 0x80000000 ) desired_ra=0x80000000; // negative Y
@@ -2153,10 +2172,20 @@ if ( use_polar )
             }
          else 
             {
-            if ( desired.x & 0x80000000 )      desired_ra=0x00000000; // negative Y
-            else if ( desired.y & 0x80000000 ) desired_ra=0x80000000;
-            else                               desired_ra=0x00000000;
-            test_bit = 0x40000000; 
+            angle_test = TICKS_P_90_DEG;
+            test_bit = 0x40000000; // 
+            if ( desired.x < 0 )  // X < 0
+               {
+               desired_ra = TICKS_P_90_DEG; 
+               }
+            else if ( desired.y < 0 )  // X>0 and Y<0 near end
+               {
+               desired_ra = TICKS_P_180_DEG + TICKS_P_90_DEG;
+               }
+            else
+               {
+               desired_ra = 0;
+               }
             }
          }
       else if ( test_bit >= 0x00000400 ) // while this is true, polar_state will go from 11 to .... 31 
@@ -2174,20 +2203,34 @@ if ( use_polar )
             }
          else
             {
-            work.y  = fp_mult(fp_cos( ( desired_ra | test_bit) - TICKS_P_90_DEG),cos_dec);  // try this bit  // Be careful, because we are using Y, 
-            if ( desired.x > 0) 
-               { if ( work.y < desired.y ) desired_ra |= test_bit; } // ok, still under, set the bit
-            else
-               { if ( work.y > desired.y ) desired_ra |= test_bit; } // ok, still under, set the bit
+            work.y  = fp_mult(fp_sin( ( desired_ra +  angle_test) ),cos_dec);  // try this bit  // Be careful, because we are using Y, 
+            if ( work.y > desired.y )   desired_ra += angle_test;             // ok, still under, use it
+
+            if ( ( debug_page==5 ) && ( kkk<23 ) ) dd_v[DDS_DEBUG + 0x01 + kkk]=work.y;
+            if ( ( debug_page==6 ) && ( kkk<23 ) ) dd_v[DDS_DEBUG + 0x01 + kkk]=work.y > desired.y;
+            if ( ( debug_page==7 ) && ( kkk<23 ) ) dd_v[DDS_DEBUG + 0x01 + kkk]=desired_ra;
             }
          test_bit = test_bit >> 1;
-
-         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x08]=work.x;
-         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x09]=work.y;
-         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x0A]=desired_ra;
+         angle_test = angle_test >> 1;
+         kkk++;
          }
       else 
          {
+         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x08] = work.x;
+         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x09] = work.y;
+         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x0A] = desired_ra;
+         if ( (debug_page==3) && (test_bit==0x80000000) ) dd_v[DDS_DEBUG + 0x07]=work.y;
+         if ( (debug_page==3) && (test_bit==0x80000000) ) dd_v[DDS_DEBUG + 0x0F]=desired.y;
+         if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x1A]++;
+
+         if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x01]=desired.y;
+         if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x02]=work.y;
+         if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x03]=desired_ra ;
+         if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x04]=ref_ra;
+         if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x05]=fp_sin(desired_ra);
+         if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x06]=fp_sin(ref_ra);
+         if ( debug_page==4 ) dd_v[DDS_DEBUG + 0x07]=cos_dec;
+
          polar_state = 80; // go to next stage
          }
       } 
@@ -2197,14 +2240,13 @@ if ( use_polar )
       if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x15]=desired_ra;
       if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x16]=ref_dec;
       if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x17]=desired_dec;
-      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x1A]++;
 
       loc_ra_correction  = desired_ra  - ref_ra;
       loc_dec_correction = desired_dec - ref_dec;
-      if      ( desired_ra  >= 0 && ref_ra  <  0 ) loc_ra_correction  -= DEAD_BAND; 
-      else if ( desired_ra  <  0 && ref_ra  >= 0 ) loc_ra_correction  += DEAD_BAND; 
-      if      ( desired_dec >= 0 && ref_dec <  0 ) loc_dec_correction -= DEAD_BAND; 
-      else if ( desired_dec <  0 && ref_dec >= 0 ) loc_dec_correction += DEAD_BAND; 
+//      if      ( desired_ra  >= 0 && ref_ra  <  0 ) loc_ra_correction  -= DEAD_BAND; 
+//      else if ( desired_ra  <  0 && ref_ra  >= 0 ) loc_ra_correction  += DEAD_BAND; 
+//      if      ( desired_dec >= 0 && ref_dec <  0 ) loc_dec_correction -= DEAD_BAND; 
+//      else if ( desired_dec <  0 && ref_dec >= 0 ) loc_dec_correction += DEAD_BAND; 
 
       polar_state = 0;
 
@@ -3481,7 +3523,8 @@ while ( align_state==0 ) wait(500,MSEC);  // wait for the first position
 fake_align(62,10,0x87FBEF3A,0xC7880FA4);
 fake_align(71,11,0xA01A6DE7,0x07EA89E9);
 fake_align(51,12,0x6D180F80,0x0709A4F3);
-fake_align(41,13,0x5148CC6E,0x0DC58F81);
+//fake_align(41,13,0x5148CC6E,0x0DC58F81);
+//fake_align(45,14,0x5DB37BDA,0x0C337D63);
 
 while ( align_state!=11 ) wait(500,MSEC);  // wait for the first
 wait(20,SEC);
@@ -3812,6 +3855,11 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.84  2012/04/13 15:50:39  pmichel
+First version Master/Slave where the polar align works
+there is still a little glitch in the arcsin arccos...we see it when slewing
+need to output better feedback
+
 Revision 1.83  2012/04/12 21:18:40  pmichel
 back home . . . restarting the alignment tests
 
