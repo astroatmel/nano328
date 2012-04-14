@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/04/14 11:10:44 $
-$Id: telescope2.c,v 1.85 2012/04/14 11:10:44 pmichel Exp pmichel $
+$Date: 2012/04/14 11:47:47 $
+$Id: telescope2.c,v 1.86 2012/04/14 11:47:47 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.85 $
+$Revision: 1.86 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 
@@ -2170,16 +2170,15 @@ if ( use_polar )
       if      ( polar_state == 41 ) // setup
          {
          kkk=0;
+         test_bit = 0x40000000; 
+         angle_test = TICKS_P_90_DEG;
          if ( use_x_instead_of_y )
             {
-            if ( desired.y & 0x80000000 ) desired_ra=0x80000000; // negative Y
-            else                          desired_ra=0x00000000;
-            test_bit = 0x40000000; 
+            if ( desired.y < 0 )      { desired_ra = TICKS_P_180_DEG; } // negative Y
+            else                      { desired_ra = 0x00000000; }
             }
          else 
             {
-            angle_test = TICKS_P_90_DEG;
-            test_bit = 0x40000000; // 
             if ( desired.x < 0 )      { desired_ra = TICKS_P_90_DEG; }                    // X > 0
             else if ( desired.y < 0 ) { desired_ra = TICKS_P_180_DEG + TICKS_P_90_DEG; }  // X>0 and Y<0 near end
             else                      { desired_ra = 0x00000000; }
@@ -2192,12 +2191,12 @@ if ( use_polar )
          // so we need to be careful when trying all the bits in desired_ra... we need to exclude the deadband
          if ( use_x_instead_of_y )
             {
-            work.x  = fp_mult(fp_cos(desired_ra | test_bit),cos_dec);  // try this bit     // Short version of set_vector() function
-            if ( desired.y > 0) 
-               { if ( work.x > desired.x) desired_ra |= test_bit; } // ok, still under, set the bit
+            work.x  = fp_mult(fp_cos(desired_ra + angle_test),cos_dec); 
+            if ( desired.y < 0 )  // negative Y
+               { if ( work.x < desired.x )   desired_ra += angle_test;   }          // ok, still under, use it 
             else
-               { if ( work.x < desired.x) desired_ra |= test_bit; } // ok, still under, set the bit
-            }
+               { if ( work.x > desired.x )   desired_ra += angle_test;   }          // ok, still under, use it 
+             }
          else
             {
             work.y  = fp_mult(fp_sin( ( desired_ra +  angle_test) ),cos_dec);  // try this bit  // Be careful, because we are using Y, 
@@ -3519,9 +3518,9 @@ while ( align_state==0 ) wait(500,MSEC);  // wait for the first position
 //----
 fake_align(62,10,0x87FBEF3A,0xC7880FA4);
 fake_align(71,11,0xA01A6DE7,0x07EA89E9);
-fake_align(51,12,0x6D180F80,0x0709A4F3);
-//fake_align(41,13,0x5148CC6E,0x0DC58F81);
-//fake_align(45,14,0x5DB37BDA,0x0C337D63);
+fake_align(45,12,0x5DB37BDA,0x0C337D63);
+fake_align(41,13,0x5148CC6E,0x0DC58F81);
+fake_align(51,14,0x6D180F80,0x0709A4F3);
 
 while ( align_state!=11 ) wait(500,MSEC);  // wait for the first
 wait(20,SEC);
@@ -3852,6 +3851,9 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.86  2012/04/14 11:47:47  pmichel
+DEC probably 100% ok now
+
 Revision 1.85  2012/04/14 11:10:44  pmichel
 found a big error with fp_sin() -> a factor had to be adjusted when I changed the nb of tick per day
 some errors remains in the arcsin
