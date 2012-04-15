@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/04/14 13:58:23 $
-$Id: telescope2.c,v 1.88 2012/04/14 13:58:23 pmichel Exp pmichel $
+$Date: 2012/04/14 14:35:48 $
+$Id: telescope2.c,v 1.89 2012/04/14 14:35:48 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.88 $
+$Revision: 1.89 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 
@@ -42,8 +42,6 @@ TODO:
 ****** Cleanup debug pages and make debug paper sheet so that I dont need to go search on the code each time ---- plus, one page per debug topic (polar align, states, )
 
 *** Problems:
-*** Seems the earth compensation is just a bit too slow
-*** Minimum tork too low 00 default tork whould be 10 (75%) and (100%) when GOTO or SLEWING /// Green light runs a PWM representing the % tork 20%, 50%, 75%, 100%
 ** Add a search patern function to locate a point of interest
 ** use yellow pwm sequence to indicate remote control input state (command) off = ready to process a command 25% means 1 key in, 50%: 2 key in ...  max sequqnce = 100% solid
 *** if Motor off and tracking, then position decrements (we fall back)
@@ -143,16 +141,17 @@ void wait(long time,long mult);
 // Debug Page 2 : Shows TWI buffer of what the Master receives (on the master console) and what the Slave sends (on the slave console)
 // Debug Page 3 : 
 // Debug Page 4 : 
-char debug_page=3; // depending of the debug mode, change what the debug shows 
+char debug_page = 3; // depending of the debug mode, change what the debug shows 
 #define  NB_DEBUG_PAGE 7 
-char align_state=0; // 0 : Waiting Reference RA     -> the first PLAY X X X tells the controler that we did point the telescope at a known bright star, thus setting the RA and DEC
-                    // 1 : fake a first alignment correction  (debug)
-                    // 2 : fake a second alignment correction  (debug)
-                    // ...
-                    // 10 : Star Position Correction -> ask the controler to go to known stars, and manually correct the position
-                    // 11 : Polar Align              -> after 5 or more corrected stars , the slave will do the polar align
-                    // 12 : Aligned                  -> Ready to operate
+char align_state = 0; // 0 : Waiting Reference RA     -> the first PLAY X X X tells the controler that we did point the telescope at a known bright star, thus setting the RA and DEC
+                      // 1 : fake a first alignment correction  (debug)
+                      // 2 : fake a second alignment correction  (debug)
+                      // ...
+                      // 10 : Star Position Correction -> ask the controler to go to known stars, and manually correct the position
+                      // 11 : Polar Align              -> after 5 or more corrected stars , the slave will do the polar align
+                      // 12 : Aligned                  -> Ready to operate
                        
+unsigned char cmd_state=0;
 
 char fast_portc=0;
 
@@ -226,8 +225,8 @@ char fast_portc=0;
 #define TICKS_P_45_DEG   (2080000UL   *TICKS_P_STEP/8UL  )  //  421200000    // 0x191B0080  //
 #define TICKS_P_90_DEG   (2080000UL   *TICKS_P_STEP/4UL  )  //  842400000    // 0x32360100  //
 #define TICKS_P_180_DEG  (2080000UL   *TICKS_P_STEP/2UL  )  // 1684800000    // 0x646C0200  // 
-#define TICKS_P_DEG_MIN  (TICKS_P_DEG/60UL)                 //    1560000    //             // 
-#define TICKS_P_DEG_SEC  (TICKS_P_DEG/3600UL)               //      26000    //             // 
+#define TICKS_P_DEG_MIN  (TICKS_P_DEG/60UL)                 //     156000    //             // 
+#define TICKS_P_DEG_SEC  (TICKS_P_DEG/3600UL)               //       2600    //             // 
 #define TICKS_P_HOUR     (2080000UL   *TICKS_P_STEP/24UL)   //  140400000    //             // 
 #define TICKS_P_MIN      (TICKS_P_HOUR/60UL)                //    2340000    //             // 
 #define TICKS_P_SEC      (TICKS_P_HOUR/3600UL)              //      39000    //             // 
@@ -337,7 +336,25 @@ typedef struct   // those values are required per axis to be able to execute got
 
 #ifdef AT_MASTER
 static char set_ra_armed=0;
+PROGMEM const long mosaic_span[10] = {
+                                      1 * TICKS_P_DEG_MIN, // 0 : one minute
+                                      2 * TICKS_P_DEG_MIN, // 1 : two minute
+                                      4 * TICKS_P_DEG_MIN, // 2 : four minute
+                                      6 * TICKS_P_DEG_MIN, // 3 : six minute
+                                      8 * TICKS_P_DEG_MIN, // 4 : eight minute
+                                     10 * TICKS_P_DEG_MIN, // 5 : ten minute
+                                     20 * TICKS_P_DEG_MIN, // 6 : twenty minute
+                                     30 * TICKS_P_DEG_MIN, // 7 : thirty minute
+                                     60 * TICKS_P_DEG_MIN, // 8 : one degree
+                                    120 * TICKS_P_DEG_MIN, // 9 : two degrees
+                                     };
+long   mosaic_base_ra,mosaic_base_dec;
+char   mosaic_span_idx;
+char   mosaic_nb_tiles;
+char   mosaic_seq_ra;
+char   mosaic_seq_de;
 #endif
+short  mosaic_seconds=-1;  // -1 means mosaic not active
 
 AXIS *ra;   // points in the display array dd_v
 AXIS *dec;  // points in the display array dd_v
@@ -764,7 +781,7 @@ PROGMEM const unsigned char dd_f[DD_FIELDS]=
 #define DDS_RA_POS2       0x50 
 #define DDS_RA_POS2_COR   0x51 
 #define DDS_RA_POS2_HW    0x52 
-#define DDS_SECONDS       0x53 
+#define DDS_SECONDS       0x53  // dd_v[DDS_SECONDS] 
 #define DDS_STAR_DEC_POS  0x54  // dd_v[DDS_STAR_DEC_POS]        // place to store the current star DEC (set by slave)
 #define DDS_STAR_RA_POS   0x55  // dd_v[DDS_STAR_RA_POS]        // place to store the current star RA (set by slave)
 #define DDS_STAR_RA_POS2  0x56  // dd_v[DDS_STAR_Ra_POS2]      // place to store the current star RA (set by slave)
@@ -1398,6 +1415,7 @@ VECTOR star,real_star;
 
 use_polar=0;
 motor_disable = 1; // get all the CPU time we can
+align_state=11;
 
 for ( pass = 1 ; pass <=2 ; pass ++ )
    {
@@ -1497,6 +1515,7 @@ for ( pass = 1 ; pass <=2 ; pass ++ )
 generate_polar_matrix(& PoleMatrix,&polar_ra, &polar_dec, &shift,1);
    
 use_polar=1;
+align_state=12;
 }
 
   
@@ -1522,6 +1541,77 @@ Declin :
 */
      
 #ifdef AT_MASTER
+
+void mosaic(void)
+{
+static char last_sec;
+char        cur_sec;
+if ( debug_page==7 ) dd_v[DDS_DEBUG + 0x18]=ra->pos_earth;
+
+if ( mosaic_seconds==-1 ) return; // mosaic not active
+
+cur_sec = dd_v[DDS_SECONDS]&0x7F;
+if ( moving || goto_cmd ) return;
+
+
+if ( mosaic_seconds==-2 ) //cancel
+   {
+   ra->pos_target  = mosaic_base_ra;  
+   dec->pos_target = mosaic_base_dec;
+   goto_cmd = 1;
+   mosaic_seconds = -1;
+   }
+
+if ( cur_sec != last_sec ) mosaic_seconds++;  // for now, hardcode to 35 seconds (assume 30 seconds photos)
+last_sec = cur_sec;
+
+
+if ( mosaic_seconds > 36 )  // next move...
+   {
+   long sss,rrr,ddd,uuu;
+   mosaic_seconds = 0;
+
+   sss = pgm_read_dword(&mosaic_span[(short)mosaic_span_idx]);
+   rrr = mosaic_seq_ra   * sss;
+   ddd = mosaic_seq_de   * sss;
+   uuu = mosaic_nb_tiles * sss;
+   uuu = uuu >> 1 ;
+
+   if ( mosaic_seq_ra > mosaic_nb_tiles ) // we are done...
+      {
+      rrr = ddd = uuu = 0; // goto start pos
+      mosaic_seconds = -1;
+      }
+ 
+   ra->pos_target  = mosaic_base_ra  - rrr + uuu;  // ra needs to progress from left to right to avoid excessive mechanical friction removal
+   dec->pos_target = mosaic_base_dec - ddd + uuu;
+   //standby_goto = 1;   // ask to fix the error
+   //while ( standby_goto > 0 ) display_next();   // wait until we are corrected
+   //standby_goto = 0;
+   goto_cmd = 1;
+
+   // setup the next position...
+   mosaic_seq_de++;
+   if ( mosaic_seq_de > mosaic_nb_tiles )
+      {
+      mosaic_seq_de = 0;
+      mosaic_seq_ra++;
+      }   
+
+//   if ( debug_page==7 ) 
+//      {
+//      dd_v[DDS_DEBUG + 0x02]=sss;
+//      dd_v[DDS_DEBUG + 0x03]=rrr;
+//      dd_v[DDS_DEBUG + 0x04]=ddd;
+//      dd_v[DDS_DEBUG + 0x05]=mosaic_seq_ra;
+//      dd_v[DDS_DEBUG + 0x06]=ra->pos_target;
+//      dd_v[DDS_DEBUG + 0x07]=mosaic_seq_de;
+//      dd_v[DDS_DEBUG + 0x08]=dec->pos_target;
+//      dd_v[DDS_DEBUG + 0x09]=uuu;
+//      dd_v[DDS_DEBUG + 0x0A]=mosaic_nb_tiles;
+//      }
+   }
+}
  
 #define PROSCAN_VCR1_0      0x021CFE30
 #define PROSCAN_VCR1_1      0x021CEE31
@@ -1604,6 +1694,7 @@ Declin :
 - Store corrected star position 1-10  (complex command sequence)    r!X                       [RECORD  + ANTENA + X]  //  10 slots for star correction
 - goto  corrected star position 1-10  (complex command sequence)    p!X                       [PLAY    + ANTENA + X]  //     each slot also contains the index of the star (reference)
 - goto  directory start position 1-??  (complex command sequence)   pXXX                      [PLAY    + X + X + X]  // The first play sets the reference RA
+- Run a special command                                             gXXX                      [GUIDE   + X + X + X]  // use for : Mosaic and Fake align
 - Go to Catalog star                                                *                         [GO BACK] 
 - Select next/previous star from catalog                            < / >                     [FWD/REV] 
 - clear all generic recorded positions                              <del> .                   [CLEAR   + INPUT]
@@ -1642,6 +1733,7 @@ char set_next_input(char idx_code)   // determine the type of input ; this valus
 {
 if ( idx_code <= IDX_VCR1_9                       )           return 0;  // 0-9
 if ( idx_code == IDX_VCR1_PLAY                    )           return 1;  // PLAY   / 'p'
+if ( idx_code == IDX_VCR1_GUIDE                   )           return 1;  // GUIDE  / 'g'
 if ( idx_code == IDX_VCR1_RECORD                  )           return 2;  // RECORD / 'r'
 if ( idx_code == IDX_VCR1_CLEAR                   )           return 3;  // CLEAR  / 'delete'
 if ( idx_code == IDX_VCR1_INPUT                   )           return 4;  // INPUT  / '.'
@@ -1713,7 +1805,6 @@ else
 
 
 #ifdef AT_MASTER
-unsigned char cmd_state=0;
 unsigned char cmd_val[10],cmd_val_idx;  //store the last byte of the last IR codes received
 
 // using a table state machine to shorten the s/w code
@@ -1747,6 +1838,7 @@ short iii;
 dd_v[DDS_DEBUG_PAGE] = debug_page;
 
 twitt();
+mosaic(); // mosaic active
 
 // Torque control
 if ( motor_disable ) { torq = 0; dcay = 3; } // start with low torq when motor off   and set the decay to 0% which seems to be the less noizy and the best one
@@ -1761,7 +1853,7 @@ IF_NOT_CONDITION_PORT_BIT(dcay & 0x02 , PORTB , DO_PB5_DECAYB2                  
 if ( AP0_DISPLAY == 0 ) display_next();  // if not printing from AP0, then print here
 
 //dd_v[DDS_DEBUG + 0x0C] = 0x5000 + torq;
-//dd_v[DDS_DEBUG + 0x0C] = cmd_state;
+if ( debug_page==0) dd_v[DDS_DEBUG + 0x07] = cmd_state;
 
 ///// Process IR commands
 if ( l_ir_count != dd_v[DDS_IR_COUNT])
@@ -1774,8 +1866,8 @@ if ( l_ir_count != dd_v[DDS_IR_COUNT])
       lcode= pgm_read_dword(&PROSCANs[iii]);
       if (code == lcode )  code_idx = iii;  // found a valid code
       }
-   dd_v[DDS_DEBUG + 0x04] = code;
-   dd_v[DDS_DEBUG + 0x05] = code_idx;
+   if ( debug_page==0) dd_v[DDS_DEBUG + 0x04] = code;
+   if ( debug_page==0) dd_v[DDS_DEBUG + 0x05] = code_idx;
    }
 else if ( l_rs232_rx_cnt != rs232_rx_cnt )  // new rs232 input
    {
@@ -1786,8 +1878,8 @@ else if ( l_rs232_rx_cnt != rs232_rx_cnt )  // new rs232 input
       scode = pgm_read_word (&RS232EQVs[iii]);
       if (rs232_rx == scode )  code_idx = iii;  // found a valid code
       }
-   dd_v[DDS_DEBUG + 0x04] = rs232_rx;
-   dd_v[DDS_DEBUG + 0x05] = code_idx + rs232_rx_cnt*0x10000;
+   if ( debug_page==0) dd_v[DDS_DEBUG + 0x04] = rs232_rx;
+   if ( debug_page==0) dd_v[DDS_DEBUG + 0x05] = code_idx + rs232_rx_cnt*0x10000;
    }
 
 ///// Process Keyboard commands
@@ -1796,7 +1888,7 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
    unsigned char jjj=0;
 
    next_input = set_next_input(code_idx);
-   dd_v[DDS_DEBUG + 0x06] = next_input;
+   if ( debug_page==0) dd_v[DDS_DEBUG + 0x06] = next_input;
 
    if ( next_input == 0 ) jjj = code_idx;  // (This is the value) 0-9
 
@@ -1804,25 +1896,43 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
       {
       if ( cmd_state==0 ) cmd_val_idx=0;  // reset captured data
       cmd_state = pgm_read_byte(&cmd_states[cmd_state*7 + next_input]);  // go to next state based on input type
-      if ( cmd_val_idx<10) cmd_val[cmd_val_idx++] = jjj;                 // store the last code (from which we can extract a number)
+//    if ( cmd_val_idx<10) cmd_val[cmd_val_idx++] = jjj;                 // store the last code (from which we can extract a number)
+      if ( cmd_val_idx<10) cmd_val[cmd_val_idx++] = code_idx;            // store the last code (from which we can extract a number) and from which we can differentiate between commands
       }
    else 
       {
       if ( cmd_state== 9 ) cmd_state=107;   // state 9 will  process anything  !
       else                 cmd_state=0;     // unknown command
       }
-   dd_v[DDS_DEBUG + 0x07] = cmd_val[cmd_val_idx-3]*100 + cmd_val[cmd_val_idx-2]*10 + jjj;
-   dd_v[DDS_DEBUG + 0x03] = cmd_state;
+   if ( debug_page==0) dd_v[DDS_DEBUG + 0x07] = cmd_val[cmd_val_idx-3]*100 + cmd_val[cmd_val_idx-2]*10 + jjj;
+   if ( debug_page==0) dd_v[DDS_DEBUG + 0x03] = cmd_state;
 
    if ( cmd_state >= 100 ) // a command is complete, need to process it
       {
       if ( cmd_state==100 ) // PLAY X X X : goto direct to catalog star 
          {
-         if ( align_state != 0 )  goto_pgm_pos(cmd_val[cmd_val_idx-3]*100 + cmd_val[cmd_val_idx-2]*10 + jjj); 
-         else {
-              dd_v[DDS_CUR_STAR_REQ] = cmd_val[cmd_val_idx-3]*100 + cmd_val[cmd_val_idx-2]*10 + jjj;   // ask the slave
-              set_ra_armed = 1;
-              }
+         if ( cmd_val[0] == IDX_VCR1_GUIDE )  // GUIDE X X X : special command
+            {
+            if ( mosaic_seconds!=-1 ) mosaic_seconds=-2;  // cancel mosaic
+            else if ( cmd_val[1] == IDX_VCR1_9 )   // GUIDE 9 X X : mosaic
+               {
+               mosaic_base_ra  = ra->pos;
+               mosaic_base_dec = dec->pos;
+               mosaic_nb_tiles = cmd_val[2];  // GUIDE 9 NB-TILES X
+               mosaic_span_idx = cmd_val[3];  // GUIDE 9 NB-TILES SPAN
+               mosaic_seq_ra   = 0; 
+               mosaic_seq_de   = 0;
+               mosaic_seconds  = 30;    // Start the mosaic
+               }
+            }
+         else
+            {
+            if ( align_state != 0 )  goto_pgm_pos(cmd_val[cmd_val_idx-3]*100 + cmd_val[cmd_val_idx-2]*10 + jjj); 
+            else {
+                 dd_v[DDS_CUR_STAR_REQ] = cmd_val[cmd_val_idx-3]*100 + cmd_val[cmd_val_idx-2]*10 + jjj;   // ask the slave
+                 set_ra_armed = 1;
+                 }
+            }
          }
       if ( cmd_state==101 ) // PLAY INPUT X : goto user position X
          { goto_pos(jjj); }
@@ -1869,9 +1979,9 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
          { 
          torq = (torq+1)&3;                                // Increment torq value
          if (torq<minumum_torq) torq = minumum_torq;      // if lower than effective torq, then use effectiv torq (cant change to lower than minimum required)
-         dd_v[DDS_DEBUG + 0x1E]=torq ; 
+         if ( debug_page==0) dd_v[DDS_DEBUG + 0x1E]=torq ; 
          }
-      else if ( code_idx == IDX_VCR1_MUTE    ) { dcay = (dcay+1)&3;  dd_v[DDS_DEBUG + 0x1D]=dcay ; }
+      else if ( code_idx == IDX_VCR1_MUTE    ) { dcay = (dcay+1)&3;  if ( debug_page==0) dd_v[DDS_DEBUG + 0x1D]=dcay ; }
       else if ( code_idx == IDX_VCR1_INFO    ) 
          {
          debug_page ++ ;
@@ -2168,8 +2278,7 @@ if ( use_polar )
          angle_test = TICKS_P_90_DEG;
          if ( use_x_instead_of_y ) desired_ra = TICKS_P_180_DEG;  // Y < 0
          else                      desired_ra = TICKS_P_90_DEG;   // X < 0
-            //  a bit complicated for X>0 because of negative values and the dead band, so lets use a similar technique as for the DEC
-            }
+         //  a bit complicated for X>0 because of negative values and the dead band, so lets use a similar technique as for the DEC
          }
       else if ( test_bit >= 0x00000400 ) // while this is true, polar_state will go from 11 to .... 31 
          {
@@ -2337,7 +2446,7 @@ else if ( axis->state == 1 ) // setup the goto
 
    axis->state++;
    if ( axis->pos_delta == 0 ) axis->state=6; // No movement required
-   if ( axis->accel < 0 )      axis->pos_delta -= TICKS_P_MIN; // Always go 1 minute downtime for mechanical friction issue
+   if ( axis->accel > 0 )      axis->pos_delta += (TICKS_P_MIN); // Always go 15 seconds downtime for mechanical friction issue  // mechanical friction left to right / up to down
 
 // if ( ra_axis )
 // {
@@ -2428,7 +2537,7 @@ else if ( axis->state == 6 )  // done, since the math is far from perfect, we of
    axis->accel = axis->speed = 0;
    if ( abs < 0 )              abs = -abs;
    if ( tmp > 0 )              axis->speed = -100; // we went a bit too far, slowly go back
-   else                        axis->speed =  100; // we stopped short, sloly go forward
+   else                        axis->speed =  100; // we stopped short, slowly go forward
    if ( abs < TICKS_P_STEP   ) axis->state = 7;    // we are very close, we are done
    }
 else if ( axis->state == 7 )  // done, since the math is far from perfect, we often are not at the exact spod
@@ -2504,7 +2613,7 @@ axis->pos_displ += axis->speed;            // Use a parallel pos counter that is
 axis->pos_dem = axis->pos;
 if ( ra_axis ) 
    {
-   add_value_to_pos(axis->pos_earth,&axis->pos_dem);   // add the earth's rotation only on the RA axis
+   add_value_to_pos(-axis->pos_earth,&axis->pos_dem);   // add the earth's rotation only on the RA axis
    axis->pos_cor = axis->pos_dem;
    add_value_to_pos(ra_correction,&axis->pos_cor);     // add the local polar correction
    }
@@ -2638,9 +2747,11 @@ if ( twi_tx_buf[3] == 0xC0 )  // Current position
       }
    }
    dcay = twi_tx_buf[17];          
-   effectiv_torq = twi_tx_buf[18]; 
-   motor_disable = twi_tx_buf[19]; 
-   twi_star_ptr = twi_tx_buf[20];   // Value fromm master
+   effectiv_torq  = twi_tx_buf[18]; 
+   motor_disable  = twi_tx_buf[19]; 
+   twi_star_ptr   = twi_tx_buf[20];   // Value fromm master
+   cmd_state      = twi_tx_buf[21];   // Flash the Yello led
+   mosaic_seconds = twi_tx_buf[22];   // Flash the Red led
    ///////// Prepare responce
    twi_rx_buf[1]  = twi_fb_count; 
    twi_rx_buf[2]  = twi_tx_buf[2];  // command feedback
@@ -2698,7 +2809,7 @@ for ( iii=4 ; iii<8      ; iii++ ) sp[iii+4] = twi_rx_buf[8+iii]; // update curr
 for ( iii=0 ; iii<4      ; iii++ ) cra[iii] = twi_rx_buf[16+iii]; // update current polar correction
 for ( iii=0 ; iii<4      ; iii++ ) cde[iii] = twi_rx_buf[20+iii]; // update current polar correction
 use_polar = twi_rx_buf[24];
-
+if ( use_polar && (align_state==11)) align_state=12; 
 // if ( twi_star_ptr >= STAR_NAME_LEN+CONSTEL_NAME_LEN-1 ) 
 //    { 
 //    pd[0] = twi_rx_buf[6];   // Update Master Current Star
@@ -2733,11 +2844,12 @@ twi_tx_buf[17]  = dcay;   // test LED
 twi_tx_buf[18]  = effectiv_torq;   // test LCD
 twi_tx_buf[19]  = motor_disable; 
 twi_tx_buf[20]  = twi_star_ptr;   // let the slave know where we are...
-   
+twi_tx_buf[21]  = cmd_state;      // Flash YELLOW led
+twi_tx_buf[22]  = (mosaic_seconds!=-1); // Flash RED led if in mosaic mode
  
-// 11 bytes available here
-twi_tx_buf[21]  = 160;   // debug marker
-twi_tx_buf[22]  = 161;   // debug marker
+// 8 bytes available here (32 max)
+twi_tx_buf[23]  = 160;   // debug marker
+twi_tx_buf[24]  = 161;   // debug marker
 
 for ( iii=1 ; iii<TWI_C1 ; iii++ ) sum +=twi_tx_buf[iii];
 twi_tx_buf[TWI_C1] = -sum;   // Checksum
@@ -2970,13 +3082,14 @@ if ( set_ra_armed )  // we are about to set the initial RA
    if (dd_v[DDS_CUR_STAR_REQ] == dd_v[DDS_CUR_STAR])  
       {
       ra->pos_dem = ra->pos = dd_v[DDS_STAR_RA_POS];
-      add_value_to_pos(ra->pos_earth,&ra->pos_dem); 
+      add_value_to_pos(-ra->pos_earth,&ra->pos_dem); 
       ra->pos_cor = ra->pos_hw = ra->pos_dem;                        
 
       dec->pos_cor = dec->pos_hw = dec->pos_dem = dec->pos = dd_v[DDS_STAR_DEC_POS]; 
       set_ra_armed=0;
    }  }
 
+if ( motor_disable ) return; 
 
 temp = ra->pos_hw-ra->pos_cor;
 if ( temp >= TICKS_P_STEP )
@@ -3060,6 +3173,7 @@ static unsigned short ir_key_off=0;  // limit the inputs to 4 per seconds
 PORTC = ra->next | dec->next | ra->direction | dec->direction;    // I do this to optimize execution time   activate the STEP CLOCK OUTPUT
 #else
 char current_pwm=0;
+char loc_cmd_state = cmd_state;
 #endif
 
 if ( ddll > 0 ) ddll--;  // test delay to reduce the responce speed of the slave
@@ -3071,8 +3185,13 @@ d_TIMER1++;             // counts time in 0.1 ms
 
 #ifdef AT_SLAVE
 // Drive LEDs in 1 second PWM to indicate various states
-IF_NOT_CONDITION_PORT_BIT( dcay&0x01 , PORTD , DO_PD6_RED    );
-IF_NOT_CONDITION_PORT_BIT( dcay&0x02 , PORTD , DO_PD5_YELLOW );
+//IF_NOT_CONDITION_PORT_BIT( dcay&0x01 , PORTD , DO_PD6_RED    );
+//IF_NOT_CONDITION_PORT_BIT( dcay&0x02 , PORTD , DO_PD5_YELLOW );
+
+if ( mosaic_seconds ) { IF_NOT_CONDITION_PORT_BIT( ssec&0x200 , PORTD , DO_PD6_RED    );  } // when in mosaic mode, flash the red led
+
+if ( cmd_state!=0 ) loc_cmd_state +=3;
+IF_NOT_CONDITION_PORT_BIT( (ssec&0x3FF)>0x40*loc_cmd_state , PORTD , DO_PD5_YELLOW );
 
 // Motor Current setting:
 if      ( motor_disable ){                    ;              }
@@ -3080,8 +3199,8 @@ else if ( effectiv_torq==3 )      {                    current_pwm=1; }
 else if ( effectiv_torq==2 )      { if ( ssec < 7500 ) current_pwm=1; }
 else if ( effectiv_torq==1 )      { if ( ssec < 5000 ) current_pwm=1; }
 else                              { if ( ssec < 2000 ) current_pwm=1; }
-IF_NOT_CONDITION_PORT_BIT( current_pwm , PORTB , DO_PB7_GREEN    );
-dd_v[DDS_DEBUG + 0x1E]=effectiv_torq;
+if ( align_state==11 )  { IF_NOT_CONDITION_PORT_BIT( ssec&0x200  , PORTB , DO_PB7_GREEN    ); } // when doing polar align, flash the green
+else                    { IF_NOT_CONDITION_PORT_BIT( current_pwm , PORTB , DO_PB7_GREEN    ); }
 #endif
 
 #ifdef AT_MASTER
@@ -3144,7 +3263,7 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
       {
       earth_skip++ ; 
       if ( earth_skip == EARTH_SKIP ) earth_skip = 0;
-      else add_value_to_pos(-TICKS_P_STEP,&ra->pos_earth);    // Correct for the Earth's rotation but skip every 1674
+      else add_value_to_pos(TICKS_P_STEP,&ra->pos_earth);    // Correct for the Earth's rotation but skip every 1674
       }
    
    ///////////// Process goto
@@ -3508,21 +3627,27 @@ twi_test=0;
 while ( align_state==0 ) wait(500,MSEC);  // wait for the first position
 
 //----
-fake_align(62,10,0x87FBEF3A,0xC7880FA4);
-fake_align(71,11,0xA01A6DE7,0x07EA89E9);
-fake_align(45,12,0x5DB37BDA,0x0C337D63);
-fake_align(41,13,0x5148CC6E,0x0DC58F81);
-fake_align(51,14,0x6D180F80,0x0709A4F3);
+//fake_align(62,10,0x87FBEF3A,0xC7880FA4);
+//fake_align(71,11,0xA01A6DE7,0x07EA89E9);
+//fake_align(45,12,0x5DB37BDA,0x0C337D63);
+//fake_align(41,13,0x5148CC6E,0x0DC58F81);
+//fake_align(51,14,0x6D180F80,0x0709A4F3);
 
-while ( align_state!=11 ) wait(500,MSEC);  // wait for the first
-wait(20,SEC);
+//fake_align(41,10,0x5105BE60,0x0C72900B);
+//fake_align(45,11,0x5D9BB04A,0x0B16367F);
+//fake_align(69,12,0x949C1600,0x019E07F2);
+//fake_align(73,13,0xA604930A,0x042CE999);
+//fake_align(51,14,0x6D180F80,0x061D35F0);
 
-////////// end
-dd_v[DDS_CUR_STAR_REQ] = 51;  // ask slave to get position # 62
-display_data((char*)console_buf,0,20,pgm_debug ,100 ,FMT_FP + FMT_CONSOLE + 8);   // case #1
-wait(4,SEC);
-goto_pgm_pos(51);
-display_data((char*)console_buf,0,20,pgm_debug ,101 ,FMT_FP + FMT_CONSOLE + 8);   // case #1
+// while ( align_state!=11 ) wait(500,MSEC);  // wait for the first
+// wait(20,SEC);
+// 
+// ////////// end
+// dd_v[DDS_CUR_STAR_REQ] = 51;  // ask slave to get position # 62
+// display_data((char*)console_buf,0,20,pgm_debug ,100 ,FMT_FP + FMT_CONSOLE + 8);   // case #1
+// wait(4,SEC);
+// goto_pgm_pos(51);
+// display_data((char*)console_buf,0,20,pgm_debug ,101 ,FMT_FP + FMT_CONSOLE + 8);   // case #1
 
 #endif
 
@@ -3843,6 +3968,10 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.89  2012/04/14 14:35:48  pmichel
+#### Milestone ####
+the alignment is complete  (but the fake align needs to be removed)
+
 Revision 1.88  2012/04/14 13:58:23  pmichel
 This version should be 100% for the polar correction
 but I will simplify it one bit.
