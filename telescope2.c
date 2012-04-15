@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/04/14 14:35:48 $
-$Id: telescope2.c,v 1.89 2012/04/14 14:35:48 pmichel Exp pmichel $
+$Date: 2012/04/15 18:11:45 $
+$Id: telescope2.c,v 1.90 2012/04/15 18:11:45 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.89 $
+$Revision: 1.90 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 
@@ -1566,7 +1566,7 @@ if ( cur_sec != last_sec ) mosaic_seconds++;  // for now, hardcode to 35 seconds
 last_sec = cur_sec;
 
 
-if ( mosaic_seconds > 36 )  // next move...
+if ( mosaic_seconds > 38 )  // next move...
    {
    long sss,rrr,ddd,uuu;
    mosaic_seconds = 0;
@@ -2446,7 +2446,7 @@ else if ( axis->state == 1 ) // setup the goto
 
    axis->state++;
    if ( axis->pos_delta == 0 ) axis->state=6; // No movement required
-   if ( axis->accel > 0 )      axis->pos_delta += (TICKS_P_MIN); // Always go 15 seconds downtime for mechanical friction issue  // mechanical friction left to right / up to down
+   if ( axis->accel > 0 )      axis->pos_delta += (TICKS_P_MIN)>>2; // Always go 15 seconds downtime for mechanical friction issue  // mechanical friction left to right / up to down
 
 // if ( ra_axis )
 // {
@@ -3968,6 +3968,10 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.90  2012/04/15 18:11:45  pmichel
+Mosaic is working . . .
+fg
+
 Revision 1.89  2012/04/14 14:35:48  pmichel
 #### Milestone ####
 the alignment is complete  (but the fake align needs to be removed)
