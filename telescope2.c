@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/04/15 18:11:45 $
-$Id: telescope2.c,v 1.90 2012/04/15 18:11:45 pmichel Exp pmichel $
+$Date: 2012/04/15 18:28:36 $
+$Id: telescope2.c,v 1.91 2012/04/15 18:28:36 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.90 $
+$Revision: 1.91 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 
@@ -12,25 +12,31 @@ Back home test alignment:
 Telescope Master Starting...        
 Free Memory:000001BD                
 
-inserted an error of: 01°44'14.2" on the DEC axis only at point 51   at: 02h08m46.46s
 
-Rec pos: 0000000A                   
-RA :6D180F80                        
-DEC:0709A4F3                        
-ref:00000033                        
-Rec pos: 0000000B                   
-RA :87FBEF3A                        
-DEC:C7880FA4                        
-ref:0000003E                        
-Rec pos: 0000000C                   
-RA :A01A6DE7                        
-DEC:07EA89E9                        
-ref:00000047                        
-Rec pos: 0000000D                   
-RA :5148CC6E                        
-DEC:0DB500A9                        
-ref:00000029                        
-               
+Aligned with 3 points:
+41=ok
+49: put 1.5 deg too high
+74=ok
+------ below is the result matrix -----
+I used this error to mark bad points in pink
+
+Error :00052632                                                                                                                                                                                                                                                          
+Hour   :02h34m35.09s                                                                                                                                                                                                                                                     
+Declin :(N) 01�°18'25.6"                                                                                                                                                                                                                                                 
+Hour   :02h34m57.07s                                                                                                                                                                                                                                                     
+Hour   :00h00m00.87s                                                                                                                                                                                                                                                     
+Declin :(N) 00�°00'00.8"                                                                                                                                                                                                                                                 
+Polar Matrix:                                                                                                                                                                                                                                                            
+Data: 7FFAB9D8  0.99983904                                                                                                                                                                                                                                               
+Data: FFB28B81  -.00236373                                                                                                                                                                                                                                               
+Data: 0246C291  0.01778442                                                                                                                                                                                                                                               
+Data: 004521FD  0.00210976                                                                                                                                                                                                                                               
+Data: 7FFC9543  0.99989572                                                                                                                                                                                                                                               
+Data: 01D41F6E  0.01428597                                                                                                                                                                                                                                               
+Data: FDB831B8  -.01781633                                                                                                                                                                                                                                               
+Data: FE2D2E9A  -.01424615                                                                                                                                                                                                                                               
+Data: 7FF77918  0.99973977
+
 
 TODO next version: 
 -easy way to enter fake alignments points
@@ -334,6 +340,9 @@ typedef struct   // those values are required per axis to be able to execute got
    unsigned char  direction;        // no units (which direction ? )                    
    } AXIS;
 
+#ifdef AT_SLAVE
+unsigned long polar_ra,polar_dec;               // polar shift
+#endif
 #ifdef AT_MASTER
 static char set_ra_armed=0;
 PROGMEM const long mosaic_span[10] = {
@@ -353,6 +362,7 @@ char   mosaic_span_idx;
 char   mosaic_nb_tiles;
 char   mosaic_seq_ra;
 char   mosaic_seq_de;
+char   mosaic_dt;
 #endif
 short  mosaic_seconds=-1;  // -1 means mosaic not active
 
@@ -834,8 +844,16 @@ dd_v[DDS_DEBUG_PAGE]  = debug_page;
 #ifdef AT_SLAVE
 //   dd_v[DDS_STAR_DEC_POS] = pgm_read_dword( & pgm_stars_pos[dd_v[DDS_CUR_STAR]*2+1]);
 //   dd_v[DDS_STAR_RA_POS]  = pgm_read_dword( & pgm_stars_pos[dd_v[DDS_CUR_STAR]*2+0]);
-   dd_v[DDS_STAR_DEC_POS] = pgm_read_dword( & pgm_stars_pos[dd_v[DDS_CUR_STAR_REQ]*2+1]);
-   dd_v[DDS_STAR_RA_POS]  = pgm_read_dword( & pgm_stars_pos[dd_v[DDS_CUR_STAR_REQ]*2+0]);
+   if ( dd_v[DDS_CUR_STAR_REQ] == STARS_COORD_TOTAL - 1 )   // when polar aligned, then return the polar error when the star requested is the last one (origin)
+      {
+      dd_v[DDS_STAR_RA_POS]  = polar_ra;
+      dd_v[DDS_STAR_DEC_POS] = polar_dec;
+      }
+   else
+      {
+      dd_v[DDS_STAR_RA_POS]  = pgm_read_dword( & pgm_stars_pos[dd_v[DDS_CUR_STAR_REQ]*2+0]);
+      dd_v[DDS_STAR_DEC_POS] = pgm_read_dword( & pgm_stars_pos[dd_v[DDS_CUR_STAR_REQ]*2+1]);
+      }
    dd_v[DDS_STAR_RA_POS2] = dd_v[DDS_STAR_RA_POS];
    // current_star_name
       { 
@@ -1408,7 +1426,6 @@ short    dec_idx,ra_idx,span_idx;               // scan indexes
 unsigned long best_error;
 unsigned short star_idx,ref;
 unsigned long shift,dec,ra,deg;
-unsigned long polar_ra,polar_dec;               // polar shift
 unsigned long error_sum,error;
 unsigned char pass;
 VECTOR star,real_star;
@@ -1541,6 +1558,7 @@ Declin :
 */
      
 #ifdef AT_MASTER
+#define MOSAIC_MULT 2
 
 void mosaic(void)
 {
@@ -1560,18 +1578,20 @@ if ( mosaic_seconds==-2 ) //cancel
    dec->pos_target = mosaic_base_dec;
    goto_cmd = 1;
    mosaic_seconds = -1;
+   return;
    }
 
 if ( cur_sec != last_sec ) mosaic_seconds++;  // for now, hardcode to 35 seconds (assume 30 seconds photos)
 last_sec = cur_sec;
 
 
-if ( mosaic_seconds > 38 )  // next move...
+if ( mosaic_seconds > mosaic_dt )  // next move...
    {
    long sss,rrr,ddd,uuu;
-   mosaic_seconds = 0;
+   mosaic_seconds = 1;
 
    sss = pgm_read_dword(&mosaic_span[(short)mosaic_span_idx]);
+   if ( mosaic_dt == 1 ) sss = sss >> MOSAIC_MULT;
    rrr = mosaic_seq_ra   * sss;
    ddd = mosaic_seq_de   * sss;
    uuu = mosaic_nb_tiles * sss;
@@ -1583,7 +1603,7 @@ if ( mosaic_seconds > 38 )  // next move...
       mosaic_seconds = -1;
       }
  
-   ra->pos_target  = mosaic_base_ra  - rrr + uuu;  // ra needs to progress from left to right to avoid excessive mechanical friction removal
+   ra->pos_target  = mosaic_base_ra  + rrr - uuu; // reversed RA so to stay in the same sky area
    dec->pos_target = mosaic_base_dec - ddd + uuu;
    //standby_goto = 1;   // ask to fix the error
    //while ( standby_goto > 0 ) display_next();   // wait until we are corrected
@@ -1913,8 +1933,12 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
          {
          if ( cmd_val[0] == IDX_VCR1_GUIDE )  // GUIDE X X X : special command
             {
-            if ( mosaic_seconds!=-1 ) mosaic_seconds=-2;  // cancel mosaic
-            else if ( cmd_val[1] == IDX_VCR1_9 )   // GUIDE 9 X X : mosaic
+            if ( mosaic_seconds!=-1 ) 
+               {
+               if ( cmd_val[1] == IDX_VCR1_0 )  mosaic_seconds=-1;  // cancel mosaic
+               else                             mosaic_seconds=-2;  // cancel mosaic and return to origin
+               }
+            else if ( cmd_val[1] == IDX_VCR1_9 || cmd_val[1] == IDX_VCR1_8 )   // GUIDE 9 X X : mosaic
                {
                mosaic_base_ra  = ra->pos;
                mosaic_base_dec = dec->pos;
@@ -1923,6 +1947,12 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
                mosaic_seq_ra   = 0; 
                mosaic_seq_de   = 0;
                mosaic_seconds  = 30;    // Start the mosaic
+               mosaic_dt       = 36;
+               if ( cmd_val[1] == IDX_VCR1_8 ) // scan mode (search a star...)
+                  {
+                  mosaic_dt       = 1;
+                  mosaic_nb_tiles = cmd_val[2]<<MOSAIC_MULT;
+                  }
                }
             }
          else
@@ -1966,6 +1996,12 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
          // TODO to be done by the slave: if ( jjj==3) do_polar(); 
          twi_seq=-1;  // tell the slave to update the polar matrix
          align_state=11;
+         }
+      if ( cmd_state==110 ) // PLAY PLAY ... so, goto here (remove mechanical friction
+         {
+         ra->pos_target  = ra->pos+1;
+         dec->pos_target = dec->pos+1;
+         goto_cmd = 1;
          }
       cmd_state=0; // we are done 
       }
@@ -2746,7 +2782,7 @@ if ( twi_tx_buf[3] == 0xC0 )  // Current position
       twi_seq = twi_tx_buf[6]; 
       }
    }
-   dcay = twi_tx_buf[17];          
+   dcay           = twi_tx_buf[17];          
    effectiv_torq  = twi_tx_buf[18]; 
    motor_disable  = twi_tx_buf[19]; 
    twi_star_ptr   = twi_tx_buf[20];   // Value fromm master
@@ -2845,7 +2881,7 @@ twi_tx_buf[18]  = effectiv_torq;   // test LCD
 twi_tx_buf[19]  = motor_disable; 
 twi_tx_buf[20]  = twi_star_ptr;   // let the slave know where we are...
 twi_tx_buf[21]  = cmd_state;      // Flash YELLOW led
-twi_tx_buf[22]  = (mosaic_seconds!=-1); // Flash RED led if in mosaic mode
+twi_tx_buf[22]  = (mosaic_seconds!=-1)&&(mosaic_seconds<30)&&(moving==0); // Flash RED led if in mosaic mode
  
 // 8 bytes available here (32 max)
 twi_tx_buf[23]  = 160;   // debug marker
@@ -3968,6 +4004,10 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.91  2012/04/15 18:28:36  pmichel
+########## Ready for mosaic ##########
+reduced mechanical friction correction
+
 Revision 1.90  2012/04/15 18:11:45  pmichel
 Mosaic is working . . .
 fg
