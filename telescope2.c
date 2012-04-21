@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/04/15 18:28:36 $
-$Id: telescope2.c,v 1.91 2012/04/15 18:28:36 pmichel Exp pmichel $
+$Date: 2012/04/18 03:35:50 $
+$Id: telescope2.c,v 1.92 2012/04/18 03:35:50 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.91 $
+$Revision: 1.92 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 
@@ -363,8 +363,9 @@ char   mosaic_nb_tiles;
 char   mosaic_seq_ra;
 char   mosaic_seq_de;
 char   mosaic_dt;
-#endif
 short  mosaic_seconds=-1;  // -1 means mosaic not active
+#endif
+unsigned char  mosaic_twi=-1;  // // Bits: 210 : Primary, Secondary, Mosaic active
 
 AXIS *ra;   // points in the display array dd_v
 AXIS *dec;  // points in the display array dd_v
@@ -2787,7 +2788,7 @@ if ( twi_tx_buf[3] == 0xC0 )  // Current position
    motor_disable  = twi_tx_buf[19]; 
    twi_star_ptr   = twi_tx_buf[20];   // Value fromm master
    cmd_state      = twi_tx_buf[21];   // Flash the Yello led
-   mosaic_seconds = twi_tx_buf[22];   // Flash the Red led
+   mosaic_twi     = twi_tx_buf[22];   // Bits 210 : 
    ///////// Prepare responce
    twi_rx_buf[1]  = twi_fb_count; 
    twi_rx_buf[2]  = twi_tx_buf[2];  // command feedback
@@ -2826,9 +2827,12 @@ IF_CONDITION_PORT_BIT( effectiv_torq&0x02 , PORTB , DO_PB1_LCD_B5 );
 IF_CONDITION_PORT_BIT( effectiv_torq&0x04 , PORTB , DO_PB2_LCD_B6 );
 IF_CONDITION_PORT_BIT( effectiv_torq&0x08 , PORTB , DO_PB3_LCD_B7 );
 
-IF_CONDITION_PORT_BIT( effectiv_torq&0x01 , PORTC , DO_PC2_LCD_RS );
-IF_CONDITION_PORT_BIT( effectiv_torq&0x02 , PORTC , DO_PC1_LCD_RW );
-IF_CONDITION_PORT_BIT( effectiv_torq&0x04 , PORTC , DO_PC0_LCD_EE );
+// TEST IF_CONDITION_PORT_BIT( effectiv_torq&0x01 , PORTC , DO_PC2_LCD_RS );
+// TEST IF_CONDITION_PORT_BIT( effectiv_torq&0x02 , PORTC , DO_PC1_LCD_RW );
+// TEST IF_CONDITION_PORT_BIT( effectiv_torq&0x04 , PORTC , DO_PC0_LCD_EE );
+// not working: IF_NOT_CONDITION_PORT_BIT( ssec&0x02              , PORTC , DO_PC2_LCD_RS    );  // Buzzer
+IF_NOT_CONDITION_PORT_BIT( ( ( mosaic_twi & 2 ) == 0 )  , PORTC , DO_PC0_LCD_EE    );  // Secondary click Remote Shutter  Clicks when condition=0)
+IF_NOT_CONDITION_PORT_BIT( ( ( mosaic_twi & 4 ) == 0 )  , PORTC , DO_PC1_LCD_RW    );  // Primary click Remote Shutter  Clicks when condition=0)
 
 dd_v[DDS_DEBUG + 0x1E] = ((long)effectiv_torq<<16) + dcay;
 
@@ -2881,7 +2885,12 @@ twi_tx_buf[18]  = effectiv_torq;   // test LCD
 twi_tx_buf[19]  = motor_disable; 
 twi_tx_buf[20]  = twi_star_ptr;   // let the slave know where we are...
 twi_tx_buf[21]  = cmd_state;      // Flash YELLOW led
-twi_tx_buf[22]  = (mosaic_seconds!=-1)&&(mosaic_seconds<30)&&(moving==0); // Flash RED led if in mosaic mode
+// twi_tx_buf[22]  = (mosaic_seconds!=-1)&&(mosaic_seconds<30)&&(moving==0); // Flash RED led if in mosaic mode  // Bits: 210 : Primary, Secondary, Mosaic active
+mosaic_twi = 0;
+//if ( (mosaic_seconds !=-1 )&&( mosaic_seconds<30)&&(moving==0) ) mosaic_twi |= 1;  // Bit 0 : Mosaic Active, Flash the red Led
+if ( (mosaic_seconds >  2 )&&( mosaic_seconds+1 < mosaic_dt  ) ) mosaic_twi |= 2;  // Bit 1 : Secondary 
+if ( (mosaic_seconds >  4 )&&( mosaic_seconds+1 < mosaic_dt  ) ) mosaic_twi |= 4;  // Bit 2 : Primary 
+twi_tx_buf[22]  = mosaic_twi;
  
 // 8 bytes available here (32 max)
 twi_tx_buf[23]  = 160;   // debug marker
@@ -3224,7 +3233,7 @@ d_TIMER1++;             // counts time in 0.1 ms
 //IF_NOT_CONDITION_PORT_BIT( dcay&0x01 , PORTD , DO_PD6_RED    );
 //IF_NOT_CONDITION_PORT_BIT( dcay&0x02 , PORTD , DO_PD5_YELLOW );
 
-if ( mosaic_seconds ) { IF_NOT_CONDITION_PORT_BIT( ssec&0x200 , PORTD , DO_PD6_RED    );  } // when in mosaic mode, flash the red led
+if ( mosaic_twi&4 ) { IF_NOT_CONDITION_PORT_BIT( ssec&0x200 , PORTD , DO_PD6_RED    );  } // when in mosaic mode, flash the red led
 
 if ( cmd_state!=0 ) loc_cmd_state +=3;
 IF_NOT_CONDITION_PORT_BIT( (ssec&0x3FF)>0x40*loc_cmd_state , PORTD , DO_PD5_YELLOW );
@@ -3829,7 +3838,7 @@ void init2()
         send_cmd(0x06); // Send 0x06 = Set entry mode: cursor shifts right, don't scroll 
         send_cmd(0x0C); // Send 0x0C = Display on, cursor off, blinking off
 }
-#endif
+// disable LCD for now  #endif
  
 unsigned char lcd_state=0;
 while (1)
@@ -3902,6 +3911,7 @@ while (1)
       lcd_state=0;
       }
    }
+#endif
 
 
 
@@ -4004,6 +4014,11 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.92  2012/04/18 03:35:50  pmichel
+few nice improvements:
+-goto here (play play)
+-star 98 (last one) returns 0,0 and returns the polar error once aligned
+
 Revision 1.91  2012/04/15 18:28:36  pmichel
 ########## Ready for mosaic ##########
 reduced mechanical friction correction
