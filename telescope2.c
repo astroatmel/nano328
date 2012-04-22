@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/04/18 03:35:50 $
-$Id: telescope2.c,v 1.92 2012/04/18 03:35:50 pmichel Exp pmichel $
+$Date: 2012/04/21 18:23:24 $
+$Id: telescope2.c,v 1.93 2012/04/21 18:23:24 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.92 $
+$Revision: 1.93 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 
@@ -49,11 +49,12 @@ TODO:
 
 *** Problems:
 ** Add a search patern function to locate a point of interest
-** use yellow pwm sequence to indicate remote control input state (command) off = ready to process a command 25% means 1 key in, 50%: 2 key in ...  max sequqnce = 100% solid
 *** if Motor off and tracking, then position decrements (we fall back)
 
-- Add command to set the RA to an approx value (first thing to execute when aligning)
+*** The polar align should first start by trying to get the best RA offset that reduces the error
+
 - Confirm... the master does not receive 32 bytes...does the slave receive 32 bytes ?
+- Dont show telescope position, but rather local porar correction
 
 ** when clearing corrected stars positions, ALSO reset the polar vector to 0,0,1
 - Key to disable use_polar
@@ -365,7 +366,7 @@ char   mosaic_seq_de;
 char   mosaic_dt;
 short  mosaic_seconds=-1;  // -1 means mosaic not active
 #endif
-unsigned char  mosaic_twi=-1;  // // Bits: 210 : Primary, Secondary, Mosaic active
+char   mosaic_twi=-1;  // // Bits: 210 : Primary, Secondary, Mosaic active
 
 AXIS *ra;   // points in the display array dd_v
 AXIS *dec;  // points in the display array dd_v
@@ -879,15 +880,15 @@ dd_v[DDS_DEBUG_PAGE]  = debug_page;
             const_jj = pgm_read_byte ( & pgm_const_name[c_pointed*CONSTEL_NAME_LEN+0] );  // Get Constellation ID of current selection
             if ( const_jj==const_id ) break; // found it
             }
-dd_v[DDS_DEBUG + 0x0B] = const_jj;  // 0x19   =25
-dd_v[DDS_DEBUG + 0x0C] = star_id;   // 0x11  
-dd_v[DDS_DEBUG + 0x0D] = const_id;  // 0x19
-dd_v[DDS_DEBUG + 0x0E] = star_jj;   // 0x11
+//dd_v[DDS_DEBUG + 0x0B] = const_jj;  // 0x19   =25
+//dd_v[DDS_DEBUG + 0x0C] = star_id;   // 0x11  
+//dd_v[DDS_DEBUG + 0x0D] = const_id;  // 0x19
+//dd_v[DDS_DEBUG + 0x0E] = star_jj;   // 0x11
          }
           
-dd_v[DDS_DEBUG + 0x1B] = dd_v[DDS_CUR_STAR_REQ];   ////////////// 0x11
-dd_v[DDS_DEBUG + 0x1C] = s_pointed;                      // 0x0 
-dd_v[DDS_DEBUG + 0x1D] = c_pointed;                      // 0x1
+//dd_v[DDS_DEBUG + 0x1B] = dd_v[DDS_CUR_STAR_REQ];   ////////////// 0x11
+//dd_v[DDS_DEBUG + 0x1C] = s_pointed;                      // 0x0 
+//dd_v[DDS_DEBUG + 0x1D] = c_pointed;                      // 0x1
       // update the strings
       scan++;
       if ( scan == (STAR_NAME_LEN - STAR_NAME_CODES) + (CONSTEL_NAME_LEN - CONSTEL_NAME_CODES) ) 
@@ -1565,11 +1566,23 @@ void mosaic(void)
 {
 static char last_sec;
 char        cur_sec;
-if ( debug_page==7 ) dd_v[DDS_DEBUG + 0x18]=ra->pos_earth;
+
+cur_sec = dd_v[DDS_SECONDS]&0x7F;
+
+//-if ( (debug_page == 7) && (cur_sec != lll) ) 
+//-   {
+//-   lll = cur_sec; // reduce output frequency
+//-   dd_v[DDS_DEBUG + 0x08] = (long)mosaic_seconds + 0x110000;
+//-   dd_v[DDS_DEBUG + 0x09] = (long)mosaic_seq_ra  + 0x220000;
+//-   dd_v[DDS_DEBUG + 0x0A] = (long)mosaic_seq_de  + 0x330000;
+//-   dd_v[DDS_DEBUG + 0x0B] = (long)mosaic_dt      + 0x440000;
+//-   dd_v[DDS_DEBUG + 0x0C] = (long)mosaic_twi     + 0x550000;
+//-
+//-   dd_v[DDS_DEBUG + 0x1F] = ra->pos_earth;
+//-   }
 
 if ( mosaic_seconds==-1 ) return; // mosaic not active
 
-cur_sec = dd_v[DDS_SECONDS]&0x7F;
 if ( moving || goto_cmd ) return;
 
 
@@ -1606,9 +1619,6 @@ if ( mosaic_seconds > mosaic_dt )  // next move...
  
    ra->pos_target  = mosaic_base_ra  + rrr - uuu; // reversed RA so to stay in the same sky area
    dec->pos_target = mosaic_base_dec - ddd + uuu;
-   //standby_goto = 1;   // ask to fix the error
-   //while ( standby_goto > 0 ) display_next();   // wait until we are corrected
-   //standby_goto = 0;
    goto_cmd = 1;
 
    // setup the next position...
@@ -1855,26 +1865,27 @@ if ( AP0_DISPLAY == 0 ) display_next();  // if not printing from AP0, then print
 #elif  AT_MASTER
 char code_idx=-1; // lets work with the code's index  // wether it's IR or rs232
 short iii;
+static char cycle; // to distribute CPU usage...
 
-dd_v[DDS_DEBUG_PAGE] = debug_page;
-
-twitt();
-mosaic(); // mosaic active
+cycle++;
+twitt();  // it seems if I dont call the function fast enoughm the TWI buss might jam
 
 // Torque control
 if ( motor_disable ) { torq = 0; dcay = 3; } // start with low torq when motor off   and set the decay to 0% which seems to be the less noizy and the best one
-//else if ( earth_tracking && (torq < 2) ) torq = 2; // if we are tracking, then set the torq to a minimum of 50% 
+{ IF_NOT_CONDITION_PORT_BIT(effectiv_torq & 0x01 , PORTB , DO_PB1_TORQA1  | DO_PB3_TORQB1  );   }
+{ IF_NOT_CONDITION_PORT_BIT(effectiv_torq & 0x02 , PORTB , DO_PB2_TORQA2  | DO_PB4_TORQB2  );   }
 
-IF_NOT_CONDITION_PORT_BIT(effectiv_torq & 0x01 , PORTB , DO_PB1_TORQA1  | DO_PB3_TORQB1  );
-IF_NOT_CONDITION_PORT_BIT(effectiv_torq & 0x02 , PORTB , DO_PB2_TORQA2  | DO_PB4_TORQB2  );
-IF_NOT_CONDITION_PORT_BIT(dcay & 0x01 , PORTD , DO_PD5_DECAYA1 | DO_PD7_DECAYB1 );
-IF_NOT_CONDITION_PORT_BIT(dcay & 0x02 , PORTD , DO_PD6_DECAYA2                  );
-IF_NOT_CONDITION_PORT_BIT(dcay & 0x02 , PORTB , DO_PB5_DECAYB2                  );
+if      ( cycle==1 ) { dd_v[DDS_DEBUG_PAGE] = debug_page; }
+else if ( cycle==2 ) { mosaic(); } // mosaic active
+else if ( cycle==3 ) { IF_NOT_CONDITION_PORT_BIT(dcay & 0x01 , PORTD , DO_PD5_DECAYA1 | DO_PD7_DECAYB1 );           }
+else if ( cycle==4 ) { IF_NOT_CONDITION_PORT_BIT(dcay & 0x02 , PORTD , DO_PD6_DECAYA2                  );           }
+else if ( cycle==5 ) { IF_NOT_CONDITION_PORT_BIT(dcay & 0x02 , PORTB , DO_PB5_DECAYB2                  );           }
+else if ( cycle==6 ) { if ( debug_page==0) dd_v[DDS_DEBUG + 0x07] = cmd_state;                                      }
+else cycle=0;
 
 if ( AP0_DISPLAY == 0 ) display_next();  // if not printing from AP0, then print here
 
 //dd_v[DDS_DEBUG + 0x0C] = 0x5000 + torq;
-if ( debug_page==0) dd_v[DDS_DEBUG + 0x07] = cmd_state;
 
 ///// Process IR commands
 if ( l_ir_count != dd_v[DDS_IR_COUNT])
@@ -1947,11 +1958,21 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
                mosaic_span_idx = cmd_val[3];  // GUIDE 9 NB-TILES SPAN
                mosaic_seq_ra   = 0; 
                mosaic_seq_de   = 0;
-               mosaic_seconds  = 30;    // Start the mosaic
-               mosaic_dt       = 36;
-               if ( cmd_val[1] == IDX_VCR1_8 ) // scan mode (search a star...)
+               mosaic_dt       = 1;   // By default, go so fast that no picture is taken
+               mosaic_seconds  = mosaic_dt-1;   // Start the mosaic
+               if      ( cmd_val[1] == IDX_VCR1_7 ) // scan mode (search a star...)
                   {
-                  mosaic_dt       = 1;
+                  mosaic_dt       = 10;    // 5 sec exposure to test the system
+                  mosaic_nb_tiles = cmd_val[2]<<MOSAIC_MULT;
+                  }
+               else if ( cmd_val[1] == IDX_VCR1_8 ) // scan mode (search a star...)
+                  {
+                  mosaic_dt       = 36;    // Normal exposure: 30 sec
+                  mosaic_nb_tiles = cmd_val[2]<<MOSAIC_MULT;
+                  }
+               else if ( cmd_val[1] == IDX_VCR1_9 ) // scan mode (search a star...)
+                  {
+                  mosaic_dt       = 66;    // Normal exposure: 60 sec
                   mosaic_nb_tiles = cmd_val[2]<<MOSAIC_MULT;
                   }
                }
@@ -2050,9 +2071,8 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
    }
 #endif  // AT_MASTER process IR
 
-// make sure CUR_STAR is inbound   
-if ( dd_v[DDS_CUR_STAR_REQ] >= STARS_COORD_TOTAL ) dd_v[DDS_CUR_STAR_REQ] = 0; // we reached the last star
-if ( dd_v[DDS_CUR_STAR_REQ] <  0                 ) dd_v[DDS_CUR_STAR_REQ] = STARS_COORD_TOTAL-1;
+if ( dd_v[DDS_CUR_STAR_REQ] >= STARS_COORD_TOTAL ) dd_v[DDS_CUR_STAR_REQ] = 0; // we reached the last star     // make sure CUR_STAR is inbound
+if ( dd_v[DDS_CUR_STAR_REQ] <  0                 ) dd_v[DDS_CUR_STAR_REQ] = STARS_COORD_TOTAL-1;               // make sure CUR_STAR is inbound
 }
 
 void wait(long time,long mult)
@@ -2822,19 +2842,19 @@ twi_rx_buf[TWI_C1] = -sum;   // Checksum
 //IF_NOT_CONDITION_PORT_BIT( dcay&0x02 , PORTD , DO_PD5_YELLOW );
 //IF_NOT_CONDITION_PORT_BIT( dcay&0x04 , PORTD , DO_PD6_RED    );
 
-IF_CONDITION_PORT_BIT( effectiv_torq&0x01 , PORTB , DO_PB0_LCD_B4 );
-IF_CONDITION_PORT_BIT( effectiv_torq&0x02 , PORTB , DO_PB1_LCD_B5 );
-IF_CONDITION_PORT_BIT( effectiv_torq&0x04 , PORTB , DO_PB2_LCD_B6 );
-IF_CONDITION_PORT_BIT( effectiv_torq&0x08 , PORTB , DO_PB3_LCD_B7 );
+// TEST IF_CONDITION_PORT_BIT( effectiv_torq&0x01 , PORTB , DO_PB0_LCD_B4 );
+// TEST IF_CONDITION_PORT_BIT( effectiv_torq&0x02 , PORTB , DO_PB1_LCD_B5 );
+// TEST IF_CONDITION_PORT_BIT( effectiv_torq&0x04 , PORTB , DO_PB2_LCD_B6 );
+// TEST IF_CONDITION_PORT_BIT( effectiv_torq&0x08 , PORTB , DO_PB3_LCD_B7 );
 
 // TEST IF_CONDITION_PORT_BIT( effectiv_torq&0x01 , PORTC , DO_PC2_LCD_RS );
 // TEST IF_CONDITION_PORT_BIT( effectiv_torq&0x02 , PORTC , DO_PC1_LCD_RW );
 // TEST IF_CONDITION_PORT_BIT( effectiv_torq&0x04 , PORTC , DO_PC0_LCD_EE );
 // not working: IF_NOT_CONDITION_PORT_BIT( ssec&0x02              , PORTC , DO_PC2_LCD_RS    );  // Buzzer
-IF_NOT_CONDITION_PORT_BIT( ( ( mosaic_twi & 2 ) == 0 )  , PORTC , DO_PC0_LCD_EE    );  // Secondary click Remote Shutter  Clicks when condition=0)
-IF_NOT_CONDITION_PORT_BIT( ( ( mosaic_twi & 4 ) == 0 )  , PORTC , DO_PC1_LCD_RW    );  // Primary click Remote Shutter  Clicks when condition=0)
+{ IF_NOT_CONDITION_PORT_BIT( ( ( mosaic_twi & 4 ) == 0 )  , PORTC , DO_PC0_LCD_EE    ); }  // first click Remote Shutter  Clicks when condition=0)
+{ IF_NOT_CONDITION_PORT_BIT( ( ( mosaic_twi & 2 ) == 0 )  , PORTC , DO_PC1_LCD_RW    ); }  // second click Remote Shutter  Clicks when condition=0)
 
-dd_v[DDS_DEBUG + 0x1E] = ((long)effectiv_torq<<16) + dcay;
+// dd_v[DDS_DEBUG + 0x1E] = ((long)effectiv_torq<<16) + dcay;
 
 #endif  // AT_SLAVE
 #ifdef AT_MASTER
@@ -2888,8 +2908,8 @@ twi_tx_buf[21]  = cmd_state;      // Flash YELLOW led
 // twi_tx_buf[22]  = (mosaic_seconds!=-1)&&(mosaic_seconds<30)&&(moving==0); // Flash RED led if in mosaic mode  // Bits: 210 : Primary, Secondary, Mosaic active
 mosaic_twi = 0;
 //if ( (mosaic_seconds !=-1 )&&( mosaic_seconds<30)&&(moving==0) ) mosaic_twi |= 1;  // Bit 0 : Mosaic Active, Flash the red Led
-if ( (mosaic_seconds >  2 )&&( mosaic_seconds+1 < mosaic_dt  ) ) mosaic_twi |= 2;  // Bit 1 : Secondary 
-if ( (mosaic_seconds >  4 )&&( mosaic_seconds+1 < mosaic_dt  ) ) mosaic_twi |= 4;  // Bit 2 : Primary 
+if ( (mosaic_seconds >  4 )&&( mosaic_seconds+1 < mosaic_dt  ) ) mosaic_twi |= 4;  // Bit 2 : first click
+if ( (mosaic_seconds >  2 )&&( mosaic_seconds+1 < mosaic_dt  ) ) mosaic_twi |= 2;  // Bit 1 : second click
 twi_tx_buf[22]  = mosaic_twi;
  
 // 8 bytes available here (32 max)
@@ -2902,9 +2922,15 @@ twi_tx_buf[TWI_C1] = -sum;   // Checksum
 twi_rx_buf[0]  = 0x21;   // Slave address READ Request
 twi_fb_count   = TWI_C1+1;    // hardcoded for now, but it could depens on what the Master wants in return
 twi_hold = 0;         // Tell foreground that if it interrupts us, it must not drive the twi position because we are reading them...
+
+///%  if ( debug_page == 7 ) dd_v[DDS_DEBUG + 0x18] = (long)mosaic_seconds + 0x110000;
+///%  if ( debug_page == 7 ) dd_v[DDS_DEBUG + 0x19] = (long)mosaic_seq_ra  + 0x220000;
+///%  if ( debug_page == 7 ) dd_v[DDS_DEBUG + 0x1A] = (long)mosaic_seq_de  + 0x330000;
+///%  if ( debug_page == 7 ) dd_v[DDS_DEBUG + 0x1B] = (long)mosaic_dt      + 0x440000;
 #elif AT_SLAVE
 if ( twi_fb_count==0 ) twi_fb_count   = TWI_C1;    // TODO: remove ... this should be set by the reception SLA+W
 #endif
+///%  if ( debug_page == 7 ) dd_v[DDS_DEBUG + 0x1C] = (long)mosaic_twi     + 0x550000;
 }
 
 static unsigned char twi_enable=0;
@@ -3236,7 +3262,7 @@ d_TIMER1++;             // counts time in 0.1 ms
 if ( mosaic_twi&4 ) { IF_NOT_CONDITION_PORT_BIT( ssec&0x200 , PORTD , DO_PD6_RED    );  } // when in mosaic mode, flash the red led
 
 if ( cmd_state!=0 ) loc_cmd_state +=3;
-IF_NOT_CONDITION_PORT_BIT( (ssec&0x3FF)>0x40*loc_cmd_state , PORTD , DO_PD5_YELLOW );
+{ IF_NOT_CONDITION_PORT_BIT( (ssec&0x3FF)>0x40*loc_cmd_state , PORTD , DO_PD5_YELLOW ); }
 
 // Motor Current setting:
 if      ( motor_disable ){                    ;              }
@@ -4014,6 +4040,10 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.93  2012/04/21 18:23:24  pmichel
+I think the Remote control code is complete
+it exposes for 30 seconds
+
 Revision 1.92  2012/04/18 03:35:50  pmichel
 few nice improvements:
 -goto here (play play)
