@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/04/22 14:52:35 $
-$Id: telescope2.c,v 1.94 2012/04/22 14:52:35 pmichel Exp pmichel $
+$Date: 2012/04/23 03:30:20 $
+$Id: telescope2.c,v 1.95 2012/04/23 03:30:20 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.94 $
+$Revision: 1.95 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 
@@ -1314,7 +1314,7 @@ VVV->y  = fp_mult(fp_sin(*RA),cos_dec);    // any of the equation here changes, 
 PROGMEM const char pgm_polar_matrix     []="Polar Matrix: ";
 PROGMEM const char pgm_polar_matrix_b   []="Base: ";
 PROGMEM const char pgm_polar_matrix_d   []="Data: ";
-void generate_polar_matrix(MATRIX *R,unsigned long *pol_ra,unsigned long *pol_dec,unsigned long *shift_ra,unsigned char PRINT)
+void generate_polar_matrix(MATRIX *R,unsigned long *pol_ra,unsigned long *pol_dec,unsigned char PRINT)
 {
 ///^^ long cos_pol_ra   = fp_cos(*pol_ra);
 ///^^ long sin_pol_ra   =-fp_sin(*pol_ra);   // reversed direction . . .
@@ -1415,7 +1415,7 @@ unsigned long test_dec;
 long sum;
 VECTOR star;
 
-generate_polar_matrix(&PoleMatrix,&hour, &deg, &shift,0);
+generate_polar_matrix(&PoleMatrix,&hour, &deg,0);
 
 while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL + FMT_CONSOLE + 8);
 while (console_go) display_next(); /* wait for ready */ display_data((char*)console_buf,0,20,pgm_polar_line,0        ,FMT_NO_VAL + FMT_CONSOLE + 8);
@@ -1468,7 +1468,7 @@ for ( test_dec = 0 ; test_dec <= 90*TICKS_P_DEG ; test_dec += 45*TICKS_P_DEG )
 //     then, I will adjust RA timeshift to find the lowest total error
 void do_polar(void)
 {
-#ifndef NOT_VERY_GOOD
+#ifdef NOT_VERY_GOOD
 unsigned long next_ra;                          // start midpoint   scan +/- 12 steps   // 2073600000   which is 12h / 180 deg
          long ra_span;                          // 172800000
 unsigned long next_dec;                         // start midpoint, scan 10 degrees              
@@ -1588,9 +1588,8 @@ unsigned long best_ra,best_dec;
 short    dec_idx,ra_idx,span_idx;               // scan indexes
 unsigned long best_error;
 unsigned short star_idx,ref;
-unsigned long shift,dec,ra,deg;
+unsigned long dec,ra;
 unsigned long error_sum,error;
-unsigned char pass;
 VECTOR star,real_star;
 
 use_polar=0;
@@ -1599,27 +1598,24 @@ align_state=11;
 
 // Step one, find the shift (which is a minor adjustment to the RA 
    {
+   best_ra  = best_dec = 0;
    next_ra  = 12 * TICKS_P_HOUR;
-   ra_span  =      TICKS_P_HOUR  >1;       // 30 min steps  (1h/2)
+   ra_span  =      TICKS_P_HOUR >>1;       // 30 min steps  (1h/2)
    next_dec =  5 * TICKS_P_DEG;            // This will cover 0 to 10 deg north for all ra
-   dec_span =      TICKS_P_DEG   >1;       // 0.5 deg steps
+   dec_span =      TICKS_P_DEG  >>1;       // 0.5 deg steps
    best_error=0x7FFFFFFF;
 
-   for ( span_idx = 1 ; span_idx < 4 ; span_idx++ )  // do 4 passes   >> 3 each time to divide the span
+   for ( span_idx = 1 ; span_idx < 6 ; span_idx++ )  // do 4 passes   >> 3 each time to divide the span
       {
       for ( dec_idx = -10 ; dec_idx <= 10 ; dec_idx++)
          {
-         polar_ra  = next_ra  +  ra_idx *  ra_span;
          polar_dec = next_dec + dec_idx * dec_span;
          
          for ( ra_idx = -24 ; ra_idx <= 24 ; ra_idx++)
             {
-            //^^shift = next_ra + ra_idx * ra_span;
-            shift = 0;
-            if ( pass == 1 ) 
-               generate_polar_matrix(& PoleMatrix,&shift,&deg, &shift, 0);
-            else  // best ra and best dec found already
-               generate_polar_matrix(& PoleMatrix,&polar_ra,&polar_dec, &shift, 0);
+            polar_ra  = next_ra  +  ra_idx *  ra_span;
+
+            generate_polar_matrix(& PoleMatrix,&polar_ra,&polar_dec , 0);
  
             error_sum=0;
      
@@ -1636,22 +1632,19 @@ align_state=11;
                   set_vector(&real_star, &saved[star_idx+10].ra, &saved[star_idx+10].dec);
                   apply_polar_correction(&PoleMatrix,&star);
       
-                  if ( pass == 2 )  // calculate full error only in second pass
-                     { 
-                     error = star.x - real_star.x;
-                     error = fp_mult(error,error);
-                     ra = error_sum + (error);                      // use temp label to bake sure error only goes up
-                     if (ra > error_sum ) error_sum = ra;
+                  error = star.x - real_star.x;
+                  error = fp_mult(error,error);
+                  ra = error_sum + (error);                      // use temp label to make sure error only goes up
+                  if (ra > error_sum ) error_sum = ra;
       
-                     error = star.y - real_star.y;
-                     error = fp_mult(error,error);
-                     ra = error_sum + (error);                      // use temp label to bake sure error only goes up
-                     if (ra > error_sum ) error_sum = ra;
-                     }
+                  error = star.y - real_star.y;
+                  error = fp_mult(error,error);
+                  ra = error_sum + (error);                      // use temp label to make sure error only goes up
+                  if (ra > error_sum ) error_sum = ra;
       
                   error = star.z - real_star.z;
                   error = fp_mult(error,error);
-                  ra = error_sum + (error);                      // use temp label to bake sure error only goes up
+                  ra = error_sum + (error);                      // use temp label to make sure error only goes up
                   if (ra > error_sum ) error_sum = ra;
                   }
                } 
@@ -1660,27 +1653,21 @@ align_state=11;
             if ( error_sum < best_error )
                {
                best_error = error_sum;
-               best_ra    = shift;
-               best_dec   = deg;
+               best_ra    = polar_ra;
+               best_dec   = polar_dec;
                }
             }
          }
       next_ra  = best_ra;
       next_dec = best_dec;
-      if ( pass==1)
-         {
-         polar_ra  = best_ra;
-         polar_dec = best_dec;
-         }
 
-      display_data((char*)console_buf,0,20,pgm_polar_pass,span_idx    ,FMT_DEC + FMT_CONSOLE + 4);
-      display_data((char*)console_buf,0,20,pgm_polar_error,best_error ,FMT_HEX + FMT_CONSOLE + 8);
-      display_data((char*)console_buf,0,20,pgm_polar_hour,polar_ra    ,FMT_RA  + FMT_CONSOLE + 8);
-      display_data((char*)console_buf,0,20,pgm_polar_dec ,polar_dec   ,FMT_NS  + FMT_CONSOLE + 8);
-      display_data((char*)console_buf,0,20,pgm_polar_hour,best_ra     ,FMT_RA  + FMT_CONSOLE + 8);
+      display_data((char*)console_buf,0,20,pgm_polar_pass  ,span_idx    ,FMT_DEC + FMT_CONSOLE + 4);
+      display_data((char*)console_buf,0,20,pgm_polar_error ,best_error  ,FMT_HEX + FMT_CONSOLE + 8);
+      display_data((char*)console_buf,0,20,pgm_polar_hour  ,best_ra     ,FMT_RA  + FMT_CONSOLE + 8);
+      display_data((char*)console_buf,0,20,pgm_polar_dec   ,best_dec    ,FMT_NS  + FMT_CONSOLE + 8);
    
-      display_data((char*)console_buf,0,20,pgm_polar_hour,ra_span     ,FMT_RA  + FMT_CONSOLE + 8);
-      display_data((char*)console_buf,0,20,pgm_polar_dec ,dec_span    ,FMT_NS  + FMT_CONSOLE + 8);
+      display_data((char*)console_buf,0,20,pgm_polar_hour  ,ra_span     ,FMT_RA  + FMT_CONSOLE + 8);
+      display_data((char*)console_buf,0,20,pgm_polar_dec   ,dec_span    ,FMT_NS  + FMT_CONSOLE + 8);
    
       dec_span = dec_span >> 3; // reduce span to slowly converge towards the solution
       ra_span  = ra_span  >> 3; // reduce span to slowly converge towards the solution
@@ -1688,9 +1675,9 @@ align_state=11;
    }
 
 #endif
-// polar_ra  = 13*TICKS_P_HOUR;             Test around star#51
-// polar_dec =  3*TICKS_P_DEG;              Result: the correcton around star #51 is + 3 deg north
-generate_polar_matrix(& PoleMatrix,&polar_ra, &polar_dec, &&polar_ra,1);
+//polar_ra  = 13*TICKS_P_HOUR;     //      Test around star#51
+//polar_dec =  3*TICKS_P_DEG;      //      Result: the correcton around star #51 is + 3 deg north
+generate_polar_matrix(& PoleMatrix,&polar_ra, &polar_dec, 1);
    
 use_polar=1;
 align_state=12;
@@ -4199,6 +4186,10 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.95  2012/04/23 03:30:20  pmichel
+My previous align was based on the fact that I was not setting the first reference RA position
+I now redo the alignment using an easyer method
+
 Revision 1.94  2012/04/22 14:52:35  pmichel
 Version used for CAP Hatteras . . . .
 
