@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/04/23 03:30:20 $
-$Id: telescope2.c,v 1.95 2012/04/23 03:30:20 pmichel Exp pmichel $
+$Date: 2012/04/23 04:22:14 $
+$Id: telescope2.c,v 1.96 2012/04/23 04:22:14 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.95 $
+$Revision: 1.96 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 
@@ -458,12 +458,12 @@ char current_star_name[STAR_NAME_LEN+CONSTEL_NAME_LEN] = ""; // place to store t
 
 PROGMEM const char pgm_free_mem[]="Free Memory:";
 #ifdef AT_MASTER
-PROGMEM const char pgm_starting[]="Telescope Master Starting...";
+PROGMEM const char pgm_starting[]="Telescope Master Starting...($Revision: 1.96 $)";
 #else
    #ifdef AT_SLAVE
-   PROGMEM const char pgm_starting[]="Telescope Slave Starting...";
+   PROGMEM const char pgm_starting[]="Telescope Slave Starting...($Revision: 1.96 $)";
    #else
-   PROGMEM const char pgm_starting[]="Telescope Starting...";
+   PROGMEM const char pgm_starting[]="Telescope Starting...[$Revision: 1.96 $]";
    #endif
 #endif
 PROGMEM const char pgm_display_bug[]="Display routines problem with value (FMT_NE/EW):";
@@ -1677,6 +1677,8 @@ align_state=11;
 #endif
 //polar_ra  = 13*TICKS_P_HOUR;     //      Test around star#51
 //polar_dec =  3*TICKS_P_DEG;      //      Result: the correcton around star #51 is + 3 deg north
+///polar_ra  = 13*TICKS_P_HOUR;                   //      Test around star#51
+///polar_dec =  TICKS_P_DAY - 3*TICKS_P_DEG;      //      Result: the correcton around star #51 is - 3 deg (south)
 generate_polar_matrix(& PoleMatrix,&polar_ra, &polar_dec, 1);
    
 use_polar=1;
@@ -2446,7 +2448,7 @@ if ( use_polar )
          }
       else if ( test_bit >= 0x00000400 ) // while this is true, polar_state will go from 11 to .... 31 
          {
-         work.z = fp_cos(desired_dec + angle_test);           
+         work.z = fp_cos(desired_dec + angle_test);           // search from 0 to 180 deg 
          if ( work.z > desired.z ) desired_dec += angle_test; // ok, still over, add to the angle
          test_bit = test_bit >> 1;
          angle_test = angle_test >> 1;
@@ -2540,26 +2542,39 @@ if ( use_polar )
       } 
    else if ( polar_state<90 )  // states [80..89] final, generate the delta RA and delta DEC
       {
-//      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x14]=ref_ra;
-//      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x15]=desired_ra;
-//      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x16]=ref_dec;
-//      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x17]=desired_dec;
+      set_vector(&work,     (unsigned long * ) &ref_ra,     (unsigned long * ) &ref_dec); 
+      set_vector(&desired , (unsigned long * ) &desired_ra, (unsigned long * ) &desired_dec); 
 
-      loc_ra_correction  = desired_ra  - ref_ra;
-      loc_dec_correction = desired_dec - ref_dec;
+      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x14]=ref_ra;
+      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x15]=desired_ra;
+      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x16]=ref_dec;
+      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x17]=desired_dec;
+
+      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x0C]=work.x;
+      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x0D]=work.y;
+      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x0E]=work.z;
+
+      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x1C]=desired.x;
+      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x1D]=desired.y;
+      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x1E]=desired.z;
+
+      // Check if we are crossing the Dead Band
+      if         ( ( desired.x > 0 ) && ( work.x > 0 ) ) // [270 - 0 - 90]
+         {
+         if      ( ( desired.y > 0 ) && ( work.y < 0 ) )  { loc_ra_correction  = desired_ra  - ref_ra  - DEAD_BAND ; }
+         else if ( ( desired.y < 0 ) && ( work.y > 0 ) )  { loc_ra_correction  = desired_ra  - ref_ra  + DEAD_BAND ; }
+         else                                             { loc_ra_correction  = desired_ra  - ref_ra  ;             }
+         }
+      else                                                { loc_ra_correction  = desired_ra  - ref_ra  ;             }
+
+      if      ( ( desired.z > 0 ) && ( work.z < 0 ) )     { loc_dec_correction = desired_dec - ref_dec - DEAD_BAND ; }
+      else if ( ( desired.z < 0 ) && ( work.z > 0 ) )     { loc_dec_correction = desired_dec - ref_dec + DEAD_BAND ; }
+      else                                                { loc_dec_correction = desired_dec - ref_dec ;             }
 
       polar_state = 0;
 
-      if ( standby_goto == 2 )
-         {
-         if ( ra_correction > loc_ra_correction )   { if ( ra_correction      - loc_ra_correction  < 20 ) standby_goto =3; }
-         else                                       { if ( loc_ra_correction  - ra_correction      < 20 ) standby_goto =3; }
-         }
-      else if ( standby_goto == 3 )
-         {
-         if ( dec_correction > loc_dec_correction ) { if ( dec_correction     - loc_dec_correction < 20 ) standby_goto =-1; }
-         else                                       { if ( loc_dec_correction - dec_correction     < 20 ) standby_goto =-1; }
-         }
+      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x18]=loc_ra_correction;
+      if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x19]=loc_dec_correction;
       }
    else polar_state=0;
 
@@ -4186,6 +4201,14 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.96  2012/04/23 04:22:14  pmichel
+###### Milestone ######
+Confirmed that new alignment method works
+1- I forced 13h RA + 3 Deg DEC   ...and used this fake matrix to mark misaligned stars on the ceeling of my room
+2- I re-activated the dopolar() funtion
+3- Using the misaligned, do_polar() found a correction of 13h RA and 3 Deg DEC !!!  on the first pass too
+I guess the next best test would be to fake a less perfect value  2.89 deg ...
+
 Revision 1.95  2012/04/23 03:30:20  pmichel
 My previous align was based on the fact that I was not setting the first reference RA position
 I now redo the alignment using an easyer method
