@@ -4,42 +4,50 @@
 #ifdef AT_SLAVE
 PROGMEM const char pgm_stars_name_reduced[]   =  // format: byte:StarID byte:ConstelationId Star Name string
    {                                             // Names are for only a few prefered stars to save memory space
-   "\021\032Rigel     "   /*  Star ID: 17  Constellation:Orion        */  \
-   "\023\032Bellatrix "   /*  Star ID: 19  Constellation:Orion        */  \
-   "\025\032Mintaka   "   /*  Star ID: 21  Constellation:Orion        */  \
-   "\030\032Alnilam   "   /*  Star ID: 24  Constellation:Orion        */  \
-   "\032\032Alnitak   "   /*  Star ID: 26  Constellation:Orion        */  \
-   "\033\032Ori       "   /*  Star ID: 27  Constellation:Orion        */  \
-   "\034\032Betelgeuse"   /*  Star ID: 28  Constellation:Orion        */  \
-   "\042\010Sirius    "   /*  Star ID: 34  Constellation:Canis Major  */  \
-   "\050\023Alphard   "   /*  Star ID: 40  Constellation:Hydra        */  \
-   "\106\027Vega      "   /*  Star ID: 70  Constellation:Lyra         */  \
-   "\112\003Altair    "   /*  Star ID: 74  Constellation:Aquila       */  \
-   "\114\017Deneb     "   /*  Star ID: 76  Constellation:Cygnus       */  \
-   "\125\377Andromeda "   /* Coord ID: 85  ; From Aladin:  */  \
-   "\126\37742 Ori Neb"   /* Coord ID: 86  ; From Aladin: Northern nebula under Orion's belt  */  \
-   "\127\3772 Ori Neb "   /* Coord ID: 87  ; From Aladin: Southern nebula under Orion's belt  */  \
-   "\130\377Horsehead "   /* Coord ID: 88  ; From Aladin: Nose of the horse */  \
-   "\131\377Near Horse"   /* Coord ID: 89  ; From Aladin: North of horse head, left of Alnitak */  \
-   "\132\377Rosett Neb"   /* Coord ID: 90  ; From Aladin: Rosette Nebula in Monoceros */  \
-   "\133\377Sirius Neb"   /* Coord ID: 91  ; From Google Earth: Nebula near Sirius */  \
-   "\134\377Messier101"   /* Coord ID: 92  ; From Google: Galaxy at the tip of Ursa Major */  \
-   "\135\377Vulpec Neb"   /* Coord ID: 93  ; From Aladin:  */  \
-   "\136\377CygnusNeb1"   /* Coord ID: 94  ; From Aladin: center is Star in Cyg at torso */  \
-   "\137\377CygnusNeb2"   /* Coord ID: 95  ; From Aladin: center is Star in cloud near the Cyg at + */  \
-   "\140\377CygnusNeb3"   /* Coord ID: 96  ; From Aladin: center is Red Star in cloud further from the Cyg at + */  \
-   "\141\377USA Nebula"   /* Coord ID: 97  ; From Aladin: center is Star on Boston */  \
+   "\021\036Rigel     "   /*  Star ID: 17  Constellation:Orion        */  \
+   "\023\036Bellatrix "   /*  Star ID: 19  Constellation:Orion        */  \
+   "\025\036Mintaka   "   /*  Star ID: 21  Constellation:Orion        */  \
+   "\030\036Alnilam   "   /*  Star ID: 24  Constellation:Orion        */  \
+   "\032\036Alnitak   "   /*  Star ID: 26  Constellation:Orion        */  \
+   "\033\036Ori       "   /*  Star ID: 27  Constellation:Orion        */  \
+   "\034\036Betelgeuse"   /*  Star ID: 28  Constellation:Orion        */  \
+   "\042\011Sirius    "   /*  Star ID: 34  Constellation:Canis Major  */  \
+   "\050\025Alphard   "   /*  Star ID: 40  Constellation:Hydra        */  \
+   "\106\031Vega      "   /*  Star ID: 70  Constellation:Lyra         */  \
+   "\112\004Altair    "   /*  Star ID: 74  Constellation:Aquila       */  \
+   "\114\020Deneb     "   /*  Star ID: 76  Constellation:Cygnus       */  \
+   "\125\377M31 Androm"   /* Coord ID: 85  ; From Aladin: Andromeda Galaxy TODO */  \
+   "\126\377CAS:Packma"   /* Coord ID: 86  ; From Google: Packman Nebula NGC 281 (Cassiopia) TODO */  \
+   "\127\377HIP13665  "   /* Coord ID: 87  ; From Google: Interesting Nebula */  \
+   "\130\37742 Ori Neb"   /* Coord ID: 88  ; From Aladin: Northern nebula under Orion's belt  */  \
+   "\131\3772 Ori Neb "   /* Coord ID: 89  ; From Aladin: Southern nebula under Orion's belt  */  \
+   "\132\377Horsehead "   /* Coord ID: 90  ; From Aladin: Nose of the horse */  \
+   "\133\377Near Horse"   /* Coord ID: 91  ; From Aladin: North of horse head, left of Alnitak */  \
+   "\134\377Rosett Neb"   /* Coord ID: 92  ; From Aladin: Rosette Nebula in Monoceros */  \
+   "\135\377Sirius Neb"   /* Coord ID: 93  ; From Google Earth: Nebula near Sirius */  \
+   "\136\377M65 Galaxy"   /* Coord ID: 94  ; From Stellarium J2000               */  \
+   "\137\377M66 Galaxy"   /* Coord ID: 95  ; From Stellarium J2000               */  \
+   "\140\377NGC3628 Gx"   /* Coord ID: 96  ; From Stellarium J2000               */  \
+   "\141\377M54       "   /* Coord ID: 97  ; From Stellarium: Galaxy at the tip of Ursa Major */  \
+   "\142\377M51       "   /* Coord ID: 98  ; From Stellarium: Whirlpool Galaxy TODO */  \
+   "\143\377M101      "   /* Coord ID: 99  ; From Google: Galaxy at the tip of Ursa Major */  \
+   "\144\377Eagle Nebu"   /* Coord ID:100  ; From Stellarium HIP 89743 */  \
+   "\145\377Vulpec Neb"   /* Coord ID:101  ; From Aladin:  */  \
+   "\146\377Dumbbell N"   /* Coord ID:102  ; From Stellarium J2000 TODO */  \
+   "\147\377CygnusNeb2"   /* Coord ID:103  ; From Google: HIP100784 TODO */  \
+   "\150\377CygnusNeb3"   /* Coord ID:104  ; From Google: 56CYG-57CYG TODO */  \
+   "\151\377CygnusNeb4"   /* Coord ID:105  ; From Google: HIP103559 (red) TODO */  \
    "\377\377Unknown   "   /* Coord ID: -1  ;  */  \
-   };   // This table uses 312 bytes...
+   };   // This table uses 408 bytes...
 
 PROGMEM const char pgm_const_name[]   =  // format: byte:ConstelationId Constellation Name string
    {                                     // Names are for only a few prefered stars to save memory space
-   "\003Aquila      "   /* Const ID:  3  */  \
-   "\010Canis Major "   /* Const ID:  8  */  \
-   "\017Cygnus      "   /* Const ID: 15  */  \
-   "\023Hydra       "   /* Const ID: 19  */  \
-   "\027Lyra        "   /* Const ID: 23  */  \
-   "\032Orion       "   /* Const ID: 26  */  \
+   "\004Aquila      "   /* Const ID:  4  */  \
+   "\011Canis Major "   /* Const ID:  9  */  \
+   "\020Cygnus      "   /* Const ID: 16  */  \
+   "\025Hydra       "   /* Const ID: 21  */  \
+   "\031Lyra        "   /* Const ID: 25  */  \
+   "\036Orion       "   /* Const ID: 30  */  \
    "\377            "   /* Const ID: -1  */  \
    };   // This table uses 91 bytes...
 
@@ -131,27 +139,35 @@ PROGMEM const unsigned long pgm_stars_pos[] = // The next 85 stars are used for 
    ( 23*TICKS_P_HOUR + 3*TICKS_P_MIN +46.458*TICKS_P_SEC ),( 28*TICKS_P_DEG + 4*TICKS_P_DEG_MIN + 58.04*TICKS_P_DEG_SEC), //  83 53bet Peg  
    ( 23*TICKS_P_HOUR + 4*TICKS_P_MIN +45.654*TICKS_P_SEC ),( 15*TICKS_P_DEG +12*TICKS_P_DEG_MIN + 18.95*TICKS_P_DEG_SEC), //  84 54alp Peg  
    // Start of my own points of interest ...
-   (  0*TICKS_P_HOUR +42*TICKS_P_MIN +  44.3*TICKS_P_SEC ),( 41*TICKS_P_DEG +16*TICKS_P_DEG_MIN +   8.1*TICKS_P_DEG_SEC), //  85 >Andromeda Galaxy
-   (  5*TICKS_P_HOUR +35*TICKS_P_MIN +    16*TICKS_P_SEC ),(355*TICKS_P_DEG +10*TICKS_P_DEG_MIN +    45*TICKS_P_DEG_SEC), //  86 >42 Ori Neb
-   (  5*TICKS_P_HOUR +35*TICKS_P_MIN +  22.9*TICKS_P_SEC ),(354*TICKS_P_DEG +35*TICKS_P_DEG_MIN +     2*TICKS_P_DEG_SEC), //  87 >2 Ori Neb
-   (  5*TICKS_P_HOUR +40*TICKS_P_MIN + 58.92*TICKS_P_SEC ),(357*TICKS_P_DEG +35*TICKS_P_DEG_MIN +   1.4*TICKS_P_DEG_SEC), //  88 >Horsehead Nebula
-   (  5*TICKS_P_HOUR +41*TICKS_P_MIN + 45.15*TICKS_P_SEC ),(358*TICKS_P_DEG + 8*TICKS_P_DEG_MIN +  44.7*TICKS_P_DEG_SEC), //  89 >Near Horsehead
-   (  6*TICKS_P_HOUR +31*TICKS_P_MIN + 27.38*TICKS_P_SEC ),(  4*TICKS_P_DEG +56*TICKS_P_DEG_MIN +  11.8*TICKS_P_DEG_SEC), //  90 >Rosett Neb
-   (  7*TICKS_P_HOUR + 4*TICKS_P_MIN + 52.48*TICKS_P_SEC ),(349*TICKS_P_DEG +29*TICKS_P_DEG_MIN +  3.52*TICKS_P_DEG_SEC), //  91 >Sirius Nebula
-   ( 14*TICKS_P_HOUR + 3*TICKS_P_MIN +  12.5*TICKS_P_SEC ),( 54*TICKS_P_DEG +20*TICKS_P_DEG_MIN +  56.1*TICKS_P_DEG_SEC), //  92 >Messier101
-   ( 19*TICKS_P_HOUR +43*TICKS_P_MIN + 10.83*TICKS_P_SEC ),( 23*TICKS_P_DEG +17*TICKS_P_DEG_MIN +  45.7*TICKS_P_DEG_SEC), //  93 >Vulpec Nebula
-   ( 19*TICKS_P_HOUR +59*TICKS_P_MIN + 54.24*TICKS_P_SEC ),( 35*TICKS_P_DEG +17*TICKS_P_DEG_MIN +    52*TICKS_P_DEG_SEC), //  94 >CygnusNeb1
-   ( 20*TICKS_P_HOUR +26*TICKS_P_MIN +  4.32*TICKS_P_SEC ),( 40*TICKS_P_DEG +23*TICKS_P_DEG_MIN +  41.2*TICKS_P_DEG_SEC), //  95 >CygnusNeb2
-   ( 20*TICKS_P_HOUR +28*TICKS_P_MIN +  49.9*TICKS_P_SEC ),( 39*TICKS_P_DEG +58*TICKS_P_DEG_MIN +  56.8*TICKS_P_DEG_SEC), //  96 >CygnusNeb3
-   ( 20*TICKS_P_HOUR +56*TICKS_P_MIN +    23*TICKS_P_SEC ),( 43*TICKS_P_DEG +54*TICKS_P_DEG_MIN +    27*TICKS_P_DEG_SEC), //  97 >USA Nebula
+   (  0*TICKS_P_HOUR +42*TICKS_P_MIN +  44.3*TICKS_P_SEC ),( 41*TICKS_P_DEG +16*TICKS_P_DEG_MIN +   8.1*TICKS_P_DEG_SEC), //  85 >M31 Andromeda
+   (  0*TICKS_P_HOUR +52*TICKS_P_MIN +    48*TICKS_P_SEC ),( 56*TICKS_P_DEG +37*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), //  86 >CAS:Packma
+   (  2*TICKS_P_HOUR +57*TICKS_P_MIN +     8*TICKS_P_SEC ),( 60*TICKS_P_DEG +39*TICKS_P_DEG_MIN +    44*TICKS_P_DEG_SEC), //  87 >HIP13665
+   (  5*TICKS_P_HOUR +35*TICKS_P_MIN +    16*TICKS_P_SEC ),(355*TICKS_P_DEG +10*TICKS_P_DEG_MIN +    45*TICKS_P_DEG_SEC), //  88 >42 Ori Neb
+   (  5*TICKS_P_HOUR +35*TICKS_P_MIN +  22.9*TICKS_P_SEC ),(354*TICKS_P_DEG +35*TICKS_P_DEG_MIN +     2*TICKS_P_DEG_SEC), //  89 >2 Ori Neb
+   (  5*TICKS_P_HOUR +40*TICKS_P_MIN + 58.92*TICKS_P_SEC ),(357*TICKS_P_DEG +35*TICKS_P_DEG_MIN +   1.4*TICKS_P_DEG_SEC), //  90 >Horsehead Nebula
+   (  5*TICKS_P_HOUR +41*TICKS_P_MIN + 45.15*TICKS_P_SEC ),(358*TICKS_P_DEG + 8*TICKS_P_DEG_MIN +  44.7*TICKS_P_DEG_SEC), //  91 >Near Horsehead
+   (  6*TICKS_P_HOUR +31*TICKS_P_MIN + 27.38*TICKS_P_SEC ),(  4*TICKS_P_DEG +56*TICKS_P_DEG_MIN +  11.8*TICKS_P_DEG_SEC), //  92 >Rosett Neb
+   (  7*TICKS_P_HOUR + 4*TICKS_P_MIN + 52.48*TICKS_P_SEC ),(349*TICKS_P_DEG +29*TICKS_P_DEG_MIN +  3.52*TICKS_P_DEG_SEC), //  93 >Sirius Nebula
+   ( 11*TICKS_P_HOUR +18*TICKS_P_MIN +    54*TICKS_P_SEC ),( 13*TICKS_P_DEG + 5*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), //  94 >M65 Galaxy
+   ( 11*TICKS_P_HOUR +20*TICKS_P_MIN +    12*TICKS_P_SEC ),( 12*TICKS_P_DEG +59*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), //  95 >M66 Galaxy
+   ( 11*TICKS_P_HOUR +20*TICKS_P_MIN +    18*TICKS_P_SEC ),( 13*TICKS_P_DEG +36*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), //  96 >NGC3628 Gxy
+   ( 13*TICKS_P_HOUR +29*TICKS_P_MIN +    54*TICKS_P_SEC ),( 47*TICKS_P_DEG +12*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), //  97 >M54
+   ( 13*TICKS_P_HOUR +30*TICKS_P_MIN +     0*TICKS_P_SEC ),( 47*TICKS_P_DEG +16*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), //  98 >M51
+   ( 14*TICKS_P_HOUR + 3*TICKS_P_MIN +  12.5*TICKS_P_SEC ),( 54*TICKS_P_DEG +20*TICKS_P_DEG_MIN +  56.1*TICKS_P_DEG_SEC), //  99 >M101
+   ( 18*TICKS_P_HOUR +18*TICKS_P_MIN +  52.7*TICKS_P_SEC ),(346*TICKS_P_DEG +10*TICKS_P_DEG_MIN +    17*TICKS_P_DEG_SEC), // 100 >Eagle Nebula
+   ( 19*TICKS_P_HOUR +43*TICKS_P_MIN + 10.83*TICKS_P_SEC ),( 23*TICKS_P_DEG +17*TICKS_P_DEG_MIN +  45.7*TICKS_P_DEG_SEC), // 101 >Vulpec Nebula
+   ( 19*TICKS_P_HOUR +59*TICKS_P_MIN +    36*TICKS_P_SEC ),( 22*TICKS_P_DEG +43*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), // 102 >Dumbbell Nebula
+   ( 20*TICKS_P_HOUR +26*TICKS_P_MIN +  4.32*TICKS_P_SEC ),( 40*TICKS_P_DEG +23*TICKS_P_DEG_MIN +  41.2*TICKS_P_DEG_SEC), // 103 >CygnusNeb2
+   ( 20*TICKS_P_HOUR +51*TICKS_P_MIN +    15*TICKS_P_SEC ),( 44*TICKS_P_DEG +25*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), // 104 >CygnusNeb3
+   ( 20*TICKS_P_HOUR +59*TICKS_P_MIN +  31.8*TICKS_P_SEC ),( 43*TICKS_P_DEG +57*TICKS_P_DEG_MIN +    57*TICKS_P_DEG_SEC), // 105 >CygnusNeb4
    0,0  // origin and Null terminator
-   };   // This table uses 784 bytes...
+   };   // This table uses 856 bytes...
 #endif
 #define STAR_NAME_LEN 12
-#define STAR_NAME_COUNT 26
+#define STAR_NAME_COUNT 34
 #define STAR_NAME_CODES  2
 #define CONSTEL_NAME_LEN 13
 #define CONSTEL_NAME_COUNT 7
 #define CONSTEL_NAME_CODES 1 
-#define STARS_COORD_TOTAL 98
+#define STARS_COORD_TOTAL 107
 #define STARS_COORD_ALIGN 85

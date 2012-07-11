@@ -1,4 +1,7 @@
 DEVICE = atmega328p
+#  avrdude: Device signature = 0x1e9514  A328-PU
+#  avrdude: Device signature = 0x1e950f  A328P-PU
+# AVRDUDE_DEVICE = m328
 AVRDUDE_DEVICE = m328p
 # DEVICE ?= atmega168
 # AVRDUDE_DEVICE ?= m168
@@ -65,6 +68,7 @@ slv:
 #  For the Telescope Board, the low fuse has to be:
 #  MASTER : avrdude: safemode: lfuse reads as B6  CKDIV8=0x80 >>> No DIV8   CKOUT=0x00 >> CLK OUT ACTIVE  SUT 0x30 : slow rising    CKSEL 0x06 =   Ceramic Crystal
 #  SLAVE  : avrdude: safemode: lfuse reads as E0  CKDIV8=0x80 >>> No DIV8   CKOUT=0x40 >> NO CLK OUT      SUT 0x20 : slow rising    CKSEL 0x00 =   External clock
+#  >>>>>    once programmed as a slave, then it must have an external clock to survive -> a slave will always need a clock source to change the fuse
 
 
 # to read the Fuses: to the files high and low :

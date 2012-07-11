@@ -237,7 +237,7 @@ for ( iii=0 ; iii<NB ; iii++)
    if ( iii <NBNB ) print "   ("RR,"),("DD"), // "sprintf("%3d",iii)" " NAME " " HIGHLIGHT "  " DEDE
    else             print "   ("RR,"),("DD"), // "sprintf("%3d",iii)" >"KNOWN[iii]
    }
-print "   0,0  // origin and Null terminator"
+print "   0,0  // origin and Null terminator" ; NB++ 
 print "   };   // This table uses " NB*8 " bytes..."
 print "#endif"
 print "#define STAR_NAME_LEN " STAR_NAME_LEN+2
@@ -271,6 +271,9 @@ else                           # RA
 }
 
 # $Log: stars2atmel.awk,v $
+# Revision 1.7  2012/03/09 11:19:28  pmichel
+# Few fixes, Star names are ok on the slave side...
+#
 # Revision 1.6  2012/03/07 10:04:45  pmichel
 # Ready to try to compile
 #

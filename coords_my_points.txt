@@ -6,17 +6,25 @@
 # Quick mode to take 9 / 16 / 25 (x^2) picture around the current point to create a mosaic
 #
 #                    RA                   DEC                  Name+Constel         Notes
---	00 42 44.300	+41 16 08.10	Andromeda Galaxy	From Aladin: 
+--	00 42 44.300	+41 16 08.10	M31 Andromeda	From Aladin: Andromeda Galaxy TODO
+--	00 52 48.000	+56 37 00.00	CAS:Packma	From Google: Packman Nebula NGC 281 (Cassiopia) TODO
+--	02 57 08.000	+60 39 44.00	HIP13665  	From Google: Interesting Nebula
 --	05 35 16.000	-04 49 15.00	42 Ori Neb	From Aladin: Northern nebula under Orion's belt 
 --	05 35 22.900	-05 24 58.00	2 Ori Neb	From Aladin: Southern nebula under Orion's belt 
 --	05 40 58.920	-02 24 58.60	Horsehead Nebula	From Aladin: Nose of the horse
 --	05 41 45.150	-01 51 15.30	Near Horsehead	From Aladin: North of horse head, left of Alnitak
 --	06 31 27.380	+04 56 11.80	Rosett Neb	From Aladin: Rosette Nebula in Monoceros
 --	07 04 52.480	-10 30 56.48	Sirius Nebula	From Google Earth: Nebula near Sirius
---	14 03 12.500	+54 20 56.10	Messier101	From Google: Galaxy at the tip of Ursa Major
+--	11 18 54.000	+13 05 00.00	M65 Galaxy	From Stellarium J2000              
+--	11 20 12.000	+12 59 00.00	M66 Galaxy	From Stellarium J2000              
+--	11 20 18.000	+13 36 00.00	NGC3628 Gxy	From Stellarium J2000              
+--	13 29 54.000	+47 12 00.00	M54	From Stellarium: Galaxy at the tip of Ursa Major
+--	13 30 00.000	+47 16 00.00	M51	From Stellarium: Whirlpool Galaxy TODO
+--	14 03 12.500	+54 20 56.10	M101	From Google: Galaxy at the tip of Ursa Major
+--	18 18 52.700	-13 49 43.00	Eagle Nebula	From Stellarium HIP 89743
 --	19 43 10.830	+23 17 45.70	Vulpec Nebula	From Aladin: 
---	19 59 54.240	+35 17 52.00	CygnusNeb1	From Aladin: center is Star in Cyg at torso
---	20 26 04.320	+40 23 41.20	CygnusNeb2	From Aladin: center is Star in cloud near the Cyg at +
---	20 28 49.900	+39 58 56.80	CygnusNeb3	From Aladin: center is Red Star in cloud further from the Cyg at +
---	20 56 23.000	+43 54 27.00	USA Nebula	From Aladin: center is Star on Boston
+--	19 59 36.000	+22 43 00.00	Dumbbell Nebula	From Stellarium J2000 TODO
+--	20 26 04.320	+40 23 41.20	CygnusNeb2	From Google: HIP100784 TODO
+--	20 51 15.000	+44 25 00.00	CygnusNeb3	From Google: 56CYG-57CYG TODO
+--	20 59 31.800	+43 57 57.00	CygnusNeb4	From Google: HIP103559 (red) TODO
 #                                                              ..........
