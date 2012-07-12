@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/04/23 04:22:14 $
-$Id: telescope2.c,v 1.96 2012/04/23 04:22:14 pmichel Exp pmichel $
+$Date: 2012/04/25 04:46:13 $
+$Id: telescope2.c,v 1.97 2012/04/25 04:46:13 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.96 $
+$Revision: 1.97 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 
@@ -234,8 +234,8 @@ char fast_portc=0;
 #define TICKS_P_45_DEG   (2080000UL   *TICKS_P_STEP/8UL  )  //  421200000    // 0x191B0080  //
 #define TICKS_P_90_DEG   (2080000UL   *TICKS_P_STEP/4UL  )  //  842400000    // 0x32360100  //
 #define TICKS_P_180_DEG  (2080000UL   *TICKS_P_STEP/2UL  )  // 1684800000    // 0x646C0200  // 
-#define TICKS_P_DEG_MIN  (TICKS_P_DEG/60UL)                 //     156000    //             // 
-#define TICKS_P_DEG_SEC  (TICKS_P_DEG/3600UL)               //       2600    //             // 
+#define TICKS_P_DEG_MIN  (TICKS_P_DEG/60UL)                 //     156000    //    0x26160  // 
+#define TICKS_P_DEG_SEC  (TICKS_P_DEG/3600UL)               //       2600    //      0xA28  // 
 #define TICKS_P_HOUR     (2080000UL   *TICKS_P_STEP/24UL)   //  140400000    //             // 
 #define TICKS_P_MIN      (TICKS_P_HOUR/60UL)                //    2340000    //             // 
 #define TICKS_P_SEC      (TICKS_P_HOUR/3600UL)              //      39000    //             // 
@@ -348,24 +348,34 @@ unsigned long polar_ra,polar_dec;               // polar shift
 #endif
 #ifdef AT_MASTER
 static char set_ra_armed=0;
+//      MOZA: Size of the Mosaic grid 3 is for 3x3 on top of 3x3 so: 9x9 = 81 points   ... 5 would give 25x25 = 625 points ... but mosaic_grid_de/ra must be properly computed...
+#define MOZA 3
 PROGMEM const long mosaic_span[10] = {
-                                      1 * TICKS_P_DEG_MIN, // 0 : one minute
-                                      2 * TICKS_P_DEG_MIN, // 1 : two minute
-                                      4 * TICKS_P_DEG_MIN, // 2 : four minute
-                                      6 * TICKS_P_DEG_MIN, // 3 : six minute
-                                      8 * TICKS_P_DEG_MIN, // 4 : eight minute
-                                     10 * TICKS_P_DEG_MIN, // 5 : ten minute
-                                     20 * TICKS_P_DEG_MIN, // 6 : twenty minute
-                                     30 * TICKS_P_DEG_MIN, // 7 : thirty minute
-                                     60 * TICKS_P_DEG_MIN, // 8 : one degree
-                                    120 * TICKS_P_DEG_MIN, // 9 : two degrees
+                                      1 * TICKS_P_DEG_MIN / MOZA, // 0 : one minute
+                                      2 * TICKS_P_DEG_MIN / MOZA, // 1 : two minute
+                                      4 * TICKS_P_DEG_MIN / MOZA, // 2 : four minute
+                                      6 * TICKS_P_DEG_MIN / MOZA, // 3 : six minute
+                                      8 * TICKS_P_DEG_MIN / MOZA, // 4 : eight minute
+                                     10 * TICKS_P_DEG_MIN / MOZA, // 5 : ten minute
+                                     20 * TICKS_P_DEG_MIN / MOZA, // 6 : twenty minute
+                                     30 * TICKS_P_DEG_MIN / MOZA, // 7 : thirty minute
+                                     60 * TICKS_P_DEG_MIN / MOZA, // 8 : one degree
+                                    120 * TICKS_P_DEG_MIN / MOZA, // 9 : two degrees
                                      };
+PROGMEM const char mosaic_grid_de[MOZA*MOZA+1]  = { 1,2,0,1,2,0,1,2,0,1 };  // 3x3 x and y grid used for mosaic
+PROGMEM const char mosaic_grid_ra[MOZA*MOZA+1]  = { 1,1,2,2,2,0,0,0,1,1 };  // and the 10th of each sequence of 3x3 is a fast frame (10 times shorter than the others)
+// I use two 3x3 grid, one is 3 time bigger than the other one, and both are added, so the total mosaic is 9x9 ... So I will take 81 pictures per mosaic
+char   mosaic_grid_seq_small; // counts : 0 1 2 3 4 5 6 7 8     (no fast frame)
+char   mosaic_grid_seq_big;  //  counts : 0 1 2 3 4 5 6 7 8 9   (9th is the fast frame)
+
+
 long   mosaic_base_ra,mosaic_base_dec;
 char   mosaic_span_idx;
-char   mosaic_nb_tiles;
-char   mosaic_seq_ra;
-char   mosaic_seq_de;
-char   mosaic_dt;
+//char   mosaic_nb_tiles;
+short  mosaic_seq_ra;
+short  mosaic_seq_de;
+short  mosaic_dt;
+long   mosaic_start_stop_cnt=0;
 short  mosaic_seconds=-1;  // -1 means mosaic not active
 #endif
 char   mosaic_twi=-1;  // // Bits: 210 : Primary, Secondary, Mosaic active
@@ -458,12 +468,12 @@ char current_star_name[STAR_NAME_LEN+CONSTEL_NAME_LEN] = ""; // place to store t
 
 PROGMEM const char pgm_free_mem[]="Free Memory:";
 #ifdef AT_MASTER
-PROGMEM const char pgm_starting[]="Telescope Master Starting...($Revision: 1.96 $)";
+PROGMEM const char pgm_starting[]="Telescope Master Starting...($Revision: 1.97 $)";
 #else
    #ifdef AT_SLAVE
-   PROGMEM const char pgm_starting[]="Telescope Slave Starting...($Revision: 1.96 $)";
+   PROGMEM const char pgm_starting[]="Telescope Slave Starting...($Revision: 1.97 $)";
    #else
-   PROGMEM const char pgm_starting[]="Telescope Starting...[$Revision: 1.96 $]";
+   PROGMEM const char pgm_starting[]="Telescope Starting...[$Revision: 1.97 $]";
    #endif
 #endif
 PROGMEM const char pgm_display_bug[]="Display routines problem with value (FMT_NE/EW):";
@@ -1712,22 +1722,34 @@ Declin :
 
 void mosaic(void)
 {
+static long sss,rrr,ddd,uuu;  // dont need to be static
+static long moz_stat=0;
 static char last_sec;
-char        cur_sec;
+static char cur_sec,lll;
+short       mosaic_dt_target = mosaic_dt;
 
 cur_sec = dd_v[DDS_SECONDS]&0x7F;
 
-//-if ( (debug_page == 7) && (cur_sec != lll) ) 
-//-   {
-//-   lll = cur_sec; // reduce output frequency
-//-   dd_v[DDS_DEBUG + 0x08] = (long)mosaic_seconds + 0x110000;
-//-   dd_v[DDS_DEBUG + 0x09] = (long)mosaic_seq_ra  + 0x220000;
-//-   dd_v[DDS_DEBUG + 0x0A] = (long)mosaic_seq_de  + 0x330000;
-//-   dd_v[DDS_DEBUG + 0x0B] = (long)mosaic_dt      + 0x440000;
-//-   dd_v[DDS_DEBUG + 0x0C] = (long)mosaic_twi     + 0x550000;
-//-
-//-   dd_v[DDS_DEBUG + 0x1F] = ra->pos_earth;
-//-   }
+if ( (debug_page == 7) && (cur_sec != lll) ) 
+   {
+   lll = cur_sec; // reduce output frequency, this will update every seconds
+   dd_v[DDS_DEBUG + 0x08] = (long)mosaic_seconds         + 0x11000000;
+   dd_v[DDS_DEBUG + 0x09] = (long)mosaic_start_stop_cnt  + 0x22000000;
+   dd_v[DDS_DEBUG + 0x0A] = (long)mosaic_grid_seq_big    + 0x33000000;
+   dd_v[DDS_DEBUG + 0x0B] = (long)mosaic_grid_seq_small  + 0x44000000;
+   dd_v[DDS_DEBUG + 0x0C] = (long)mosaic_seq_de          + 0x55000000;
+   dd_v[DDS_DEBUG + 0x0D] = (long)mosaic_seq_ra          + 0x66000000;
+   dd_v[DDS_DEBUG + 0x0E] = (long)pgm_read_byte(&mosaic_grid_de[(short)mosaic_grid_seq_big]) + 0x770000;
+   dd_v[DDS_DEBUG + 0x0F] = (long)pgm_read_byte(&mosaic_grid_ra[(short)mosaic_grid_seq_big]) + 0x880000;
+   dd_v[DDS_DEBUG + 0x10] = (long)rrr;
+   dd_v[DDS_DEBUG + 0x11] = (long)ddd;
+   dd_v[DDS_DEBUG + 0x12] = (long)sss;
+   dd_v[DDS_DEBUG + 0x13] = (long)uuu;
+   dd_v[DDS_DEBUG + 0x14] = (long)uuu;
+
+   dd_v[DDS_DEBUG + 0x16] = (long)pgm_read_byte(&mosaic_grid_de[(short)mosaic_grid_seq_small]) + 0x770000;
+   dd_v[DDS_DEBUG + 0x17] = (long)pgm_read_byte(&mosaic_grid_ra[(short)mosaic_grid_seq_small]) + 0x880000;
+   }
 
 if ( mosaic_seconds==-1 ) return; // mosaic not active
 
@@ -1736,6 +1758,7 @@ if ( moving || goto_cmd ) return;
 
 if ( mosaic_seconds==-2 ) //cancel
    {
+   moz_stat+=0x1000;  //  debug
    ra->pos_target  = mosaic_base_ra;  
    dec->pos_target = mosaic_base_dec;
    goto_cmd = 1;
@@ -1746,50 +1769,44 @@ if ( mosaic_seconds==-2 ) //cancel
 if ( cur_sec != last_sec ) mosaic_seconds++;  // for now, hardcode to 35 seconds (assume 30 seconds photos)
 last_sec = cur_sec;
 
+if ( mosaic_grid_seq_big == (MOZA*MOZA) ) mosaic_dt_target=mosaic_dt>>3;  // fast frame ~ 8 times shorter
+if ( mosaic_dt_target < 6 ) mosaic_dt_target=40; // minimum is 6 seconds, referse mode, long exposure once every 10
 
-if ( mosaic_seconds > mosaic_dt )  // next move...
+if ( mosaic_seconds > mosaic_dt_target )  // next move...
    {
-   long sss,rrr,ddd,uuu;
-   mosaic_seconds = 1;
-
-   sss = pgm_read_dword(&mosaic_span[(short)mosaic_span_idx]);
-   if ( mosaic_dt == 1 ) sss = sss >> MOSAIC_MULT;
-   rrr = mosaic_seq_ra   * sss;
-   ddd = mosaic_seq_de   * sss;
-   uuu = mosaic_nb_tiles * sss;
-   uuu = uuu >> 1 ;
-
-   if ( mosaic_seq_ra > mosaic_nb_tiles ) // we are done...
-      {
-      rrr = ddd = uuu = 0; // goto start pos
-      mosaic_seconds = -1;
-      }
- 
-   ra->pos_target  = mosaic_base_ra  + rrr - uuu; // reversed RA so to stay in the same sky area
-   dec->pos_target = mosaic_base_dec - ddd + uuu;
-   goto_cmd = 1;
+   mosaic_seconds = 1;  // restart the cycle
 
    // setup the next position...
-   mosaic_seq_de++;
-   if ( mosaic_seq_de > mosaic_nb_tiles )
+   mosaic_grid_seq_big++;
+   if ( mosaic_grid_seq_big >= (MOZA*MOZA+1) )
       {
-      mosaic_seq_de = 0;
-      mosaic_seq_ra++;
-      }   
+      mosaic_grid_seq_big = 0;
+      mosaic_grid_seq_small++;  // 
+      if ( mosaic_grid_seq_small >= (MOZA*MOZA) ) // we are done
+         {
+         rrr = ddd = uuu = 0; // goto start pos
+         mosaic_seconds = -1;
+         mosaic_start_stop_cnt+=0x100; // complete
+         }
+      }
+   sss = pgm_read_dword(&mosaic_span[(short)mosaic_span_idx]);
 
-//   if ( debug_page==7 ) 
-//      {
-//      dd_v[DDS_DEBUG + 0x02]=sss;
-//      dd_v[DDS_DEBUG + 0x03]=rrr;
-//      dd_v[DDS_DEBUG + 0x04]=ddd;
-//      dd_v[DDS_DEBUG + 0x05]=mosaic_seq_ra;
-//      dd_v[DDS_DEBUG + 0x06]=ra->pos_target;
-//      dd_v[DDS_DEBUG + 0x07]=mosaic_seq_de;
-//      dd_v[DDS_DEBUG + 0x08]=dec->pos_target;
-//      dd_v[DDS_DEBUG + 0x09]=uuu;
-//      dd_v[DDS_DEBUG + 0x0A]=mosaic_nb_tiles;
-//      }
+   mosaic_seq_de = pgm_read_byte(&mosaic_grid_de[(short)mosaic_grid_seq_big])*MOZA + pgm_read_byte(&mosaic_grid_de[(short)mosaic_grid_seq_small]);
+   mosaic_seq_ra = pgm_read_byte(&mosaic_grid_ra[(short)mosaic_grid_seq_big])*MOZA + pgm_read_byte(&mosaic_grid_ra[(short)mosaic_grid_seq_small]);
+
+   rrr = mosaic_seq_ra   * sss;
+   ddd = mosaic_seq_de   * sss;
+   uuu = (MOZA + 1)      * sss;  // the full 9x9 counts 0-1-2-3-4-5-6-7-8 , so the middle element is 4,4
+
+
+   ra->pos_target  = mosaic_base_ra  + rrr - uuu; // reversed RA so to stay in the same sky area
+   dec->pos_target = mosaic_base_dec - ddd + uuu; // for a span of 1 deg, the mosaic will have a field of view of 1 deg
+   goto_cmd = 1;
+
    }
+
+
+
 }
  
 #define PROSCAN_VCR1_0      0x021CFE30
@@ -2095,34 +2112,26 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
             {
             if ( mosaic_seconds!=-1 ) 
                {
+               mosaic_start_stop_cnt+=0x10000; // canceled
                if ( cmd_val[1] == IDX_VCR1_0 )  mosaic_seconds=-1;  // cancel mosaic
                else                             mosaic_seconds=-2;  // cancel mosaic and return to origin
                }
-            else if ( cmd_val[1] == IDX_VCR1_9 || cmd_val[1] == IDX_VCR1_8 )   // GUIDE 9 X X : mosaic
+            else if ( cmd_val[1] <= IDX_VCR1_9 || cmd_val[1] >= IDX_VCR1_6 )   // GUIDE [6789] X X : mosaic
                {
                mosaic_base_ra  = ra->pos;
                mosaic_base_dec = dec->pos;
-               mosaic_nb_tiles = cmd_val[2];  // GUIDE 9 NB-TILES X
-               mosaic_span_idx = cmd_val[3];  // GUIDE 9 NB-TILES SPAN
-               mosaic_seq_ra   = 0; 
-               mosaic_seq_de   = 0;
-               mosaic_dt       = 1;   // By default, go so fast that no picture is taken
-               mosaic_seconds  = mosaic_dt-1;   // Start the mosaic
-               if      ( cmd_val[1] == IDX_VCR1_7 ) // scan mode (search a star...)
-                  {
-                  mosaic_dt       = 10;    // 5 sec exposure to test the system
-                  mosaic_nb_tiles = cmd_val[2]<<MOSAIC_MULT;
-                  }
-               else if ( cmd_val[1] == IDX_VCR1_8 ) // scan mode (search a star...)
-                  {
-                  mosaic_dt       = 36;    // Normal exposure: 30 sec
-                  mosaic_nb_tiles = cmd_val[2]<<MOSAIC_MULT;
-                  }
-               else if ( cmd_val[1] == IDX_VCR1_9 ) // scan mode (search a star...)
-                  {
-                  mosaic_dt       = 66;    // Normal exposure: 60 sec
-                  mosaic_nb_tiles = cmd_val[2]<<MOSAIC_MULT;
-                  }
+//               mosaic_nb_tiles = cmd_val[2]<<MOSAIC_MULT;  // GUIDE 9 NB-TILES X
+               mosaic_span_idx = cmd_val[3];               // GUIDE 9 NB-TILES SPAN
+//               mosaic_seq_ra   = 0; 
+//               mosaic_seq_de   = 0;
+               mosaic_grid_seq_big = -1;
+               mosaic_grid_seq_small = 0; 
+               mosaic_start_stop_cnt++;
+               mosaic_seconds  = 1000;   // Start the mosaic 
+                                                    mosaic_dt = 2;     // By default, go so fast that no picture is taken
+               if      ( cmd_val[1] == IDX_VCR1_7 ) mosaic_dt = 6;     // Fast 1 sec exposure for bright objects or to test the system
+               else if ( cmd_val[1] == IDX_VCR1_8 ) mosaic_dt = 36;    // Normal exposure: 30 sec
+               else if ( cmd_val[1] == IDX_VCR1_9 ) mosaic_dt = 66;    // Normal exposure: 60 sec
                }
             }
          else
@@ -4201,6 +4210,10 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.97  2012/04/25 04:46:13  pmichel
+Fixed problems with deadband and polar correction
+I thing using x,y,z is the best
+
 Revision 1.96  2012/04/23 04:22:14  pmichel
 ###### Milestone ######
 Confirmed that new alignment method works
