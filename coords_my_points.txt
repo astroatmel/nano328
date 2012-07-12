@@ -2,6 +2,8 @@
 # :sort
 # <TAB> separated fields
 #
+# cat coords_85stars_mag3.txt coords_my_points.txt | awk -f stars2atmel.awk > coords.h
+#
 # Todo on Telescope:
 # Quick mode to take 9 / 16 / 25 (x^2) picture around the current point to create a mosaic
 #
@@ -20,7 +22,7 @@
 --	11 20 18.000	+13 36 00.00	NGC3628 Gxy	From Stellarium J2000              
 --	13 29 54.000	+47 12 00.00	M54	From Stellarium: Galaxy at the tip of Ursa Major
 --	13 30 00.000	+47 16 00.00	M51	From Stellarium: Whirlpool Galaxy TODO
---	14 03 12.500	+54 20 56.10	M101	From Google: Galaxy at the tip of Ursa Major
+--	14 03 13.400	+54 20 57.00	M101	From Google: Galaxy at the tip of Ursa Major
 --	18 18 52.700	-13 49 43.00	Eagle Nebula	From Stellarium HIP 89743
 --	19 43 10.830	+23 17 45.70	Vulpec Nebula	From Aladin: 
 --	19 59 36.000	+22 43 00.00	Dumbbell Nebula	From Stellarium J2000 TODO
