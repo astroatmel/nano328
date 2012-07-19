@@ -20,6 +20,8 @@
 --	11 18 54.000	+13 05 00.00	M65 Galaxy	From Stellarium J2000              
 --	11 20 12.000	+12 59 00.00	M66 Galaxy	From Stellarium J2000              
 --	11 20 18.000	+13 36 00.00	NGC3628 Gxy	From Stellarium J2000              
+--	12 50 53.600	+41 07 15.52	M94	From Google: M94
+--	13 00 08.000	+27 58 37.60	ManyGxy	From Google: Mosaic of distant Galaxies
 --	13 29 54.000	+47 12 00.00	M54	From Stellarium: Galaxy at the tip of Ursa Major
 --	13 30 00.000	+47 16 00.00	M51	From Stellarium: Whirlpool Galaxy TODO
 --	14 03 13.400	+54 20 57.00	M101	From Google: Galaxy at the tip of Ursa Major
