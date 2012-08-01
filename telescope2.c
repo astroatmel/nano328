@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/07/12 19:22:51 $
-$Id: telescope2.c,v 1.99 2012/07/12 19:22:51 pmichel Exp pmichel $
+$Date: 2012/08/01 18:25:58 $
+$Id: telescope2.c,v 1.100 2012/08/01 18:25:58 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.99 $
+$Revision: 1.100 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 
@@ -285,8 +285,7 @@ long loc_ra_correction,ra_correction;   // local RA correction from polar error
 long loc_dec_correction,dec_correction;  // local DEC correction from polar error
 unsigned char last_antena=0;
 #ifdef AT_MASTER
-char aligned_meridian = 1;  // the alignment was done on which side of the meridian ? 
-char meridian = 1; // -1=West, +1=East   0= not selected yet and power disabled until then  
+char meridian = 0; // -1=West, +1=East   0= not selected yet and power disabled until then  
                    // note that once selected, if you slew pass the meridian, this is automatically tell the controler that you want to switch meridian
                    // Polar Alignment should only be done on one side / Meridian crossing is disabled until the polar align is complete
   // TODO : when tracking and power off, have the position decremented ************************
@@ -339,9 +338,8 @@ typedef struct   // those values are required per axis to be able to execute got
    unsigned char  direction;        // no units (which direction ? )                    
    } AXIS;
 
-#ifdef AT_SLAVE
 unsigned long polar_ra,polar_dec;               // polar shift
-#endif
+
 #ifdef AT_MASTER
 static char set_ra_armed=0;
 //      MOZA: Size of the Mosaic grid 3 is for 3x3 on top of 3x3 so: 9x9 = 81 points   ... 5 would give 25x25 = 625 points ... but mosaic_grid_de/ra must be properly computed...
@@ -466,13 +464,15 @@ char current_star_name[STAR_NAME_LEN+CONSTEL_NAME_LEN] = ""; // place to store t
 
 PROGMEM const char pgm_free_mem[]="Free Memory:";
 #ifdef AT_MASTER
-PROGMEM const char pgm_select_side[]="Use < > to select OTA meridian side East/West..";
-PROGMEM const char pgm_starting[]="Telescope Master Starting...($Revision: 1.99 $)";
+PROGMEM const char pgm_select_side[]="\012\015Use < > to select OTA meridian side East/West..";
+PROGMEM const char pgm_selected_east[]="East selected...";
+PROGMEM const char pgm_selected_west[]="West selected...";
+PROGMEM const char pgm_starting[]="Telescope Master Starting...($Revision: 1.100 $)";
 #else
    #ifdef AT_SLAVE
-   PROGMEM const char pgm_starting[]="Telescope Slave Starting...($Revision: 1.99 $)";
+   PROGMEM const char pgm_starting[]="Telescope Slave Starting...($Revision: 1.100 $)";
    #else
-   PROGMEM const char pgm_starting[]="Telescope Starting...[$Revision: 1.99 $]";
+   PROGMEM const char pgm_starting[]="Telescope Starting...[$Revision: 1.100 $]";
    #endif
 #endif
 PROGMEM const char pgm_display_bug[]="Display routines problem with value (FMT_NE/EW):";
@@ -742,7 +742,7 @@ PROGMEM const char display_main[]={"short"};   // I'm too close to the 32K limit
 // the _p table is the previous value of _v
 // in some cases, it's going to use a but more ram and a bit more flash
 // but over all, the code will run faster and use less ram
-// I will stop to use the if then else, and instead use a home made jump table
+// I will stop to use the if-then-else, and instead use a home made jump table
 //
 // I did a check-in before this change, the .HEX size was: 81451 bytes (28K)  free ram was: 0x044D
 //              after the optimization, the .HEX size is : 57061 bytes (20K)  free ram is:  0x0311
@@ -778,7 +778,7 @@ PROGMEM const unsigned char dd_x[DD_FIELDS]=
     , 22 , 27 , 32 , 37 , 42 , 47 , 52 , 57 , 64 , 69 , 74 , 79 , 84 , 89 , 94 , 99     // 0x20: Histogram 0->15
     , 39 , 39 , 39 , 72 , 97 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x30: RA structure values  [pos, pos_cor,pos_hw, speed, state
     , 22 , 22 , 22 , 72 , 97 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x40: DEC structure values [pos, pos_cor,pos_hw, speed, state
-    , 57 , 57 , 57 , 35 , 22 , 39 , 57 , 31 , 22 , 22 , 22 , 72 , 97 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds, start pos dec,ra,ra
+    , 57 , 57 , 57 , 35 , 22 , 39 , 57 , 31 , 22 , 22 , 22 , 72 , 97 , 57 , 22 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds, start pos dec,ra,ra
     }; //
 PROGMEM const unsigned char dd_y[DD_FIELDS]=
     { 36 , 36 , 36 , 36 , 36 , 36 , 36 , 36 , 37 , 37 , 37 , 37 , 37 , 37 , 37 , 37     // 0x00: DEBUG  0->15
@@ -786,7 +786,7 @@ PROGMEM const unsigned char dd_y[DD_FIELDS]=
     , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35 , 35     // 0x20: Histogram 0->15
     , 25 , 26 , 27 , 31 , 31 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x30: RA structure values   [pos, pos_cor,pos_hw, speed, state
     , 25 , 26 , 27 , 32 , 32 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0     // 0x40: DEC structure values  [pos, pos_cor,pos_hw, speed, state
-    , 25 , 26 , 27 , 22 , 29 , 29 , 29 , 31 , 31 , 32 , 28 , 34 , 29 ,  0 ,  0 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
+    , 25 , 26 , 27 , 22 , 29 , 29 , 29 , 31 , 31 , 32 , 28 , 34 , 29 , 24 , 24 ,  0     // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
     }; //
 PROGMEM const unsigned char dd_f[DD_FIELDS]=
     {0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18    // 0x00: DEBUG  0->15      all HEX 8 bytes
@@ -794,7 +794,7 @@ PROGMEM const unsigned char dd_f[DD_FIELDS]=
     ,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14    // 0x20: Histogram 0->15   all HEX 4 bytes
     ,0x50,0x50,0x50,0x26,0x24,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x30: RA structure values
     ,0x40,0x40,0x40,0x26,0x24,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00    // 0x40: DEC structure values 
-    ,0x60,0x60,0x60,0x38,0x40,0x50,0x60,0x14,0x18,0x18,0x70,0x24,0x24,0x24,0x00,0x00    // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
+    ,0x60,0x60,0x60,0x38,0x40,0x50,0x60,0x14,0x18,0x18,0x70,0x24,0x24,0x60,0x40,0x00    // 0x50: ra->pos2, ra->pos_cor2, ra->pos_hw2, seconds
     }; //                                               ^^^ was 0xB0 for Star name
 // define the Start of each variable in the array
 #define DDS_DEBUG         0x00
@@ -814,7 +814,8 @@ PROGMEM const unsigned char dd_f[DD_FIELDS]=
 #define DDS_CUR_STAR      0x5A  // dd_v[DDS_CUR_STAR]
 #define DDS_DEBUG_PAGE    0x5B  // dd_v[DDS_DEBUG_PAGE]
 #define DDS_CUR_STAR_REQ  0x5C  // dd_v[DDS_CUR_STAR_REQ]   /// shown as COORD ID
-//#define DDS_RX_IDX        0x5B  // dd_v[DDS_RX_IDX]
+#define DDS_POLAR_RA      0x5D  // dd_v[DDS_POLAR_RA]    /// polar error: RA
+#define DDS_POLAR_DEC     0x5E  // dd_v[DDS_POLAR_DEC]   /// polar error: DEC
 
 unsigned char dd_go(unsigned char task,char first)
 {
@@ -923,6 +924,9 @@ dd_v[DDS_DEBUG_PAGE]  = debug_page;
 //   dd_v[DDS_STAR_DEC_POS] = TICKS_P_45_DEG;  // temp for debug  set by twi (slave)
 //   dd_v[DDS_STAR_RA_POS]  = TICKS_P_45_DEG;  // temp for debug  set by twi (slave)
 //   dd_v[DDS_STAR_RA_POS2] = TICKS_P_45_DEG;  // temp for debug  set by twi (slave)
+
+   dd_v[DDS_POLAR_RA]  = polar_ra;
+   dd_v[DDS_POLAR_DEC] = polar_dec;
 #endif
 
 return 0; // found nothing to display
@@ -1709,8 +1713,8 @@ if ( mosaic_seconds > mosaic_dt )  // next move...
 #define PROSCAN_VCR1_9      0x021C6E39
 #define PROSCAN_VCR1_NORTH  0x021A6E59
 #define PROSCAN_VCR1_SOUTH  0x021A7E58
-#define PROSCAN_VCR1_WEST   0x021A8E57
-#define PROSCAN_VCR1_EAST   0x021A9E56
+#define PROSCAN_VCR1_EAST   0x021A8E57  // aug 1 2012 , reversed east / west
+#define PROSCAN_VCR1_WEST   0x021A9E56
 #define PROSCAN_VCR1_OK     0x0210BEF4
 #define PROSCAN_VCR1_STOP   0x021E0E1F
 #define PROSCAN_VCR1_PLAY   0x021EAE15
@@ -2074,7 +2078,17 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
       }
    else if ( next_input < 0 ) // Check for a one key command
       {
-      if      ( code_idx >= IDX_VCR1_NORTH && code_idx <= IDX_VCR1_STOP    ) slew_cmd = code_idx;  // Slew commande: North South East West and Stop
+      if      ( code_idx >= IDX_VCR1_NORTH && code_idx <= IDX_VCR1_STOP    ) 
+         {
+         slew_cmd = code_idx;  // Slew commande: North South East West and Stop
+         if ( meridian == 0 )
+            {
+            if ( code_idx == IDX_VCR1_EAST ) { meridian = 1;
+                                               display_data((char*)console_buf,0,20,pgm_selected_east,0,FMT_NO_VAL + FMT_CONSOLE); }
+            if ( code_idx == IDX_VCR1_WEST ) { meridian = -1;
+                                               display_data((char*)console_buf,0,20,pgm_selected_west,0,FMT_NO_VAL + FMT_CONSOLE); }
+            }
+         }
       else if ( code_idx == IDX_VCR1_TRAK_P  ) earth_tracking=1;         // Start tracking
       else if ( code_idx == IDX_VCR1_TRAK_M  ) earth_tracking=0;         // Stop tracking
       else if ( code_idx == IDX_VCR1_GOBACK  ) goto_pgm_pos(dd_v[DDS_CUR_STAR]);  // goto active star
@@ -2093,13 +2107,11 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
          }
       else if ( code_idx == IDX_VCR1_POWER   ) 
          {
-         motor_disable = !motor_disable;
-         //set_digital_output(DO_PD3_DISABLE  ,motor_disable);
-         //if ( motor_disable ) set_digital_output(DO_PD3_DISABLE  ,2);  // see: include/pololu/digital.h, it seems that using constants makes the code very efficiant
-         //else                 set_digital_output(DO_PD3_DISABLE  ,0);
-//         if ( motor_disable ) PORTD &= ~DO_PD3_DISABLE;  // set the pin to 0 V
-//         else                 PORTD |=  DO_PD3_DISABLE;
-         IF_CONDITION_PORT_BIT(motor_disable==0 , PORTD , DO_PD3_DISABLE );
+         if ( meridian != 0 )  // the user ned to select on which side the OTA is pointing (east/west)
+            {
+            motor_disable = !motor_disable;
+            IF_CONDITION_PORT_BIT(motor_disable==0 , PORTD , DO_PD3_DISABLE );
+            }
          }
       else if ( code_idx == IDX_VCR1_FWD     ) 
          {
@@ -2736,8 +2748,6 @@ else
    {
    axis->pos_cor = axis->pos_dem;
    add_value_to_pos(-dec_correction,&axis->pos_cor);     // add the local polar correction
-   // Required ? if ( aligned_meridian == meridian ) add_value_to_pos( dec_correction,&axis->pos_cor);     // add the local polar correction
-   // Required ? else                                add_value_to_pos(-dec_correction,&axis->pos_cor);     // add the local polar correction
    }
 
 
@@ -2835,10 +2845,15 @@ unsigned char *cde = (unsigned char *)& loc_dec_correction;
 unsigned char *pd  = (unsigned char *)& dd_v[DDS_CUR_STAR];
 unsigned char *sp  = (unsigned char *)& dd_v[DDS_STAR_DEC_POS];
 unsigned char iii;
+unsigned char *pra = (unsigned char *)& polar_ra;
+unsigned char *pde = (unsigned char *)& polar_dec;
 #ifdef AT_SLAVE
 unsigned char *pc  = (unsigned char *)& dd_v[DDS_CUR_STAR_REQ]  ;
 unsigned char *pp  = (unsigned char *)  twi_pos;
 unsigned char sum=0,found=0;
+static char banding=0;
+banding++;
+
 if ( twi_tx_buf[3] == 0xC0 )  // Current position
    {
    for ( iii=1 ; iii<TWI_C1 ; iii++ ) twi_rx_buf[iii]=0xFA;
@@ -2869,7 +2884,7 @@ if ( twi_tx_buf[3] == 0xC0 )  // Current position
    twi_star_ptr   = twi_tx_buf[20];   // Value fromm master
    cmd_state      = twi_tx_buf[21];   // Flash the Yello led
    mosaic_twi     = twi_tx_buf[22];   // Bits 210 : 
-   ///////// Prepare responce
+   ///////// Prepare response
    twi_rx_buf[1]  = twi_fb_count; 
    twi_rx_buf[2]  = twi_tx_buf[2];  // command feedback
    twi_rx_buf[3]  = twi_tx_buf[3];  // data feedback 
@@ -2887,11 +2902,20 @@ if ( twi_tx_buf[3] == 0xC0 )  // Current position
    twi_rx_buf[7] = pd[1];   // Return Slave's active star
    for ( iii=0 ; iii<8      ; iii++ ) twi_rx_buf[ 8+iii] = sp[iii];  // update current position
 
-   for ( iii=0 ; iii<4      ; iii++ ) twi_rx_buf[16+iii] = cra[iii]; // update current polar correction
-   for ( iii=0 ; iii<4      ; iii++ ) twi_rx_buf[20+iii] = cde[iii]; // update current polar correction
+   if ( banding & 1 ) 
+      {
+      for ( iii=0 ; iii<4      ; iii++ ) twi_rx_buf[16+iii] = cra[iii]; // update current polar correction
+      for ( iii=0 ; iii<4      ; iii++ ) twi_rx_buf[20+iii] = cde[iii]; // update current polar correction
+      twi_rx_buf[24] = 170;     // previous data is polar correction
+      }
+   else
+      {
+      for ( iii=0 ; iii<4      ; iii++ ) twi_rx_buf[16+iii] = pra[iii]; // update current polar correction
+      for ( iii=0 ; iii<4      ; iii++ ) twi_rx_buf[20+iii] = pde[iii]; // update current polar correction
+      twi_rx_buf[24] = 0;     // previous data is polar error
+      }
 
-   twi_rx_buf[24] = use_polar; 
-   twi_rx_buf[25] = 161;     // Debug Marker
+   twi_rx_buf[25] = use_polar; 
    twi_rx_buf[26] = 162;     // Debug Marker
 
 for ( iii=1 ; iii<TWI_C1 ; iii++ ) sum +=twi_rx_buf[iii];
@@ -2926,14 +2950,19 @@ pd[1] = twi_rx_buf[7]; // Slave's active star
 for ( iii=0 ; iii<8      ; iii++ ) sp[iii+0] = twi_rx_buf[8+iii]; // update current position
 for ( iii=4 ; iii<8      ; iii++ ) sp[iii+4] = twi_rx_buf[8+iii]; // update current position
 
-for ( iii=0 ; iii<4      ; iii++ ) cra[iii] = twi_rx_buf[16+iii]; // update current polar correction
-for ( iii=0 ; iii<4      ; iii++ ) cde[iii] = twi_rx_buf[20+iii]; // update current polar correction
-use_polar = twi_rx_buf[24];
-if ( use_polar && (align_state==11)) 
+if ( twi_rx_buf[24] ) // 0xAA (170) is polar correction
    {
-   align_state=12; 
-   aligned_meridian = meridian; // remember on which side of the meridian the alignment was done
+   for ( iii=0 ; iii<4      ; iii++ ) cra[iii] = twi_rx_buf[16+iii]; // update current polar correction
+   for ( iii=0 ; iii<4      ; iii++ ) cde[iii] = twi_rx_buf[20+iii]; // update current polar correction
    }
+else                 // else, 0,  this is polar error
+   {
+   for ( iii=0 ; iii<4      ; iii++ ) pra[iii] = twi_rx_buf[16+iii]; // update current polar correction
+   for ( iii=0 ; iii<4      ; iii++ ) pde[iii] = twi_rx_buf[20+iii]; // update current polar correction
+   }
+use_polar = twi_rx_buf[25];
+
+if ( use_polar && (align_state==11)) align_state=12; 
 // if ( twi_star_ptr >= STAR_NAME_LEN+CONSTEL_NAME_LEN-1 ) 
 //    { 
 //    pd[0] = twi_rx_buf[6];   // Update Master Current Star
@@ -3429,13 +3458,6 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
             }
          }
       }
-//   if ( debug_page==3 ) 
-//      {
-//      dd_v[DDS_DEBUG + 0x0C] = meridian;
-//      dd_v[DDS_DEBUG + 0x0D] = dec->pos_hw;
-//      dd_v[DDS_DEBUG + 0x0E] = dec->spd_index;
-//      dd_v[DDS_DEBUG + 0x0F] = slew_cmd;
-//      }
 
    if ( (ra->state == 0) && (dec->state == 0)) moving=0;
    else                                        moving=1;  // we are still moving 
@@ -3467,6 +3489,14 @@ else if ( banding == 0x40 )
    { if ( (twi_hold==0) && (twi_test==0) ) twi_pos[1] = dec->pos; }
 
 banding = banding+1;  // 256 leg banding ...thats ~40hz
+
+   if ( banding == 0x50 )
+      {
+      dd_v[DDS_DEBUG + 0x0C] = meridian;
+//      dd_v[DDS_DEBUG + 0x0D] = dec->pos_hw;
+//      dd_v[DDS_DEBUG + 0x0E] = dec->spd_index;
+//      dd_v[DDS_DEBUG + 0x0F] = slew_cmd;
+      }
 
 close_loop();
 #endif
@@ -3642,7 +3672,7 @@ display_data((char*)console_buf,0,20,pgm_starting,d_ram,FMT_NO_VAL + FMT_CONSOLE
 
 display_data((char*)console_buf,0,20,pgm_free_mem,d_ram,FMT_HEX + FMT_CONSOLE + 8);
 #ifdef AT_MASTER
-display_data((char*)console_buf,0,20,pgm_select_side,d_ram,FMT_HEX + FMT_CONSOLE + 8);
+display_data((char*)console_buf,0,20,pgm_select_side,0,FMT_NO_VAL + FMT_CONSOLE);
 #endif
 
 for ( iii=0 ; iii<31 ; iii++ ) dd_v[DDS_DEBUG + iii] = iii * 0x100;
@@ -4112,6 +4142,11 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.100  2012/08/01 18:25:58  pmichel
+Version that supports crossing of the meridian
+and switches RA and DEC accordingly
+need to test with polar alignment to make sure all is good
+
 Revision 1.99  2012/07/12 19:22:51  pmichel
 Finished new Mosaic 3x3-> 9x9
 

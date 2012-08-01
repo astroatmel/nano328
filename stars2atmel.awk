@@ -216,7 +216,7 @@ for ( iii=0 ; iii<NB ; iii++)
       count++
       }
    }
-printf("   \"\\%03o\\%03o%s\"   /* Coord ID:%3d  ; %s */  \\\n",255,255,"Unknown   ",-1,"")
+printf("   \"\\%03o\\%03o%s\"   /* Coord ID:%3d  ; %s */  \\\n",255,255,"PolarAlign",-1,"")
 star_name_count = count
 print "   };   // This table uses " count*(STAR_NAME_LEN+2) " bytes..."
 print ""
@@ -299,6 +299,9 @@ else                           # RA
 }
 
 # $Log: stars2atmel.awk,v $
+# Revision 1.9  2012/07/19 21:40:21  pmichel
+# Added stars from CGEM (common alignments stars)
+#
 # Revision 1.8  2012/07/11 17:09:31  pmichel
 # New version with M101, M51, Cygnus, Andromera...
 #
