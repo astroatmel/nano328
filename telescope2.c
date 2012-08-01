@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/07/12 18:01:36 $
-$Id: telescope2.c,v 1.98 2012/07/12 18:01:36 pmichel Exp pmichel $
+$Date: 2012/07/12 19:22:51 $
+$Id: telescope2.c,v 1.99 2012/07/12 19:22:51 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.98 $
+$Revision: 1.99 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 
@@ -284,6 +284,13 @@ unsigned char use_polar=0;
 long loc_ra_correction,ra_correction;   // local RA correction from polar error
 long loc_dec_correction,dec_correction;  // local DEC correction from polar error
 unsigned char last_antena=0;
+#ifdef AT_MASTER
+char aligned_meridian = 1;  // the alignment was done on which side of the meridian ? 
+char meridian = 1; // -1=West, +1=East   0= not selected yet and power disabled until then  
+                   // note that once selected, if you slew pass the meridian, this is automatically tell the controler that you want to switch meridian
+                   // Polar Alignment should only be done on one side / Meridian crossing is disabled until the polar align is complete
+  // TODO : when tracking and power off, have the position decremented ************************
+#endif
 
 // TWI exchanged data
 void twitt(void);
@@ -375,7 +382,7 @@ AXIS *ra;   // points in the display array dd_v
 AXIS *dec;  // points in the display array dd_v
 
 #define NB_SPEEDS 13
-PROGMEM const long speed_index[NB_SPEEDS] = {0,1,2,5,10,20,50,100,200,500,1000,2000,MAX_SPEED};
+PROGMEM const long speed_index[NB_SPEEDS] = {0,1,2,5,10,20,50,100,200,500,1000,MAX_SPEED,MAX_SPEED};
 
 
 PROGMEM const char NLNL[]="\012\015";
@@ -459,12 +466,13 @@ char current_star_name[STAR_NAME_LEN+CONSTEL_NAME_LEN] = ""; // place to store t
 
 PROGMEM const char pgm_free_mem[]="Free Memory:";
 #ifdef AT_MASTER
-PROGMEM const char pgm_starting[]="Telescope Master Starting...($Revision: 1.98 $)";
+PROGMEM const char pgm_select_side[]="Use < > to select OTA meridian side East/West..";
+PROGMEM const char pgm_starting[]="Telescope Master Starting...($Revision: 1.99 $)";
 #else
    #ifdef AT_SLAVE
-   PROGMEM const char pgm_starting[]="Telescope Slave Starting...($Revision: 1.98 $)";
+   PROGMEM const char pgm_starting[]="Telescope Slave Starting...($Revision: 1.99 $)";
    #else
-   PROGMEM const char pgm_starting[]="Telescope Starting...[$Revision: 1.98 $]";
+   PROGMEM const char pgm_starting[]="Telescope Starting...[$Revision: 1.99 $]";
    #endif
 #endif
 PROGMEM const char pgm_display_bug[]="Display routines problem with value (FMT_NE/EW):";
@@ -1469,118 +1477,6 @@ for ( test_dec = 0 ; test_dec <= 90*TICKS_P_DEG ; test_dec += 45*TICKS_P_DEG )
 //     then, I will adjust RA timeshift to find the lowest total error
 void do_polar(void)
 {
-#ifdef NOT_VERY_GOOD
-unsigned long next_ra;                          // start midpoint   scan +/- 12 steps   // 2073600000   which is 12h / 180 deg
-         long ra_span;                          // 172800000
-unsigned long next_dec;                         // start midpoint, scan 10 degrees              
-         long dec_span;                        
-unsigned long best_ra,best_dec;
-short    dec_idx,ra_idx,span_idx;               // scan indexes
-unsigned long best_error;
-unsigned short star_idx,ref;
-unsigned long shift,dec,ra,deg;
-unsigned long error_sum,error;
-unsigned char pass;
-VECTOR star,real_star;
-
-use_polar=0;
-motor_disable = 1; // get all the CPU time we can
-align_state=11;
-
-//^^for ( pass = 1 ; pass <=2 ; pass ++ )
-pass = 2;
-
-   {
-   best_ra  = next_ra = 12 * TICKS_P_HOUR;
-   ra_span  =                TICKS_P_HOUR;
-   best_dec = next_dec = 5 * TICKS_P_DEG; 
-   dec_span =                TICKS_P_DEG;
-   best_error=0x7FFFFFFF;
-
-   for ( span_idx = 1 ; span_idx < 6 ; span_idx++ )  // do 6 passes   >> 3 each time to divide the span
-      {
-      for ( dec_idx = -5 ; ((pass==1)&&(dec_idx <= 5)) || ((pass==2)&&(dec_idx <= -5)) ; dec_idx++)
-         {
-         deg = next_dec + dec_idx * dec_span;
-
-         polar_ra  = next_ra  +  ra_idx *  ra_span; //^^
-         polar_dec = next_dec + dec_idx * dec_span; //^^
-         
-         for ( ra_idx = -12 ; ra_idx <= 12 ; ra_idx++)
-            {
-            //^^shift = next_ra + ra_idx * ra_span;
-            shift = 0;
-            if ( pass == 1 ) 
-               generate_polar_matrix(& PoleMatrix,&shift,&deg, &shift, 0);
-            else  // best ra and best dec found already
-               generate_polar_matrix(& PoleMatrix,&polar_ra,&polar_dec, &shift, 0);
- 
-            error_sum=0;
-     
-           
-            for ( star_idx=error=0 ; star_idx<10 ; star_idx++ )
-               { // here the magic happens... for each registered star, calculate the error: delta_x^2 + delta_y^2 + delta_z^2
-               ref = saved[star_idx+10].ref_star;
-               if ( ref !=0 )  // for every star with a corrected position
-                  {
-                  display_next();
-                  ra  = pgm_read_dword( & pgm_stars_pos[ref*2+0]);
-                  dec = pgm_read_dword( & pgm_stars_pos[ref*2+1]);
-                  set_vector(     &star, &ra, &dec);
-                  set_vector(&real_star, &saved[star_idx+10].ra, &saved[star_idx+10].dec);
-                  apply_polar_correction(&PoleMatrix,&star);
-      
-                  if ( pass == 2 )  // calculate full error only in second pass
-                     { 
-                     error = star.x - real_star.x;
-                     error = fp_mult(error,error);
-                     ra = error_sum + (error);                      // use temp label to bake sure error only goes up
-                     if (ra > error_sum ) error_sum = ra;
-      
-                     error = star.y - real_star.y;
-                     error = fp_mult(error,error);
-                     ra = error_sum + (error);                      // use temp label to bake sure error only goes up
-                     if (ra > error_sum ) error_sum = ra;
-                     }
-      
-                  error = star.z - real_star.z;
-                  error = fp_mult(error,error);
-                  ra = error_sum + (error);                      // use temp label to bake sure error only goes up
-                  if (ra > error_sum ) error_sum = ra;
-                  }
-               } 
-      
-//-    display_data((char*)console_buf,0,20,pgm_polar_sum ,error_sum,FMT_FP + FMT_CONSOLE + 8); 
-            if ( error_sum < best_error )
-               {
-               best_error = error_sum;
-               best_ra    = shift;
-               best_dec   = deg;
-               }
-            }
-         }
-      next_ra  = best_ra;
-      next_dec = best_dec;
-      if ( pass==1)
-         {
-         polar_ra  = best_ra;
-         polar_dec = best_dec;
-         }
-
-      display_data((char*)console_buf,0,20,pgm_polar_pass,span_idx    ,FMT_DEC + FMT_CONSOLE + 4);
-      display_data((char*)console_buf,0,20,pgm_polar_error,best_error ,FMT_HEX + FMT_CONSOLE + 8);
-      display_data((char*)console_buf,0,20,pgm_polar_hour,polar_ra    ,FMT_RA  + FMT_CONSOLE + 8);
-      display_data((char*)console_buf,0,20,pgm_polar_dec ,polar_dec   ,FMT_NS  + FMT_CONSOLE + 8);
-      display_data((char*)console_buf,0,20,pgm_polar_hour,best_ra     ,FMT_RA  + FMT_CONSOLE + 8);
-   
-      display_data((char*)console_buf,0,20,pgm_polar_hour,ra_span     ,FMT_RA  + FMT_CONSOLE + 8);
-      display_data((char*)console_buf,0,20,pgm_polar_dec ,dec_span    ,FMT_NS  + FMT_CONSOLE + 8);
-   
-      dec_span = dec_span >> 3; // reduce span to slowly converge towards the solution
-      ra_span  = ra_span  >> 3; // reduce span to slowly converge towards the solution
-      }
-   }
-#else    // new method
 unsigned long next_ra;                          // start midpoint   scan +/- 12 steps   // 2073600000   which is 12h / 180 deg
          long ra_span;                          // 172800000
 unsigned long next_dec;                         // start midpoint, scan 10 degrees              
@@ -1675,7 +1571,6 @@ align_state=11;
       }
    }
 
-#endif
 //polar_ra  = 13*TICKS_P_HOUR;     //      Test around star#51
 //polar_dec =  3*TICKS_P_DEG;      //      Result: the correcton around star #51 is + 3 deg north
 ///polar_ra  = 13*TICKS_P_HOUR;                   //      Test around star#51
@@ -1685,7 +1580,6 @@ generate_polar_matrix(& PoleMatrix,&polar_ra, &polar_dec, 1);
 use_polar=1;
 align_state=12;
 }
-
   
 // use rotation matrix to rotate the star...
 void apply_polar_correction(MATRIX *R,VECTOR *S)
@@ -2128,7 +2022,7 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
                else if ( cmd_val[1] == IDX_VCR1_9 ) mosaic_dt_ref = 66;    // Normal exposure: 60 sec
                }
             }
-         else
+         else  // PLAY
             {
             if ( align_state != 0 )  goto_pgm_pos(cmd_val[cmd_val_idx-3]*100 + cmd_val[cmd_val_idx-2]*10 + jjj); 
             else {
@@ -2841,7 +2735,9 @@ if ( ra_axis )
 else
    {
    axis->pos_cor = axis->pos_dem;
-   add_value_to_pos(dec_correction,&axis->pos_cor);     // add the local polar correction
+   add_value_to_pos(-dec_correction,&axis->pos_cor);     // add the local polar correction
+   // Required ? if ( aligned_meridian == meridian ) add_value_to_pos( dec_correction,&axis->pos_cor);     // add the local polar correction
+   // Required ? else                                add_value_to_pos(-dec_correction,&axis->pos_cor);     // add the local polar correction
    }
 
 
@@ -3033,7 +2929,11 @@ for ( iii=4 ; iii<8      ; iii++ ) sp[iii+4] = twi_rx_buf[8+iii]; // update curr
 for ( iii=0 ; iii<4      ; iii++ ) cra[iii] = twi_rx_buf[16+iii]; // update current polar correction
 for ( iii=0 ; iii<4      ; iii++ ) cde[iii] = twi_rx_buf[20+iii]; // update current polar correction
 use_polar = twi_rx_buf[24];
-if ( use_polar && (align_state==11)) align_state=12; 
+if ( use_polar && (align_state==11)) 
+   {
+   align_state=12; 
+   aligned_meridian = meridian; // remember on which side of the meridian the alignment was done
+   }
 // if ( twi_star_ptr >= STAR_NAME_LEN+CONSTEL_NAME_LEN-1 ) 
 //    { 
 //    pd[0] = twi_rx_buf[6];   // Update Master Current Star
@@ -3329,16 +3229,12 @@ if ( motor_disable ) return;
 temp = ra->pos_hw-ra->pos_cor;
 if ( temp >= TICKS_P_STEP )
    {
-   // too long to complete !!set_digital_output(DO_PC1_RA_DIR,0); // go backward
-   //FAST_SET_RA_DIR(0);
    ra->direction=0x00;
    add_value_to_pos(-TICKS_P_STEP,&ra->pos_hw);
    ra->next=DO_PC2_RA_STEP;
    }
 else if ( -temp >= TICKS_P_STEP )
    {
-   // too long to complete !!set_digital_output(DO_PC1_RA_DIR,1); // go forward
-   //FAST_SET_RA_DIR(1);
    ra->direction=DO_PC3_RA_DIR;
    add_value_to_pos(TICKS_P_STEP,&ra->pos_hw);
    ra->next=DO_PC2_RA_STEP;
@@ -3348,17 +3244,15 @@ else { ra->next=0; }
 temp = dec->pos_hw-dec->pos_cor;
 if ( temp >= (2*TICKS_P_STEP) )      // The DEC axis has 2 times less teeths 
    {
-   // too long to complete !!set_digital_output(DO_PC3_DEC_DIR,0); // go backward
-   //FAST_SET_DEC_DIR(0);
-   dec->direction=0x00;
+   if ( meridian >= 0 ) dec->direction=0x00;
+   else                 dec->direction=DO_PC1_DEC_DIR;
    add_value_to_pos(-(2*TICKS_P_STEP),&dec->pos_hw);
    dec->next=DO_PC0_DEC_STEP;
    }
 else if ( -temp >= (2*TICKS_P_STEP) )
    {
-   // too long to complete !!set_digital_output(DO_PC3_DEC_DIR,1); // go forward
-   //FAST_SET_DEC_DIR(1);
-   dec->direction=DO_PC1_DEC_DIR;
+   if ( meridian >= 0 ) dec->direction=DO_PC1_DEC_DIR;
+   else                 dec->direction=0x00;
    add_value_to_pos( (2*TICKS_P_STEP),&dec->pos_hw);
    dec->next=DO_PC0_DEC_STEP;
    }
@@ -3505,27 +3399,44 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
 
    process_goto(ra ,1); // 1 : specify that this is the RA axis     >> 2/16
    process_goto(dec,0); // 0 : this is the DEC axis
-//   if ( d_TIMER1 & 1 ) process_goto(&ra ,1); // 1 : specify that this is the RA axis     >> 2/16
-//   else                process_goto(&dec,0); // 0 : this is the DEC axis
- 
-//   dd_v[DDS_DEBUG + 0x00]=ra->accel;
-//   dd_v[DDS_DEBUG + 0x08]=dec->accel;
-   
-//   dd_v[DDS_DEBUG + 0x01]=ra->speed;
-//   dd_v[DDS_DEBUG + 0x09]=dec->speed;
-//   
-//   dd_v[DDS_DEBUG + 0x02]=ra->pos_delta;
-//   dd_v[DDS_DEBUG + 0x0A]=dec->pos_delta;
-//   
-//   dd_v[DDS_DEBUG + 0x03]=ra->state;
-//   dd_v[DDS_DEBUG + 0x0B]=dec->state;
-//
-//   dd_v[DDS_DEBUG + 0x10]=ra->next | dec->next | ra->direction | dec->direction;
-//   dd_v[DDS_DEBUG + 0x18]=goto_cmd;
-//   
-//   dd_v[DDS_DEBUG + 0x11]=ra->spd_index;
-//   dd_v[DDS_DEBUG + 0x19]=dec->spd_index;
-//   
+
+   if ( dec->state == 10 ) // if Dec is slewing
+      {  // put the meridian code here
+      if ( (dec->pos > TICKS_P_90_DEG ) &&     // Pos above meridian... lets switch side...
+           (dec->pos < TICKS_P_180_DEG)                           ) // it seems pos is taken as unsigned...
+         {
+         meridian        = -meridian;
+         dec_correction  = -dec_correction; // dont worry, this value is corrected slowly, see: APPLY POLAR CORRECTION   and by the time the slave used the proper reversed axis, all should fall back in place
+         dec->spd_index  = -dec->spd_index;                // reverse slew speed
+         dec->speed      = -dec->speed;                    // reverse speed
+         dec->pos        =  TICKS_P_180_DEG - dec->pos;
+         dec->pos_cor    =   dec->pos;
+         dec->pos_hw     =  TICKS_P_180_DEG - dec->pos_hw;
+
+         if ( ra->pos > TICKS_P_180_DEG )
+            {
+            ra->pos      =  ra->pos      - TICKS_P_180_DEG;
+            ra->pos_cor  =  ra->pos_cor  - TICKS_P_180_DEG;
+            ra->pos_dem  =  ra->pos_dem  - TICKS_P_180_DEG;
+            ra->pos_hw   =  ra->pos_hw   - TICKS_P_180_DEG;
+            }
+         else
+            {
+            ra->pos      =  ra->pos      + TICKS_P_180_DEG;
+            ra->pos_cor  =  ra->pos_cor  + TICKS_P_180_DEG;
+            ra->pos_dem  =  ra->pos_dem  + TICKS_P_180_DEG;
+            ra->pos_hw   =  ra->pos_hw   + TICKS_P_180_DEG;
+            }
+         }
+      }
+//   if ( debug_page==3 ) 
+//      {
+//      dd_v[DDS_DEBUG + 0x0C] = meridian;
+//      dd_v[DDS_DEBUG + 0x0D] = dec->pos_hw;
+//      dd_v[DDS_DEBUG + 0x0E] = dec->spd_index;
+//      dd_v[DDS_DEBUG + 0x0F] = slew_cmd;
+//      }
+
    if ( (ra->state == 0) && (dec->state == 0)) moving=0;
    else                                        moving=1;  // we are still moving 
 
@@ -3534,12 +3445,6 @@ if ( ! motor_disable )    //////////////////// motor disabled ///////////
    else                                     minumum_torq = 0;  // No minimum required
    effectiv_torq = torq;
    if ( effectiv_torq < minumum_torq ) effectiv_torq = minumum_torq;
-
-// dd_v[DDS_DEBUG + 0x0B] = minumum_torq;
-// dd_v[DDS_DEBUG + 0x0C] = effectiv_torq;
-
-//   dd_v[DDS_DEBUG + 0x12]=moving;
-//   dd_v[DDS_DEBUG + 0x1A]=moving;
 
    if ( moving ) slew_cmd=goto_cmd=0;                   // command received
 
@@ -3736,6 +3641,9 @@ display_data((char*)console_buf,0,20,pgm_starting,d_ram,FMT_NO_VAL + FMT_CONSOLE
 #endif
 
 display_data((char*)console_buf,0,20,pgm_free_mem,d_ram,FMT_HEX + FMT_CONSOLE + 8);
+#ifdef AT_MASTER
+display_data((char*)console_buf,0,20,pgm_select_side,d_ram,FMT_HEX + FMT_CONSOLE + 8);
+#endif
 
 for ( iii=0 ; iii<31 ; iii++ ) dd_v[DDS_DEBUG + iii] = iii * 0x100;
 
@@ -4204,6 +4112,9 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.99  2012/07/12 19:22:51  pmichel
+Finished new Mosaic 3x3-> 9x9
+
 Revision 1.98  2012/07/12 18:01:36  pmichel
 Mosaic 3x3... getting there . . .
 
