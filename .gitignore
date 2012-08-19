@@ -1,0 +1,11 @@
+.*
+!.
+!.gitignore
+*.obj
+*.s
+*.hex
+*.swp
+*~
+RCS
+telescope2_master.c
+telescope2_slave.c
