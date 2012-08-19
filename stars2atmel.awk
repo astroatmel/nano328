@@ -302,29 +302,3 @@ else                           # RA
 
 }
 
-# $Log: stars2atmel.awk,v $
-# Revision 1.10  2012/08/01 19:52:13  pmichel
-# Version that can pass the meridian, and that sends the polar error back to the master
-#
-# Revision 1.9  2012/07/19 21:40:21  pmichel
-# Added stars from CGEM (common alignments stars)
-#
-# Revision 1.8  2012/07/11 17:09:31  pmichel
-# New version with M101, M51, Cygnus, Andromera...
-#
-# Revision 1.7  2012/03/09 11:19:28  pmichel
-# Few fixes, Star names are ok on the slave side...
-#
-# Revision 1.6  2012/03/07 10:04:45  pmichel
-# Ready to try to compile
-#
-# Revision 1.5  2012/03/06 10:14:04  pmichel
-# Creting stars.doc
-#
-# Revision 1.3  2012/03/05 22:41:13  pmichel
-# more is more
-#
-# Revision 1.2  2012/03/05 22:12:25  pmichel
-# Few fixes, almost complete
-#
-#
