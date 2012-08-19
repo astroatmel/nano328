@@ -14,46 +14,50 @@ NB = 0
 NBNB = 0
 STAR_NAME_LEN=10
 CONSTEL_NAME_LEN=12
-KNOWN["24gam Ori"]="Bellatrix "
+KNOWN["24gam Ori"]="BellatrixB"
 KNOWN["19bet Ori"]="Rigel.    "
-KNOWN["34del Ori"]="Mintaka.  "
-KNOWN["46eps Ori"]="Alnilam   "
-KNOWN["50zet Ori"]="Alnitak   "
-KNOWN["53kap Ori"]="Ori       "
-KNOWN["58alp Ori"]="Betelgeuse"
-KNOWN["9alp CMa" ]="Sirius    "
-KNOWN["30alp Hya"]="Alphard   "
+KNOWN["34del Ori"]="Mintaka. b"
+KNOWN["46eps Ori"]="Alnilam  B"
+KNOWN["50zet Ori"]="Alnitak  B"
+KNOWN["53kap Ori"]="Ori      B"
+KNOWN["58alp Ori"]="BetelgeusR"
+KNOWN["9alp CMa" ]="Sirius   b"
+KNOWN["30alp Hya"]="Alphard  r"
 KNOWN["50alp Cyg"]="Deneb.    "
-KNOWN["3alp Lyr" ]="Vega.     "
+KNOWN["3alp Lyr" ]="Vega.    b"
 KNOWN["53alp Aql"]="Altair.   "
 # for CGEM:  (with dot suffix)
-KNOWN["25eta Tau"]="Alcyone.  "
-KNOWN["87alp Tau"]="Aldebaran."
-KNOWN["88gam Peg"]="Algenib.  "
+KNOWN["25eta Tau"]="Alcyone. b"
+KNOWN["87alp Tau"]="Aldebara.r"
+KNOWN["88gam Peg"]="Algenib. B"
 KNOWN["26bet Per"]="Algol.    "
 KNOWN["13alp Aur"]="Capella.  "
 KNOWN["67bet Eri"]="Cursa.    "
 KNOWN["13alp Ari"]="Hamal.    "
-KNOWN["92alp Cet"]="Menkar.   "
-KNOWN["43bet And"]="Mirach.   "
-KNOWN["6bet Arid"]="Sheratan. "
-KNOWN["34gam Eri"]="Zaurac.   "
+KNOWN["92alp Cet"]="Menkar.  R"
+KNOWN["43bet And"]="Mirach.  r"
+KNOWN["6bet Arid"]="Sheratan.r"
+KNOWN["34gam Eri"]="Zaurac.  r"
 KNOWN["41gam1Leo"]="Algieba.  "
-KNOWN["7del Crv "]="Algorab.  "
-KNOWN["85eta UMa"]="Alkaid.   "
-KNOWN["16alp Boo"]="Arcturus. "
+KNOWN["7del Crv "]="Algorab. b"
+KNOWN["85eta UMa"]="Alkaid.  b"
+KNOWN["16alp Boo"]="Arcturus.r"
 KNOWN["94bet Leo"]="Denebola. "
 KNOWN["8eta Boo "]="Muphrid.  "
-KNOWN["29gam Vir"]="Porrima.  "
-KNOWN["67alp Vir"]="Spica.    "
+KNOWN["67alp Vir"]="Spica.   b"
 KNOWN["47eps Vir"]="Vindemiat;"
 KNOWN["68del Leo"]="Zosma.    "
 KNOWN["24alp Ser"]="Unukalhai."
-KNOWN["50gam Aql"]="Tarazed.  "
+KNOWN["50gam Aql"]="Tarazed. r"
 KNOWN["34alp Aqr"]="Sadalmeli;"
 KNOWN["44eta Peg"]="Matar.    "
-KNOWN["54alp Peg"]="Markab.   "
-KNOWN["8eps Peg "]="Enif.     "
+KNOWN["54alp Peg"]="Markab.  b"
+KNOWN["8eps Peg "]="Enif.    r"
+KNOWN["21alp And"]="Alpherat,b"
+KNOWN["57gam1And"]="Almaak,  r"
+KNOWN["33alp Per"]="Mirphak,  "
+KNOWN["53bet Peg"]="Sheat,   R"
+KNOWN["13alp Aur"]="Capella,  "
 
 KCONST["And"]="Andromeda"
 KCONST["Ant"]=""
@@ -216,7 +220,7 @@ for ( iii=0 ; iii<NB ; iii++)
       count++
       }
    }
-printf("   \"\\%03o\\%03o%s\"   /* Coord ID:%3d  ; %s */  \\\n",255,255,"PolarAlign",-1,"")
+printf("   \"\\%03o\\%03o%s\"   /* Coord ID:%3d  ; %s */  \\\n",255,255,"Unknown   ",-1,"")
 star_name_count = count
 print "   };   // This table uses " count*(STAR_NAME_LEN+2) " bytes..."
 print ""
@@ -299,6 +303,9 @@ else                           # RA
 }
 
 # $Log: stars2atmel.awk,v $
+# Revision 1.10  2012/08/01 19:52:13  pmichel
+# Version that can pass the meridian, and that sends the polar error back to the master
+#
 # Revision 1.9  2012/07/19 21:40:21  pmichel
 # Added stars from CGEM (common alignments stars)
 #
