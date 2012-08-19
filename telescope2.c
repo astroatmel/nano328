@@ -35,6 +35,9 @@ Data: 7FABDDA3  0.99743242
 >>>>   CATALOG STAR POS: (N) 29°05'25.5"  (E) 002°05'48.8"  00h08m23.25s                  COORD ID:  000  
 
 TODO next version: 
+- Display shows Color Value: B-V   (to help identify stars)
+- Display Magnitude:               (to help identify stars)
+
 -easy way to enter fake alignments points
 -method to re-enter polar error RA/DEC and by-pass the alignment process (ex: need to recompile, but the stand does not move)
 

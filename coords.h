@@ -25,7 +25,12 @@ PROGMEM const char pgm_stars_name_reduced[]   =  // format: byte:StarID byte:Con
    "\033\037Ori      B"   /*  Star ID: 27  Constellation:Orion        */  \
    "\034\037BetelgeusR"   /*  Star ID: 28  Constellation:Orion        */  \
    "\042\011Sirius   b"   /*  Star ID: 34  Constellation:Canis Major  */  \
-   "\050\025Alphard  r"   /*  Star ID: 40  Constellation:Hydra        */  \
+   "\044\022Castor    "   /*  Star ID: 36  Constellation:Gemini       */  \
+   "\045\022Castor    "   /*  Star ID: 37  Constellation:Gemini       */  \
+   "\046\012Procyon   "   /*  Star ID: 38  Constellation:Canis Minor  */  \
+   "\047\022Pollux    "   /*  Star ID: 39  Constellation:Gemini       */  \
+   "\050\025Alphard   "   /*  Star ID: 40  Constellation:Hydra        */  \
+   "\052\026Regulus   "   /*  Star ID: 42  Constellation:Leo          */  \
    "\053\026Algieba.  "   /*  Star ID: 43  Constellation:Leo          */  \
    "\055\026Zosma.    "   /*  Star ID: 45  Constellation:Leo          */  \
    "\056\026Denebola. "   /*  Star ID: 46  Constellation:Leo          */  \
@@ -66,7 +71,7 @@ PROGMEM const char pgm_stars_name_reduced[]   =  // format: byte:StarID byte:Con
    "\152\377CygnusNeb3"   /* Coord ID:106  ; From Google: 56CYG-57CYG TODO */  \
    "\153\377CygnusNeb4"   /* Coord ID:107  ; From Google: HIP103559 (red) TODO */  \
    "\377\377Unknown   "   /* Coord ID: -1  ;  */  \
-   };   // This table uses 744 bytes...
+   };   // This table uses 804 bytes...
 
 PROGMEM const char pgm_const_name[]   =  // format: byte:ConstelationId Constellation Name string
    {                                     // Names are for only a few prefered stars to save memory space
@@ -77,9 +82,11 @@ PROGMEM const char pgm_const_name[]   =  // format: byte:ConstelationId Constell
    "\007Auriga      "   /* Const ID:  7  */  \
    "\010Boothes     "   /* Const ID:  8  */  \
    "\011Canis Major "   /* Const ID:  9  */  \
+   "\012Canis Minor "   /* Const ID: 10  */  \
    "\015Cetus       "   /* Const ID: 13  */  \
    "\020Cygnus      "   /* Const ID: 16  */  \
    "\021Eridanus    "   /* Const ID: 17  */  \
+   "\022Gemini      "   /* Const ID: 18  */  \
    "\025Hydra       "   /* Const ID: 21  */  \
    "\026Leo         "   /* Const ID: 22  */  \
    "\031Lyra        "   /* Const ID: 25  */  \
@@ -91,7 +98,7 @@ PROGMEM const char pgm_const_name[]   =  // format: byte:ConstelationId Constell
    "\045Ursa Major  "   /* Const ID: 37  */  \
    "\046Virgo       "   /* Const ID: 38  */  \
    "\377            "   /* Const ID: -1  */  \
-   };   // This table uses 273 bytes...
+   };   // This table uses 299 bytes...
 
 PROGMEM const unsigned long pgm_stars_pos[] = // The next 85 stars are used for polar alignment : they are reference stars
    {
@@ -131,13 +138,13 @@ PROGMEM const unsigned long pgm_stars_pos[] = // The next 85 stars are used for 
    (  6*TICKS_P_HOUR +37*TICKS_P_MIN +42.701*TICKS_P_SEC ),( 16*TICKS_P_DEG +23*TICKS_P_DEG_MIN + 57.31*TICKS_P_DEG_SEC), //  33 24gam Gemini  
    (  6*TICKS_P_HOUR +45*TICKS_P_MIN + 8.917*TICKS_P_SEC ),(343*TICKS_P_DEG +17*TICKS_P_DEG_MIN +  1.98*TICKS_P_DEG_SEC), //  34 Sirius   b Canis Major      -16 42 58.02 
    (  7*TICKS_P_HOUR +27*TICKS_P_MIN + 9.043*TICKS_P_SEC ),(  8*TICKS_P_DEG +17*TICKS_P_DEG_MIN + 21.54*TICKS_P_DEG_SEC), //  35 3bet Canis Minor  
-   (  7*TICKS_P_HOUR +34*TICKS_P_MIN +35.863*TICKS_P_SEC ),( 31*TICKS_P_DEG +53*TICKS_P_DEG_MIN + 17.79*TICKS_P_DEG_SEC), //  36 66alp Gemini  
-   (  7*TICKS_P_HOUR +34*TICKS_P_MIN +  36.1*TICKS_P_SEC ),( 31*TICKS_P_DEG +53*TICKS_P_DEG_MIN + 18.57*TICKS_P_DEG_SEC), //  37 66alp Gemini  
-   (  7*TICKS_P_HOUR +39*TICKS_P_MIN +18.118*TICKS_P_SEC ),(  5*TICKS_P_DEG +13*TICKS_P_DEG_MIN + 29.98*TICKS_P_DEG_SEC), //  38 10alp Canis Minor  
-   (  7*TICKS_P_HOUR +45*TICKS_P_MIN + 18.95*TICKS_P_SEC ),( 28*TICKS_P_DEG + 1*TICKS_P_DEG_MIN + 34.32*TICKS_P_DEG_SEC), //  39 78bet Gemini  
-   (  9*TICKS_P_HOUR +27*TICKS_P_MIN +35.243*TICKS_P_SEC ),(351*TICKS_P_DEG +20*TICKS_P_DEG_MIN + 29.03*TICKS_P_DEG_SEC), //  40 Alphard  r Hydra      -08 39 30.97 
+   (  7*TICKS_P_HOUR +34*TICKS_P_MIN +35.863*TICKS_P_SEC ),( 31*TICKS_P_DEG +53*TICKS_P_DEG_MIN + 17.79*TICKS_P_DEG_SEC), //  36 Castor     Gemini  
+   (  7*TICKS_P_HOUR +34*TICKS_P_MIN +  36.1*TICKS_P_SEC ),( 31*TICKS_P_DEG +53*TICKS_P_DEG_MIN + 18.57*TICKS_P_DEG_SEC), //  37 Castor     Gemini  
+   (  7*TICKS_P_HOUR +39*TICKS_P_MIN +18.118*TICKS_P_SEC ),(  5*TICKS_P_DEG +13*TICKS_P_DEG_MIN + 29.98*TICKS_P_DEG_SEC), //  38 Procyon    Canis Minor  
+   (  7*TICKS_P_HOUR +45*TICKS_P_MIN + 18.95*TICKS_P_SEC ),( 28*TICKS_P_DEG + 1*TICKS_P_DEG_MIN + 34.32*TICKS_P_DEG_SEC), //  39 Pollux     Gemini  
+   (  9*TICKS_P_HOUR +27*TICKS_P_MIN +35.243*TICKS_P_SEC ),(351*TICKS_P_DEG +20*TICKS_P_DEG_MIN + 29.03*TICKS_P_DEG_SEC), //  40 Alphard    Hydra      -08 39 30.97 
    (  9*TICKS_P_HOUR +45*TICKS_P_MIN +51.073*TICKS_P_SEC ),( 23*TICKS_P_DEG +46*TICKS_P_DEG_MIN + 27.32*TICKS_P_DEG_SEC), //  41 17eps Leo  
-   ( 10*TICKS_P_HOUR + 8*TICKS_P_MIN +22.311*TICKS_P_SEC ),( 11*TICKS_P_DEG +58*TICKS_P_DEG_MIN +  1.94*TICKS_P_DEG_SEC), //  42 32alp Leo  
+   ( 10*TICKS_P_HOUR + 8*TICKS_P_MIN +22.311*TICKS_P_SEC ),( 11*TICKS_P_DEG +58*TICKS_P_DEG_MIN +  1.94*TICKS_P_DEG_SEC), //  42 Regulus    Leo  
    ( 10*TICKS_P_HOUR +19*TICKS_P_MIN +58.355*TICKS_P_SEC ),( 19*TICKS_P_DEG +50*TICKS_P_DEG_MIN + 29.36*TICKS_P_DEG_SEC), //  43 Algieba.   Leo  
    ( 11*TICKS_P_HOUR + 9*TICKS_P_MIN +39.808*TICKS_P_SEC ),( 44*TICKS_P_DEG +29*TICKS_P_DEG_MIN + 54.55*TICKS_P_DEG_SEC), //  44 52psi Ursa Major  
    ( 11*TICKS_P_HOUR +14*TICKS_P_MIN + 6.501*TICKS_P_SEC ),( 20*TICKS_P_DEG +31*TICKS_P_DEG_MIN + 25.38*TICKS_P_DEG_SEC), //  45 Zosma.     Leo  
@@ -208,10 +215,10 @@ PROGMEM const unsigned long pgm_stars_pos[] = // The next 85 stars are used for 
    };   // This table uses 872 bytes...
 #endif
 #define STAR_NAME_LEN 12
-#define STAR_NAME_COUNT 62
+#define STAR_NAME_COUNT 67
 #define STAR_NAME_CODES  2
 #define CONSTEL_NAME_LEN 13
-#define CONSTEL_NAME_COUNT 21
+#define CONSTEL_NAME_COUNT 23
 #define CONSTEL_NAME_CODES 1 
 #define STARS_COORD_TOTAL 109
 #define STARS_COORD_ALIGN 85
