@@ -29,8 +29,8 @@ PROGMEM const char pgm_stars_name_reduced[]   =  // format: byte:StarID byte:Con
    "\045\022Castor    "   /*  Star ID: 37  Constellation:Gemini       */  \
    "\046\012Procyon   "   /*  Star ID: 38  Constellation:Canis Minor  */  \
    "\047\022Pollux    "   /*  Star ID: 39  Constellation:Gemini       */  \
-   "\050\025Alphard   "   /*  Star ID: 40  Constellation:Hydra        */  \
-   "\052\026Regulus   "   /*  Star ID: 42  Constellation:Leo          */  \
+   "\050\025Alphard  r"   /*  Star ID: 40  Constellation:Hydra        */  \
+   "\052\026Regulus  B"   /*  Star ID: 42  Constellation:Leo          */  \
    "\053\026Algieba.  "   /*  Star ID: 43  Constellation:Leo          */  \
    "\055\026Zosma.    "   /*  Star ID: 45  Constellation:Leo          */  \
    "\056\026Denebola. "   /*  Star ID: 46  Constellation:Leo          */  \
@@ -142,9 +142,9 @@ PROGMEM const unsigned long pgm_stars_pos[] = // The next 85 stars are used for 
    (  7*TICKS_P_HOUR +34*TICKS_P_MIN +  36.1*TICKS_P_SEC ),( 31*TICKS_P_DEG +53*TICKS_P_DEG_MIN + 18.57*TICKS_P_DEG_SEC), //  37 Castor     Gemini  
    (  7*TICKS_P_HOUR +39*TICKS_P_MIN +18.118*TICKS_P_SEC ),(  5*TICKS_P_DEG +13*TICKS_P_DEG_MIN + 29.98*TICKS_P_DEG_SEC), //  38 Procyon    Canis Minor  
    (  7*TICKS_P_HOUR +45*TICKS_P_MIN + 18.95*TICKS_P_SEC ),( 28*TICKS_P_DEG + 1*TICKS_P_DEG_MIN + 34.32*TICKS_P_DEG_SEC), //  39 Pollux     Gemini  
-   (  9*TICKS_P_HOUR +27*TICKS_P_MIN +35.243*TICKS_P_SEC ),(351*TICKS_P_DEG +20*TICKS_P_DEG_MIN + 29.03*TICKS_P_DEG_SEC), //  40 Alphard    Hydra      -08 39 30.97 
+   (  9*TICKS_P_HOUR +27*TICKS_P_MIN +35.243*TICKS_P_SEC ),(351*TICKS_P_DEG +20*TICKS_P_DEG_MIN + 29.03*TICKS_P_DEG_SEC), //  40 Alphard  r Hydra      -08 39 30.97 
    (  9*TICKS_P_HOUR +45*TICKS_P_MIN +51.073*TICKS_P_SEC ),( 23*TICKS_P_DEG +46*TICKS_P_DEG_MIN + 27.32*TICKS_P_DEG_SEC), //  41 17eps Leo  
-   ( 10*TICKS_P_HOUR + 8*TICKS_P_MIN +22.311*TICKS_P_SEC ),( 11*TICKS_P_DEG +58*TICKS_P_DEG_MIN +  1.94*TICKS_P_DEG_SEC), //  42 Regulus    Leo  
+   ( 10*TICKS_P_HOUR + 8*TICKS_P_MIN +22.311*TICKS_P_SEC ),( 11*TICKS_P_DEG +58*TICKS_P_DEG_MIN +  1.94*TICKS_P_DEG_SEC), //  42 Regulus  B Leo  
    ( 10*TICKS_P_HOUR +19*TICKS_P_MIN +58.355*TICKS_P_SEC ),( 19*TICKS_P_DEG +50*TICKS_P_DEG_MIN + 29.36*TICKS_P_DEG_SEC), //  43 Algieba.   Leo  
    ( 11*TICKS_P_HOUR + 9*TICKS_P_MIN +39.808*TICKS_P_SEC ),( 44*TICKS_P_DEG +29*TICKS_P_DEG_MIN + 54.55*TICKS_P_DEG_SEC), //  44 52psi Ursa Major  
    ( 11*TICKS_P_HOUR +14*TICKS_P_MIN + 6.501*TICKS_P_SEC ),( 20*TICKS_P_DEG +31*TICKS_P_DEG_MIN + 25.38*TICKS_P_DEG_SEC), //  45 Zosma.     Leo  
