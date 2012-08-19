@@ -1,9 +1,9 @@
 /*
 $Author: pmichel $
-$Date: 2012/08/01 18:25:58 $
-$Id: telescope2.c,v 1.100 2012/08/01 18:25:58 pmichel Exp pmichel $
+$Date: 2012/08/09 04:39:51 $
+$Id: telescope2.c,v 1.102 2012/08/09 04:39:51 pmichel Exp pmichel $
 $Locker: pmichel $
-$Revision: 1.100 $
+$Revision: 1.102 $
 $Source: /home/pmichel/project/telescope2/RCS/telescope2.c,v $
 
 
@@ -75,6 +75,8 @@ TODO:
 #define AP0_DISPLAY 0    // ca plante asse souvent si j'essaye de rouller avec AP)
 #define TEST_POLAR  0
 #define FULL_DISPLAY  1
+// #define HARDCODED_MATRIX 1
+#define POLAR_TRANSFORM_INTEGRITY_TEST 
 
 // This is a Little Endian CPU
 // Notes
@@ -150,6 +152,9 @@ void wait(long time,long mult);
 // Debug Page 2 : Shows TWI buffer of what the Master receives (on the master console) and what the Slave sends (on the slave console)
 // Debug Page 3 : 
 // Debug Page 4 : 
+// Debug Page 5 : 
+// Debug Page 6 : 
+// Debug Page 7 : Slave: Rotation Debug (polar error rotation) and dLat dLon calculation)
 char debug_page = 3; // depending of the debug mode, change what the debug shows 
 #define  NB_DEBUG_PAGE 7 
 char align_state = 0; // 0 : Waiting Reference RA     -> the first PLAY X X X tells the controler that we did point the telescope at a known bright star, thus setting the RA and DEC
@@ -164,34 +169,6 @@ unsigned char cmd_state=0;
 
 char fast_portc=0;
 
-// Use all pins of PORTB for fast outputs  ... B0 B1 cant be used, and B4 B5 causes problem at download time
-///- #define FAST_SET_RA_DIR_(VAL)                   
-///-    {                                           
-///-    set_digital_output(DO_PC1_RA_DIR  ,VAL    );    
-///-    }
-///- #define FAST_SET_RA_STEP_(VAL)                  
-///-    {                                           
-///-    set_digital_output(DO_PC0_RA_STEP ,VAL    );    
-///-    }
-///- #define FAST_SET_RA_DIR(VAL)                  
-///-    {                                           
-///-    if ( VAL ) PORTC |= (1<<DO_PC1_RA_DIR);      /* Set   C3 */   
-///-    else       PORTC &= 255-(1<<DO_PC1_RA_DIR);  /* Reset C3 */   
-///-    }
-///- #define FAST_SET_RA_STEP(VAL)                  
-///-    {                                          
-///-    if ( VAL ) PORTC |= (1<<DO_PC0_RA_STEP);      /* Set   C2 */   
-///-    else       PORTC &= 255-(1<<DO_PC0_RA_STEP);  /* Reset C2 */   
-///-    }
-///- #define FAST_SET_DEC_DIR(VAL)                  
-///-    {                                           
-///-    set_digital_output(DO_PC3_DEC_DIR  ,VAL    );   
-///-    }
-///- #define FAST_SET_DEC_STEP(VAL)                 
-///-    {                                           
-///-    set_digital_output(DO_PC2_DEC_STEP ,VAL    );   
-///-    }
- 
 ////////////////////////////////// DEFINES /////////////////////////////////////   TICKS_P_STEP * 16 * GEAR_BIG/GEAR_SMALL * STEP_P_REV / RA_DEG_P_REV
 #define F_CPU_K          20000
 #define FRAME            10000
@@ -277,6 +254,9 @@ typedef struct
    } MATRIX;
 
 MATRIX PoleMatrix;
+#ifdef AT_SLAVE
+MATRIX MatrixPole;  // debug matrix, created with the reverse angles ("should" yield the same result)
+#endif
 
 void set_vector(VECTOR *VVV,unsigned long *RA,unsigned long *DEC);
 void apply_polar_correction(MATRIX *R,VECTOR *S);
@@ -338,7 +318,13 @@ typedef struct   // those values are required per axis to be able to execute got
    unsigned char  direction;        // no units (which direction ? )                    
    } AXIS;
 
-unsigned long polar_ra,polar_dec;               // polar shift
+unsigned long polar_ra,polar_dec;      // polar shift: definition: this value represent how the telescope is miss aligned
+                                       // it means that if you do a goto the pole, the h/w position will be polar_ra,-polar_dec 
+#ifdef AT_SLAVE
+   #ifdef POLAR_TRANSFORM_INTEGRITY_TEST
+      unsigned long polar_ra_pole[2];  // two theoritical rotation point
+   #endif
+#endif
 
 #ifdef AT_MASTER
 static char set_ra_armed=0;
@@ -467,12 +453,26 @@ PROGMEM const char pgm_free_mem[]="Free Memory:";
 PROGMEM const char pgm_select_side[]="\012\015Use < > to select OTA meridian side East/West..";
 PROGMEM const char pgm_selected_east[]="East selected...";
 PROGMEM const char pgm_selected_west[]="West selected...";
-PROGMEM const char pgm_starting[]="Telescope Master Starting...($Revision: 1.100 $)";
-#else
-   #ifdef AT_SLAVE
-   PROGMEM const char pgm_starting[]="Telescope Slave Starting...($Revision: 1.100 $)";
+#endif
+#ifndef  HARDCODED_MATRIX
+   #ifdef AT_MASTER
+      PROGMEM const char pgm_starting[]="Telescope Master Starting...($Revision: 1.102 $)";
    #else
-   PROGMEM const char pgm_starting[]="Telescope Starting...[$Revision: 1.100 $]";
+      #ifdef AT_SLAVE
+         PROGMEM const char pgm_starting[]="Telescope Slave Starting...($Revision: 1.102 $)";
+      #else
+         PROGMEM const char pgm_starting[]="Telescope Starting...[$Revision: 1.102 $]";
+      #endif
+   #endif
+#else
+   #ifdef AT_MASTER
+      PROGMEM const char pgm_starting[]="Telescope Master Starting...($Revision: 1.102 $) HARDCODED_MATRIX";
+   #else
+      #ifdef AT_SLAVE
+         PROGMEM const char pgm_starting[]="Telescope Slave Starting...($Revision: 1.102 $) HARDCODED_MATRIX";
+      #else
+         PROGMEM const char pgm_starting[]="Telescope Starting...[$Revision: 1.102 $] HARDCODED_MATRIX";
+      #endif
    #endif
 #endif
 PROGMEM const char pgm_display_bug[]="Display routines problem with value (FMT_NE/EW):";
@@ -925,9 +925,9 @@ dd_v[DDS_DEBUG_PAGE]  = debug_page;
 //   dd_v[DDS_STAR_RA_POS]  = TICKS_P_45_DEG;  // temp for debug  set by twi (slave)
 //   dd_v[DDS_STAR_RA_POS2] = TICKS_P_45_DEG;  // temp for debug  set by twi (slave)
 
-   dd_v[DDS_POLAR_RA]  = polar_ra;
-   dd_v[DDS_POLAR_DEC] = polar_dec;
 #endif
+dd_v[DDS_POLAR_RA]  = polar_ra;
+dd_v[DDS_POLAR_DEC] = polar_dec;
 
 return 0; // found nothing to display
 } // Function : unsigned char dd_go(unsigned char task,char first)
@@ -1579,10 +1579,45 @@ align_state=11;
 //polar_dec =  3*TICKS_P_DEG;      //      Result: the correcton around star #51 is + 3 deg north
 ///polar_ra  = 13*TICKS_P_HOUR;                   //      Test around star#51
 ///polar_dec =  TICKS_P_DAY - 3*TICKS_P_DEG;      //      Result: the correcton around star #51 is - 3 deg (south)
+
+#ifdef HARDCODED_MATRIX
+   // Force a value for debugging purpose
+   polar_ra  =  (6+3)*TICKS_P_HOUR + 2*TICKS_P_MIN + 16*TICKS_P_SEC;       // +6h means 90 degrees   // HARDCODED_MATRIX
+   polar_dec =  6*TICKS_P_DEG  + 6*TICKS_P_DEG_MIN + 7*TICKS_P_DEG_SEC; 
+#endif
+
 generate_polar_matrix(& PoleMatrix,&polar_ra, &polar_dec, 1);
+
+#ifdef POLAR_TRANSFORM_INTEGRITY_TEST
+   {
+   unsigned long rraa,ddee;
+   // Generate the same rottation matrix, but using reverse angles ("Should" give the same result)
+   ddee = TICKS_P_DAY - polar_dec;  // reversed DEC
+   if ( polar_ra > TICKS_P_180_DEG )  rraa = polar_ra - TICKS_P_180_DEG;
+   else                               rraa = polar_ra + TICKS_P_180_DEG;
+   generate_polar_matrix(& MatrixPole,&rraa, &ddee, 1);
+   if ( polar_ra < TICKS_P_90_DEG )
+      {
+      polar_ra_pole[0] = polar_ra + TICKS_P_90_DEG;
+      polar_ra_pole[1] = polar_ra + TICKS_P_90_DEG + TICKS_P_180_DEG;
+      }
+   else if ( polar_ra < TICKS_P_90_DEG + TICKS_P_180_DEG )
+      {
+      polar_ra_pole[0] = polar_ra + TICKS_P_90_DEG;
+      polar_ra_pole[1] = polar_ra - TICKS_P_90_DEG;
+      }
+   else 
+      {
+      polar_ra_pole[0] = polar_ra - TICKS_P_90_DEG - TICKS_P_180_DEG;
+      polar_ra_pole[1] = polar_ra - TICKS_P_90_DEG;
+      }
    
+   }
+#endif
+      
 use_polar=1;
 align_state=12;
+
 }
   
 // use rotation matrix to rotate the star...
@@ -2297,6 +2332,11 @@ if ( use_polar )
    {
    static VECTOR work;  
    static VECTOR desired;
+   #ifdef POLAR_TRANSFORM_INTEGRITY_TEST
+   static VECTOR origine;
+   static VECTOR rotpole;
+   static long dist;
+   #endif
    static unsigned char polar_state=0;  // use states to spread the work into many little chunks...mainly because I can have AP0 with SP0
    static unsigned char use_x_instead_of_y=0;  //
    static unsigned long desired_dec,ref_dec;
@@ -2313,8 +2353,8 @@ if ( use_polar )
          if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x10]=standby_goto + 0x321000; /// REMOVE
          if ( standby_goto )
             {
-            ref_ra = ra->pos_target;    // use target position so that any goto will bring us right away to the propoer position  
-            ref_dec = dec->pos_target;  // use target position so that any goto will bring us right away to the propoer position;
+            ref_ra = ra->pos_target;    // use target position so that any goto will bring us right away to the proper position  
+            ref_dec = dec->pos_target;  // In other words, if we are in goto mode, then use the target position to calculate the proper position
             if ( standby_goto == 1 ) standby_goto = 2;
             }
          else
@@ -2345,6 +2385,62 @@ if ( use_polar )
          if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x02]=desired.y;
          if ( debug_page==3 ) dd_v[DDS_DEBUG + 0x03]=desired.z;
          } 
+#ifdef POLAR_TRANSFORM_INTEGRITY_TEST
+      else if ( polar_state == 6 )  // calc distance between the point of origin and the rottation point
+         {
+         dist = 0;  // temp label
+         set_vector(&rotpole , (unsigned long * ) &polar_ra_pole[0], (unsigned long * ) &dist); 
+         set_vector(&origine , (unsigned long * ) &ref_ra, (unsigned long * ) &ref_dec); 
+         dd_v[DDS_DEBUG + 0x0E] = polar_ra_pole[0];
+         dd_v[DDS_DEBUG + 0x0F] = ref_ra;
+         if ( debug_page == 7 ) 
+            {
+            dist  = fp_mult(origine.x - rotpole.x , origine.x - rotpole.x);
+            dist += fp_mult(origine.y - rotpole.y , origine.y - rotpole.y);
+            dist += fp_mult(origine.z - rotpole.z , origine.z - rotpole.z);
+            dd_v[DDS_DEBUG + 0x08] = dist;
+            }
+         else if ( debug_page == 6 ) 
+            {
+            dd_v[DDS_DEBUG + 0x08] = origine.x;
+            dd_v[DDS_DEBUG + 0x09] = origine.y;
+            dd_v[DDS_DEBUG + 0x0A] = origine.z;
+
+            dd_v[DDS_DEBUG + 0x10] = desired.x;
+            dd_v[DDS_DEBUG + 0x11] = desired.y;
+            dd_v[DDS_DEBUG + 0x12] = desired.z;
+
+            dd_v[DDS_DEBUG + 0x18] = rotpole.x;
+            dd_v[DDS_DEBUG + 0x19] = rotpole.y;
+            dd_v[DDS_DEBUG + 0x1A] = rotpole.z;
+            }
+         }
+      else if ( polar_state == 7 )  // calc distance between the desired position and the rottation point
+         {
+         if ( debug_page == 7 ) 
+            {
+            dist  = fp_mult(desired.x - rotpole.x , desired.x - rotpole.x);
+            dist += fp_mult(desired.y - rotpole.y , desired.y - rotpole.y);
+            dist += fp_mult(desired.z - rotpole.z , desired.z - rotpole.z);
+            dd_v[DDS_DEBUG + 0x10] = dist;
+            dd_v[DDS_DEBUG + 0x16] = polar_ra_pole[1];
+            }
+         }
+      else if ( polar_state == 8 )  // calc length of desired position, it should be very near 1.000 in fixed point
+         {
+         if ( debug_page == 7 ) 
+            {
+            dist  = fp_mult( origine.x , origine.x );
+            dist += fp_mult( origine.y , origine.y );
+            dist += fp_mult( origine.z , origine.z );
+            dd_v[DDS_DEBUG + 0x09] = dist;
+            dist  = fp_mult( desired.x , desired.x );
+            dist += fp_mult( desired.y , desired.y );
+            dist += fp_mult( desired.z , desired.z );
+            dd_v[DDS_DEBUG + 0x11] = dist;
+            }
+         }
+#endif
       else polar_state = 10;   // go to next stage
       }
    else if ( polar_state<40 )  // states [10..39] where we find the required DEC to get the same Z as the desired Z
@@ -2498,6 +2594,15 @@ else if ( standby_goto == 1 ) standby_goto = -1;  // no wait in this case
 //   dd_v[DDS_DEBUG + 0x14]=loc_ra_correction;
 //   dd_v[DDS_DEBUG + 0x15]=loc_dec_correction;
 else if ( standby_goto == 111 ) do_polar(); //   TODO This will never happen, but it's to force the compiler tp include do_polar in the hex file
+
+if ( debug_page == 7 ) 
+   {
+   dd_v[DDS_DEBUG + 0x0C] = ra_correction;
+   dd_v[DDS_DEBUG + 0x0D] = loc_ra_correction;
+   dd_v[DDS_DEBUG + 0x14] = dec_correction;
+   dd_v[DDS_DEBUG + 0x15] = loc_dec_correction;
+   }
+
 #elif AT_MASTER
 if ( standby_goto == 1 ) standby_goto = -1;  // no wait in this case TODO : since the polar math is done on the slave, the standby_goto seends to be sent back and forth
 #endif
@@ -4142,6 +4247,14 @@ return 0;
 
 /*
 $Log: telescope2.c,v $
+Revision 1.102  2012/08/09 04:39:51  pmichel
+Added integrity checks
+tested with forced align
+all seems good
+
+Revision 1.101  2012/08/01 19:52:13  pmichel
+Version that can pass the meridian, and that sends the polar error back to the master
+
 Revision 1.100  2012/08/01 18:25:58  pmichel
 Version that supports crossing of the meridian
 and switches RA and DEC accordingly
