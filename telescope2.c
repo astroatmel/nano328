@@ -440,7 +440,7 @@ SLAVE:\012\015                                                                  
 // PROGMEM const char pgm_stars_name_reduced[]   =  // format: byte:StarID byte:ConstelationId Star Name string
 //                    pgm_stars_name_reduced is a huge contigous string with only a few stars name (not all stars in the coords list have a name)
 //                                           first two bytes are unsigned char and contains StarID followed by Constellation ID
-char current_star_name[STAR_NAME_LEN+CONSTEL_NAME_LEN] = ""; // place to store the current star name and constellation name (set by slave) 
+char current_star_name[STAR_NAME_LEN+CONSTEL_NAME_LEN+1] = ""; // place to store the current star name and constellation name (set by slave) 
 
 PROGMEM const char pgm_free_mem[]="Free Memory:";
 #ifdef AT_MASTER
@@ -897,16 +897,19 @@ dd_v[DDS_DEBUG_PAGE]  = debug_page;
 //dd_v[DDS_DEBUG + 0x1D] = c_pointed;                      // 0x1
       // update the strings
       scan++;
-      if ( scan == (STAR_NAME_LEN - STAR_NAME_CODES) + (CONSTEL_NAME_LEN - CONSTEL_NAME_CODES) ) 
+      if ( scan == (STAR_NAME_LEN - STAR_NAME_CODES) + (CONSTEL_NAME_LEN - CONSTEL_NAME_CODES) + 1 ) 
          {
          current_star_name[scan]=0;  // put the null
          scan=0;
          dd_v[DDS_CUR_STAR] = dd_v[DDS_CUR_STAR_REQ];  // Only once the string has been copied that dd_v[DDS_CUR_STAR] gets set -> thus upating the string on screen
          }
-      if ( scan >= STAR_NAME_LEN - STAR_NAME_CODES )  
+      if ( scan >  STAR_NAME_LEN - STAR_NAME_CODES )  
          {
-         current_star_name[scan]= pgm_read_byte ( & pgm_const_name[ c_pointed*CONSTEL_NAME_LEN + scan - (STAR_NAME_LEN - STAR_NAME_CODES) + CONSTEL_NAME_CODES] );  
-//       current_star_name[scan]= 'a'+scan;
+         current_star_name[scan]= pgm_read_byte ( & pgm_const_name[ c_pointed*CONSTEL_NAME_LEN + scan - (STAR_NAME_LEN - STAR_NAME_CODES) + CONSTEL_NAME_CODES] -1 );  
+         }
+      else if ( scan == STAR_NAME_LEN - STAR_NAME_CODES )  
+         {
+         current_star_name[scan]= ' ';
          }
       else
          {

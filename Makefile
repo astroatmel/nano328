@@ -44,14 +44,14 @@ telescope2_slave.obj: telescope2_slave.c coords.h
 	$(CC) $(CFLAGS) -DAT_SLAVE telescope2_slave.c $(LDFLAGS) -o $@
 
 master: 
-	./chmod_ttyACM0
+	./chmod_ttyACMx
 	$(AVRDUDE) -v -p $(AVRDUDE_DEVICE) -c avrisp2 -P $(PORT) -U flash:w:$(TARGET)_master.hex
 
 mst: 
 	avrdude -v -p m328p -c jtag2isp -P usb -U flash:w:telescope2_master.hex
 
 slave: 
-	./chmod_ttyACM0
+	./chmod_ttyACMx
 	$(AVRDUDE) -v -p $(AVRDUDE_DEVICE) -c avrisp2 -P $(PORT) -U flash:w:$(TARGET)_slave.hex
 slv: 
 	avrdude -v -p m328p -c jtag2isp -P usb -U flash:w:telescope2_slave.hex
