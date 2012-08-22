@@ -32,6 +32,8 @@ KNOWN["66alp Gem"]="Castor    "
 KNOWN["67alp Vir"]="Spica    B"
 KNOWN["32alp Leo"]="Regulus  B"
 KNOWN["30alp Hya"]="Alphard  r"
+KNOWN["55alp Oph"]="Rasalhague"
+KNOWN["60bet Oph"]="Cebalrai  "
 # for CGEM:  (with dot suffix)
 KNOWN["25eta Tau"]="Alcyone. b"
 KNOWN["87alp Tau"]="Aldebara.r"
