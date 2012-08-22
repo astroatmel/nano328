@@ -1,0 +1,29 @@
+My new a328p packages should be all easyly 
+> Activable / Disactivable
+> configurable (using more or less memory)
+> the main source file should have the least amount of lines of code as possible and should use defines to control the behaviour of all the little packages
+> use pointers as much as possible (faster and shorter)
+
+-LCD version that is "includable" .c and .h
+
+-non-blocking LCD routines that uses the real-time routines to drive the LCD
+
+-LCD version that can use RS232 to simulate LCD ouput and buttons input (for testing)   
+ (same routines output to LCD and/or to RS232 for testing)
+ #define LCD_TO_PORTS  (drive the real LCD device)
+ #define LCD_TO_RS232  (send commands to RS232 and simulate DIP pushbutton using RS232 keyboard)
+
+-Real-Time "includable" package that provides
+  > wait, wait_ms, wait_us, init disp(parameters) or defines
+
+-RS232 "includable" package that provides:
+  > init_rs232(parameters) or defines
+
+-IR "includable" that requires:
+  > define SP0_FRAME_RATE
+  > a define IR_PORT_DIP that returns the state of the input pin
+  and provides a function that you call from SP0 and checks for new codes
+  drives:
+  > a input counter
+  > last two received codes
+  > a bad IR code counter

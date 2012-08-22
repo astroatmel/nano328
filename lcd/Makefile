@@ -18,10 +18,13 @@ ASFLAGS=-Wa,-ah -Wa,-D -fverbose-asm -dA -S
 PORT ?= /dev/ttyACM0
 AVRDUDE=avrdude
 
-TARGET=my_lcd
-OBJECT_FILES=my_lcd.o 
+TARGET=main
+OBJECT_FILES=a328p_lcd.o main.o
 
-all: my_lcd.hex
+all: main.hex
+
+# Those defines control which modules are active
+MODULES_OPTIONS=-DUSE_LCD
 
 clean:
 	rm -f *.o *.hex *.obj *.hex *.s
@@ -29,40 +32,19 @@ clean:
 %.hex: %.obj
 	$(OBJ2HEX) -R .eeprom -O ihex $< $@
 
-my_lcd.o: my_lcd.c
+main.obj: main.c a328p_lcd.c a328p_lcd.h
+	$(CC) $(CFLAGS) $(ASFLAGS) $(MODULES_OPTIONS) main.c
+	$(CC) $(CFLAGS) $(ASFLAGS) $(MODULES_OPTIONS) a328p_lcd.c
+	$(CC) $(CFLAGS) $(LDFLAGS) $(MODULES_OPTIONS) -o $@  main.c a328p_lcd.c
 
-my_lcd.obj: my_lcd.c 
-	$(CC) $(CFLAGS) $(ASFLAGS) my_lcd.c
-	$(CC) $(CFLAGS) my_lcd.c $(LDFLAGS) -o $@
 
 program: 
 	./chmod_ttyACM0
 	$(AVRDUDE) -v -p $(AVRDUDE_DEVICE) -c avrisp2 -P $(PORT) -U flash:w:$(TARGET).hex
 
 mst: 
-	avrdude -v -p m328p -c jtag2isp -P usb -U flash:w:my_lcd.hex
+	$(AVRDUDE) -v -p $(AVRDUDE_DEVICE) -c jtag2isp -P usb    -U flash:w:$(TARGET).hex
 
-
-
-# Normal Fuses for Polopu A328P
-#
-#  avrdude: Device signature = 0x1e950f
-#  avrdude: safemode: lfuse reads as F6  CKDIV8=0x80 >>> No DIV8   CKOUT=0c40 >> No CLK OUT  CKSEL 0x03 =    SUT 0x30 >> Ceramic Crystal, fast rising
-#  avrdude: safemode: hfuse reads as D9
-#  avrdude: safemode: efuse reads as 7
-
-#  For the Telescope Board, the low fuse has to be:
-#  MASTER : avrdude: safemode: lfuse reads as B6  CKDIV8=0x80 >>> No DIV8   CKOUT=0x40 >> CLK OUT ACTIVE  SUT 0x30 : slow rising    CKSEL 0x06 =   Ceramic Crystal
-#  SLAVE  : avrdude: safemode: lfuse reads as E0  CKDIV8=0x80 >>> No DIV8   CKOUT=0x40 >> NO CLK OUT      SUT 0x20 : slow rising    CKSEL 0x00 =   External clock
-#  >>>>>    once programmed as a slave, then it must have an external clock to survive -> a slave will always need a clock source to change the fuse
-#  For "Breadboard" minimal setup (no crystal, the low fuse has to be:
-#  BREADBOARD : avrdude: lfuse reads as 0x62  CKDIV8=0x80 >>> DIV8   CKOUT=0x40 >> CLK OUT INACTIVE  SUT 0x30 : slow rising    CKSEL 0x02 =   Internal 8Mhz
-#                        hfuse reads as 0xD9
-#                        efuse reads as 0x07
-#
-#  BREADBOARD with crystal test:  lfuse reads as 0x66  CKDIV8=0x80 >>> DIV8   CKOUT=0x40 >> CLK OUT INACTIVE  SUT 0x30 : slow rising    CKSEL 0x06 =   External 20Mhz
-#  avrdude -v -p m328 -c avrisp2 -P /dev/ttyACM0 -U lfuse:w:0x66:m
-#
 
 
 # to read the Fuses: to the files high and low :
