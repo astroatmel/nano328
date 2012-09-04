@@ -19,12 +19,12 @@ PORT ?= /dev/ttyACM0
 AVRDUDE=avrdude
 
 TARGET=main
-OBJECT_FILES=a328p_lcd.o main.o
+OBJECT_FILES=a328p_lcd.o a328p_rt.o main.o
 
 all: main.hex
 
 # Those defines control which modules are active
-MODULES_OPTIONS=-DUSE_LCD
+MODULES_OPTIONS=-DUSE_LCD -DUSE_RT
 
 clean:
 	rm -f *.o *.hex *.obj *.hex *.s
@@ -32,10 +32,11 @@ clean:
 %.hex: %.obj
 	$(OBJ2HEX) -R .eeprom -O ihex $< $@
 
-main.obj: main.c a328p_lcd.c a328p_lcd.h
+main.obj: main.c a328p_lcd.c a328p_lcd.h a328p_rt.c a328p_rt.h
 	$(CC) $(CFLAGS) $(ASFLAGS) $(MODULES_OPTIONS) main.c
 	$(CC) $(CFLAGS) $(ASFLAGS) $(MODULES_OPTIONS) a328p_lcd.c
-	$(CC) $(CFLAGS) $(LDFLAGS) $(MODULES_OPTIONS) -o $@  main.c a328p_lcd.c
+	$(CC) $(CFLAGS) $(ASFLAGS) $(MODULES_OPTIONS) a328p_rt.c
+	$(CC) $(CFLAGS) $(LDFLAGS) $(MODULES_OPTIONS) -o $@  main.c a328p_lcd.c a328p_rt.c
 
 
 program: 

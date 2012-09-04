@@ -15,9 +15,9 @@ unsigned char pd;
 unsigned char value=0;
 
 LCD_SET_DATA_DIR_INPUT
-wait_us(1);
+rt_wait_us(1);
 LCD_SET_E_HIGH;
-wait_us(2);
+rt_wait_us(2);
 pb=PINB;
 pd=PIND;
 LCD_SET_E_LOW;
@@ -41,11 +41,11 @@ if ( data & 0x08 ) pd |= 0x80;
 LCD_SET_DATA_DIR_OUTPUT
 PORTB = pb;
 PORTD = pd;
-wait_us(1);
+rt_wait_us(1);
 LCD_SET_E_HIGH;
-wait_us(4);
+rt_wait_us(4);
 LCD_SET_E_LOW;
-wait_us(1);
+rt_wait_us(1);
 }
 
 void lcd_wait_busy(void)
@@ -69,7 +69,7 @@ if ( timeout==0 ) lcd_requires_reset=1;
 
 void lcd_wait_send(unsigned char data, unsigned char ms)   // send comman function that does not check for the busy flag
 {
-wait_ms(ms);
+rt_wait_ms(ms);
 LCD_SET_E_LOW;
 LCD_SET_RS_LOW;
 LCD_SET_RW_LOW;
@@ -108,6 +108,11 @@ lcd_write_4_bits(data);
 LCD_SET_DATA_DIR_INPUT;
 }
 
+void lcd_reset(void)
+{
+lcd_requires_reset = 1;
+}
+
 void lcd_init(void)
 {
 LCD_SET_CTRL_DIR_OUTPUT
@@ -124,11 +129,11 @@ lcd_wait_send(0x28,2);    // Send 0x28 = 4-bit, 2-line, 5x8 dots per char
 // Busy Flag is now valid
 lcd_send(0x08); // Send 0x08 = Display off, cursor off, blinking off
 lcd_send(0x01); // Send 0x01 = Clear display
-wait_us(500);   // LCD executiuon time
+rt_wait_us(500);   // LCD executiuon time
 lcd_send(0x02); // Send 0x02 = Cursor Home
-wait_us(500);   // LCD executiuon time
+rt_wait_us(500);   // LCD executiuon time
 lcd_send(0x06); // Send 0x06 = Set entry mode: cursor shifts right, don't scroll
-wait_us(500);   // LCD executiuon time
+rt_wait_us(500);   // LCD executiuon time
 lcd_send(0x0C); // Send 0x0C = Display on, cursor off, blinking off
 }
 
@@ -141,7 +146,7 @@ if ( lcd_requires_reset )
       // print only if the RS232 package is included / active
       ps("\012\015LCD requires Reset...");
    #endif
-   wait(1);
+   rt_wait(1);
    lcd_init();
    }
 
@@ -154,7 +159,7 @@ if ( lcd_requires_reset ) return;
 
 if ( row==0 ) lcd_send(0x80+col);
 else          lcd_send(0xC0+col);
-wait_us(40);  // LCD executiuon time
+rt_wait_us(40);  // LCD executiuon time
 }
 
 #endif  // USE_LCD

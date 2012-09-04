@@ -5,31 +5,19 @@
 
 #include "a328p_lcd.h"
 
+#include "a328p_rt.h"
+
 unsigned long d_ram;
 unsigned long d_state;
 
-volatile unsigned long d_TIMER0;
-volatile unsigned long d_TIMER1;
 volatile unsigned long d_USART_RX;
 volatile unsigned long d_USART_TX;
-unsigned long d_now;
 
-volatile unsigned short msec=0;
-volatile unsigned char sec=0,min=0,hour=0;
 
 
  
-////////////////////////////////// DEFINES /////////////////////////////////////   TICKS_P_STEP * 16 * GEAR_BIG/GEAR_SMALL * STEP_P_REV / RA_DEG_P_REV
-#define F_CPU_K          20000
+////////////////////////////////// DEFINES /////////////////////////////////////   
 #define baud             9600
-
-#define SEC 1000
-#define MSEC 1
-
-
-void wait_us(unsigned short time);
-void wait_ms(unsigned long time);
-void wait(unsigned short time);
 
 char rs232_to=0;
 void wait_rs232(void)
@@ -173,7 +161,8 @@ bof[4]=0;
 
 ISR(TIMER0_OVF_vect)     // sp0c0
 {                       
-d_TIMER0++;
+rt_TIMER0++;
+return;
 }
 
 ISR(TIMER1_COMPB_vect)   // Clear the Step outputs
@@ -192,7 +181,7 @@ return;
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 10 KHz
 {
 static char tog=0;
-d_TIMER1++;
+rt_TIMER1++;
 
 tog++;
 if ( rs232_to==0 )
@@ -225,7 +214,7 @@ d_USART_TX++;
 
 void init_rs232(void)
 {
-long temp = F_CPU_K*1000UL/(16UL*baud)-1;  // set uart baud rate register
+long temp = RT_CPU_K_FRAME*1000UL/(16UL*baud)-1;  // set uart baud rate register
 
 UBRR0H = (temp >> 8);
 UBRR0L = (temp & 0xFF);
@@ -233,49 +222,6 @@ UCSR0B= (1 <<RXEN0 | 1 << TXEN0 );  // enable RX and TX
 //UCSR0B|= (1 <<RXCIE0);              // enable receive complete interrupt
 //UCSR0B|= (1 <<TXCIE0);              // enable transmit complete interrupt
 UCSR0C = (3 <<UCSZ00);              // 8 bits, no parity, 1 stop
-}
-
-#define TIME_BASE F_CPU_K
-void init_disp(void)
-{
-TIMSK1 |= 1 <<  TOIE1;    // timer1 interrupt when Overflow                    ///////////////// SP0C0
-// dont drive the pins TCCR1A  = 0xA3;           // FAST PWM, Clear OC1A/OC1B on counter match, SET on BOTTOM
-TCCR1A  = 0x03;           // FAST PWM, Clear OC1A/OC1B on counter match, SET on BOTTOM
-TCCR1B  = 0x19;           // Clock divider set to 1 , FAST PWM, TOP = OCR1A
-OCR1A   = TIME_BASE/1;      // Clock divider set to 1, so F_CPU_K/1 is CLK / 1000 /1 thus, every 1000 there will be an interrupt : 1Khz
-OCR1B   = TIME_BASE/2;     // By default, set the PWM to 50%
-}
-
-void wait_us(unsigned short time)     /// TO BE TESTED... with the scope TODO
-{
-unsigned short now = TCNT1;           // read timer1 counter...
-unsigned long  target = now + time*(F_CPU_K/1000);
-if ( time > TIME_BASE )               // the amount of time to wait is so long that we should use wait_ms()
-   {                                  // this part is written in case... but really, wait_us() should be called with small values
-   unsigned long d_now = d_TIMER1;
-   unsigned long d_time = time/1000;
-   while ( d_TIMER1-d_now < d_time ) ;
-   return;
-   }
-
-if ( target > TIME_BASE )             // TCNT1 never goes over TIME_BASE ...
-   { 
-   target -= TIME_BASE;               // Set the target for after the loop around. . . 
-   while ( TCNT1 >= now ) ;           // wait until it starts over
-   }
-
-while ( TCNT1 < target ) ;            // wait until we reach the count. . .
-}
-
-void wait_ms(unsigned long time)
-{
-unsigned long d_now = d_TIMER1;
-while ( d_TIMER1-d_now < time ) ;
-}
-void wait(unsigned short time)
-{
-unsigned long d_now = d_TIMER1;
-while ( d_TIMER1-d_now < time*1000 ) ;
 }
 
 
@@ -307,7 +253,7 @@ long lon=0;
 ///////////////////////////////// Init /////////////////////////////////////////
 
 init_rs232();
-init_disp();
+rt_init_disp();
 
 ps("\033[2JLCD Tests...");
 
@@ -336,20 +282,20 @@ while(1)
    lcd_print_str(buf);
 
    LCD_SET_DATA_DIR_INPUT;
-   wait(1);
+   rt_wait(1);
 
    lon = lon & 0xFFF0;
-   if ((PINB & 0x02) == 0 ) lon |= 0x01;
-   if ((PINB & 0x10) == 0 ) lon |= 0x02;
-   if ((PINB & 0x20) == 0 ) lon |= 0x04;
-   if ((PIND & 0x80) == 0 ) lon |= 0x08;
+   if (LCD_BUTTON_1 == 0 ) lon |= 0x01;
+   if (LCD_BUTTON_2 == 0 ) lon |= 0x02;
+   if (LCD_BUTTON_3 == 0 ) lon |= 0x04;
+   if (LCD_BUTTON_4 == 0 ) lon |= 0x08;
    ps("\012\015...");
 
-   #ifdef USE_LCD
-   if ((PINB & 0x20) == 0 ) lcd_requires_reset=1;
-   #endif
+   if (LCD_BUTTON_3 == 0 ) lcd_reset();
 
    }
 }
 
-// #include "a328p_lcd.c"
+// #include "a328p_lcd.c"   <-- I need the makefile to compile with -DUSE_LCD
+//
+//

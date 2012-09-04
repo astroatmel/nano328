@@ -9,26 +9,27 @@
 // The LCD requires the RS232 define:
 // A328P_RS232_AVAILABLE   >   to indicate if we can use the RS232 output routines
 //
-// The LCD requires the A328P pins:
-// PORT B bit 0  (LCD E)
-// PORT D bit 2  (LCD RW)
-// PORT D bit 4  (LCD RS)
-//
-// PORT B bit 1  (LCD BIT 0)
-// PORT B bit 4  (LCD BIT 1)
-// PORT B bit 5  (LCD BIT 3)
-// PORT D bit 7  (LCD BIT 4)
 
 #ifdef  USE_LCD        // Option to enable/disable LCD module
 
-#ifndef A328P_LCD
-#define A328P_LCD
+// The next defines are useless, but errors will be triggered if two modules requires the same pin
+// The LCD requires the A328P pins:
+//
+#define USING_A328P_PIN_14   PORT_B_BIT_0   // PORT B bit 0  (LCD E)
+#define USING_A328P_PIN_04   PORT_D_BIT_2   // PORT D bit 2  (LCD RW)
+#define USING_A328P_PIN_06   PORT_D_BIT_4   // PORT D bit 4  (LCD RS)
+
+#define USING_A328P_PIN_15   PORT_B_BIT_1   // PORT B bit 1  (LCD BIT 0)
+#define USING_A328P_PIN_18   PORT_B_BIT_4   // PORT B bit 4  (LCD BIT 1)
+#define USING_A328P_PIN_19   PORT_B_BIT_5   // PORT B bit 5  (LCD BIT 2)
+#define USING_A328P_PIN_13   PORT_D_BIT_7   // PORT D bit 7  (LCD BIT 3)
+
 
 #include <avr/pgmspace.h>
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
-#include "a328p_realtime.h"
+#include "a328p_rt.h"
 
 #ifdef A328P_LCD_MAIN
    // local labels only to LCD_MAIN module
@@ -36,6 +37,11 @@
 #else
    extern unsigned char lcd_requires_reset;           // run-time reset request
 #endif
+
+#define LCD_BUTTON_1  (PINB & 0x02)
+#define LCD_BUTTON_2  (PINB & 0x10)
+#define LCD_BUTTON_3  (PINB & 0x20)
+#define LCD_BUTTON_4  (PIND & 0x80)
 
 #define LCD_SET_E_HIGH     PORTD |=  0x10          // PORT D bit 4
 #define LCD_SET_E_LOW      PORTD &= ~0x10
@@ -75,6 +81,7 @@ DDRD &= ~0x14;                            \
 void lcd_init(void);
 void lcd_goto(unsigned char row,unsigned char col);
 void lcd_print_str(char *STR);
+void lcd_reset();
 
 // Internal functions
 unsigned char lcd_read_4_bits(void);
@@ -85,18 +92,22 @@ void lcd_send(unsigned char data);
 void lcd_text(unsigned char data);
 
 
-#endif  // A328P_LCD
-
 #else   // USE_LCD
 
-   // if USE_LCD no defined, void the usage of the user functions:
-   #define lcd_init()  ;
-   #define lcd_goto(row,col)  ;
+   // if USE_LCD not defined, void the usage of the user functions:
+   #define lcd_init()          ;
+   #define lcd_goto(row,col)   ;
    #define lcd_print_str(STR)  ;
+   #define lcd_reset()         ;
 
    #define LCD_SET_DATA_DIR_OUTPUT   ;
    #define LCD_SET_DATA_DIR_INPUT    ;
    #define LCD_SET_CTRL_DIR_OUTPUT   ;
    #define LCD_SET_CTRL_DIR_INPUT    ;
+
+   #define LCD_BUTTON_1  (0)
+   #define LCD_BUTTON_2  (0)
+   #define LCD_BUTTON_3  (0)
+   #define LCD_BUTTON_4  (0)
 
 #endif  // USE_LCD
