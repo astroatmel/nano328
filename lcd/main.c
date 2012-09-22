@@ -67,24 +67,24 @@ if ( digit<1  ) digit = 1;
 nnn = val < 0;
 
 for ( iii=0 ; iii<digit ; iii++ ) max=max*10;
-if(val<-(max-1))   // 10000000000  (10^digit)-1
-   {
-   for ( iii=0 ; iii<digit ; iii++ ) buf[iii] = '-';   // below max negative displayable
-   }
-else if (val>(max*10))
-   {
-   for ( iii=0 ; iii<digit ; iii++ ) buf[iii] = '+';   // above max positive displayable
-   }
-else
-   {
+//if(val<-(max-1))   // 10000000000  (10^digit)-1
+//   {
+//   for ( iii=0 ; iii<digit ; iii++ ) buf[iii] = '-';   // below max negative displayable
+//   }
+//else if (val>(max*10))
+//   {
+//   for ( iii=0 ; iii<digit ; iii++ ) buf[iii] = '+';   // above max positive displayable
+//   }
+//else
+//   {
    if ( nnn ) val = -val;
    for ( iii=digit-1 ; iii>=0 ; iii-- , val /= 10 )
       {
       buf[iii] = val%10 + '0';
       }
-   if ( nnn ) buf[0] = '-';
-   else       buf[0] = ' ';  // was buf[0] = '+';
-   }
+//   if ( nnn ) buf[0] = '-';
+//   else       buf[0] = ' ';  // was buf[0] = '+';
+//   }
 buf[digit] = 0;
 return &buf[digit];
 }
@@ -158,14 +158,13 @@ bof[4]=0;
 //-  26 0x0032 SPM READY Store Program Memory Ready
 //-  
 
-
-ISR(TIMER0_OVF_vect)     // sp0c0
+ISR(TIMER0_OVF_vect)     // 
 {                       
 rt_TIMER0++;
 return;
 }
 
-ISR(TIMER1_COMPB_vect)   // Clear the Step outputs
+ISR(TIMER1_COMPB_vect)   // 
 {
 return;
 }
@@ -178,6 +177,10 @@ return;
 //  Then goes to 0 for either 0x0B~0x0C : Logic 0    or either 0x15~0x16 : Logic 1
 //  The  Start bit is a "1" for ~ 0x2A then a "0" for !0x2A
 //  The code with Proscan is about 25 bits of information
+
+volatile unsigned short msms;
+volatile unsigned char SS,MM,HH;
+
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 10 KHz
 {
 static char tog=0;
@@ -195,6 +198,23 @@ else
    else              PORTD &= ~0x40;
    }
 
+msms++;
+if ( msms >= 1000 ) 
+   { 
+   msms = 0;
+   SS++;
+   if ( SS >= 60 )
+      {
+      SS = 0;
+      MM++;
+      if ( MM >= 60 )
+         {
+         MM = 0;
+         HH ++;
+         if ( HH >= 24 ) HH = 0;
+         }
+      }
+   }
 }
 
 ISR(USART_RX_vect)
@@ -255,6 +275,16 @@ long lon=0;
 init_rs232();
 rt_init_disp();
 
+// init buzzer: T2 output B  on PD3 
+   // TIMSK2 |= 1 <<  TOIE2;    // timer2 interrupt when Overflow                    ///////////////// SP0C0
+   // TCCR2A  = 0xA3;           // FAST PWM, Clear OC1A/OC1B on counter match, SET on BOTTOM
+   TCCR2A  = 0x23;           // FAST PWM, Clear OC2B on counter match, SET on BOTTOM
+   TCCR2B  = 0x08 + 0x07;           // FAST PWM,  + divide by 1024 
+   OCR2A   = 0;                   // Clock divider set to 1024, so 20 should give a wave at 1Khz
+   OCR2B   = 0;                  // By default, set the PWM to 50%
+
+
+
 ps("\033[2JLCD Tests...");
 
 //set_analog_mode(MODE_8_BIT);                         // 8-bit analog-to-digital conversions
@@ -268,30 +298,63 @@ sei();         //enable global interrupts
 
 lcd_init();
 
+#define bit(BBB) (0x01<<BBB)
+#define PORT_BIT_HIGH(P0RT,B1T) { P0RT |= bit(B1T); }
+
+#define CANON_FOCUS_HIGH     PORTB |=  bit(7)          // PORT B bit 7
+#define CANON_FOCUS_LOW      PORTB &= ~bit(7)
+
+#define CANON_SHOOT_HIGH     PORTD |=  bit(5)          // PORT D bit 5
+#define CANON_SHOOT_LOW      PORTD &= ~bit(5)
+
+DDRB |= bit(7);  
+DDRD |= bit(5);  
+DDRD |= bit(3);   // Buzzer
+
 while(1)
    {
    val++;
    lon+=16;
    lcd_goto(0,0);
-   lcd_print_str("Star:");
-   pxxd(buf,val,6);
+
+   lcd_print_str("Time:");
+   pxxd(buf,HH,2);
    lcd_print_str(buf);
+   lcd_print_str(":");
+   pxxd(buf,MM,2);
+   lcd_print_str(buf);
+   lcd_print_str(":");
+   pxxd(buf,SS,2);
+   lcd_print_str(buf);
+
    lcd_goto(1,0);
    lcd_print_str("Long:  ");
    p04x(buf,lon);
    lcd_print_str(buf);
 
    LCD_SET_DATA_DIR_INPUT;
-   rt_wait(1);
+   rt_wait_ms(100);
+
+   if ( SS < 5  ) CANON_FOCUS_HIGH;
+   else           CANON_FOCUS_LOW; 
+
+   if ( SS == 4 ) CANON_SHOOT_HIGH;
+   else           CANON_SHOOT_LOW; 
 
    lon = lon & 0xFFF0;
    if (LCD_BUTTON_1 == 0 ) lon |= 0x01;
    if (LCD_BUTTON_2 == 0 ) lon |= 0x02;
    if (LCD_BUTTON_3 == 0 ) lon |= 0x04;
    if (LCD_BUTTON_4 == 0 ) lon |= 0x08;
-   ps("\012\015...");
 
-   if (LCD_BUTTON_3 == 0 ) lcd_reset();
+   if      (LCD_BUTTON_1 == 0 ) { OCR2A   = 20;  OCR2B   = 10; }    // Clock divider set to 1024, so 20 should give a wave at 1Khz
+   else if (LCD_BUTTON_2 == 0 ) { OCR2A   = 14;  OCR2B   =  7; }    // Clock divider set to 1024, so 20 should give a wave at 1Khz
+   else if (LCD_BUTTON_3 == 0 ) { OCR2A   = 10;  OCR2B   =  5; }    // Clock divider set to 1024, so 20 should give a wave at 1Khz
+   else if (LCD_BUTTON_4 == 0 ) { OCR2A   =  8;  OCR2B   =  4; }    // Clock divider set to 1024, so 20 should give a wave at 1Khz
+   else                         { OCR2A   =  5;  OCR2B   = 10; }    // Clock divider set to 1024, so 20 should give a wave at 1Khz
+//   ps("\012\015...");
+
+//   if (LCD_BUTTON_3 == 0 ) lcd_reset();
 
    }
 }

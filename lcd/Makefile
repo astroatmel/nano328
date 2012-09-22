@@ -40,7 +40,7 @@ main.obj: main.c a328p_lcd.c a328p_lcd.h a328p_rt.c a328p_rt.h
 
 
 program: 
-	./chmod_ttyACM0
+	./chmod_ttyACMx
 	$(AVRDUDE) -v -p $(AVRDUDE_DEVICE) -c avrisp2 -P $(PORT) -U flash:w:$(TARGET).hex
 
 mst: 

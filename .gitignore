@@ -10,3 +10,4 @@ RCS
 telescope2_master.c
 telescope2_slave.c
 chmod_ttyACMx
+ATmega328P.pdf
