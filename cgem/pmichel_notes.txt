@@ -1,0 +1,171 @@
+Conclusions:
+{e} will return the mechanical position, (which changes with tracking)
+CGEM has 8 times more precision than mine (8 times more tick per day)
+{w} is just for my location
+
+Convention:
+{string sent} [string received]
+
+Initial position (power up) ============================================
+we receive carbage like:
+�A��䄧C��ke�����夤�䄇��D����䄤�䄇���!�b
+different each time:
+�A��䄧����wR1)ii-k!)�k%++������䄤�䄇�C��
+
+position ============================================
+{e} [80000000,00000000#]
+after slewing:
+{e} [80000000,00000000#]   so we must align
+
+does it track ? ============================================
+
+
+
+Position after alignment ============================================
+Vega + Altair
+{e} [D3B3AF00,064E6000#]
+goto altair
+{e} [D3B42000,064E8800#]
+
+pressed {e} every 10 seconds on Vega, result:
+C691D800,1B947B00#
+C691E500,1B948400#
+C691F100,1B948C00#
+C6920100,1B949500#
+C6920700,1B949E00#
+C6921200,1B94A600#
+C6922000,1B94AF00#
+C6922B00,1B94B800#
+
+goto polaris...
+pressed {e} every 10 seconds on Vega, result:
+1B188300,3F7A6800#
+1B114600,3F7A5000#
+1B09AB00,3F7A3700#
+1B01DB00,3F7A3700#
+
+goto altair
+pressed {e} very fast
+D3B42900,064E9800#
+D3B42600,064E9800#
+D3B42900,064E9800#
+D3B42800,064E9900#
+D3B42800,064E9900#
+D3B42800,064E9900#
+D3B42600,064E9900#
+D3B42900,064E9900#
+D3B42800,064E9900#
+
+0x1000000 means a presition of: 1/12 second
+on my telescope: 000:00:00.09
+or,
+one day = 3369600000\0xC8D80400 and one tick = 1620\0x654
+which means that one day (one turn) has 2080000 steps
+CGEM has 0x1000000 steps per day:      16777216 steps, 8 times more than I have, so we are ok...
+
+
+goto RA:0 DEC: +90
+0316E700,40000000#
+02DE8B00,40000000#
+02A33400,40000000#
+
+gotoing to 0,-90
+B42B5700,E27C0500#
+B42B1A00,DF913100#
+B42AEC00,DC63C200#
+B42AD200,D93CEA00#
+B42ACF00,D68F8D00#
+B42AF900,D2E28500#
+B42B3200,D0AD8500#
+B42BF300,CD172100#
+B42E4F00,C8A49B00#
+B433F700,C50C9F00#
+B45FAD00,C1423800#
+
+At 0,-90:
+8021E100,C0000000#
+7FE65800,C0000000#
+
+goto 0,0
+00008E00,00000D00#
+00009800,FFFFEE00#
+0000A800,FFFFD200#
+0000AD00,FFFFB800#
+
+goto 6h0000 ,0
+4000EC00,FFF79500#
+3FFF7E00,FFFE5300#
+3FFF7900,FFFFD700#
+3FFF7900,FFFFD400#
+3FFF7700,FFFFD200#
+
+list position of 3 known stars ============================================
+
+echo "wwwwwwwwwww" > /dev/ttyS0
+pmichel@playtex:~> od -t x1 --width=18 --output-duplicates /dev/ttyS0
+0000000 2d 1f 1b 00 49 2b 34 01 23 2d 1f 1b 00 49 2b 34 01 23
+0000022 2d 1f 1b 00 49 2b 34 01 23 2d 1f 1b 00 49 2b 34 01 23
+0000044 2d 1f 1b 00 49 2b 34 01 23 2d 1f 1b 00 49 2b 34 01 23
+0000066 2d 1f 1b 00 49 2b 34 01 23 2d 1f 1b 00 49 2b 34 01 23
+0000110 2d 1f 1b 00 49 2b 34 01 23 2d 1f 1b 00 49 2b 34 01 23
+echo "wwwwwwwwwww" > /dev/ttyS0
+pmichel@playtex:~> od -t x1 --width=18 --output-duplicates /dev/ttyS0
+0000132 2d 1f 1b 00 49 2b 34 01 23 01 0a 26 0a 05 00 fb 01 23
+0000154 01 0a 26 0a 05 00 fb 01 23 01 0a 26 0a 05 00 fb 01 23
+0000176 01 0a 26 0a 05 00 fb 01 23 01 0a 26 0a 05 00 fb 01 23
+0000220 01 0a 26 0a 05 00 fb 01 23 01 0a 26 0a 05 00 fb 01 23
+0000242 01 0a 26 0a 05 00 fb 01 23 01 0a 26 0a 05 00 fb 01 23
+0000264 01 0a 26 0a 05 00 fb 01 23 01 0a 26 0a 05 00 fb 01 23
+
+goto Altair
+echo "w" > /dev/ttyS0
+pmichel@playtex:~> od -t x1 --width=18 --output-duplicates /dev/ttyS0
+0000000 2d 1f 1b 00 49 2b 34 01 23 2d 1f 1b 00 49 2b 34 01 23
+
+goto Altair
+echo "w" > /dev/ttyS0
+pmichel@playtex:~> od -t x1 --width=1 --output-duplicates /dev/ttyS0
+0000000 2d    deg   45
+0000001 1f    min   31
+0000002 1b    sec   27
+0000003 00    00:north 01:south
+0000004 49    deg   73
+0000005 2b    min   43
+0000006 34    sec   52
+0000007 01    00:east 01:west
+0000010 23    #
+
+goto Vega
+0000035 2d
+0000036 1f
+0000037 1b
+0000040 00
+0000041 49
+0000042 2b
+0000043 34
+0000044 01
+0000045 23
+................stupid...this is my mocation...
+
+
+
+reset and redo another alignment, and list the same 3 stars ============================================
+
+
+
+Undocumented:
+
+"b" expects 17 chars  goto Alt-Z precise
+"B" expects 9 char  goto Alt-Z 
+"c" expects 4 char
+"C" expects 14 char
+"e" returns h/w pos
+"E"
+
+"g" expects a lot
+
+h/H get/set time
+
+"p" returns x057 ??
+
+"Q" expects 2 char, returns 0xff ?

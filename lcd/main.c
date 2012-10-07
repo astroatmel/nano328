@@ -8,12 +8,76 @@
 #include "a328p_rt.h"
 
 unsigned long d_ram;
-unsigned long d_state;
 
 volatile unsigned long d_USART_RX;
 volatile unsigned long d_USART_TX;
 
 
+#define CDB_SIZE 10
+long cdb[10];
+//  0: Runnig time in seconds
+//  1: RA from CGEM
+//  2: DE from CGEN 
+//  3: Exposure time in mili-second
+//  4: Delta time in mili-second between shoots
+//  5: Shot #        total: 81 on a 9x9 grid
+//  6: Shot RA  id   9x9 grid
+//  7: Shot DEC id   9x9 grid
+//  8: Total # shot
+
+PROGMEM const char linetxt[]="                "  //  0: 
+                             "Camera Driver   "  //  1: 
+                             "Version 1.0     "  //  2: 
+                             "RA:@R           "  //  3: @R will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is E/W
+                             "RA:@H           "  //  4: @H will display "XXhXXmXX.XXs"   Hour/Min/Sec  
+                             "DE:@D           "  //  5: @D will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is N/S
+                             "Mozaic Menu...  "  //  6: 
+                             "Timelap Menu... "  //  7:
+                             "Total Span:     "  //  8:    Mozaic span in deg:min:sec
+                             "Exposure Time:  "  //  9:    
+                             "Delta Time:     "  // 10:
+                             "Current:@s      "  // 11: @s will display "XXX Sec"
+                             "    Set:@s      "  // 12:
+                             "Cur:@h          "  // 13: @h will display "XXhXXm"
+                             "Set:@h          "  // 14:
+                             "Cur:@d          "  // 15: @d will display "XXX:XX:XX.XX"  Deg/Min/Sec
+                             "Set:@d          "  // 16:
+                             "Start Mozaic... "  // 17:
+                             "Start Timelaps.."  // 18:
+                             "Really Cancel ? "  // 19:
+                             "Mozaic: @o      "  // 20: @o will display "xx of yy" and use two consecutive CDB location
+                             "Pos Id: @p      "  // 21: @p will display xx,yy  and use two consecutive CDB location
+;
+
+//                                              M  T  .  .  M  M  M  M  M  M  M  M
+// States:                             0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20
+PROGMEM const unsigned char line1[] = {1 ,3 ,4 ,6 ,7 ,0 ,0 ,9 ,9 ,8 ,8 ,17,20,19,0 ,0 ,0 ,0 ,0 ,0 ,0  };   // what string to display on line 1 for each states
+PROGMEM const unsigned char line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,11,12,0 ,21,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0  };   // what string to display on line 2 for each states
+
+short d_state;   // main state machine that controls what to display
+unsigned char button_down;   // check how long a button is held down
+unsigned char button     ;   // Current button
+unsigned char button_last;   // Prevous button
+
+PROGMEM const char main_state_machine[]= {0,// ENTER  UNDO   UP     DOWN             // -1 means no action    -2 means edit ?
+                                               1     ,1     ,1     ,1                // State:  0  welcome message, any key to go to state 1
+                                              ,-1    ,-1    ,4     ,2                // State:  1  Show current telescope position {e} 
+                                              ,-1    ,-1    ,1     ,3                // State:  2  Show current telescope position {e} in hour min sec
+                                              ,7     ,-1    ,2     ,4                // State:  3  Mozaic Menu
+                                              ,-1    ,-1    ,3     ,1                // State:  4  Timelaps pictures Menu
+                                              ,-1    ,-1    ,-1    ,-1               // State:  5  Spare
+                                              ,-1    ,-1    ,-1    ,-1               // State:  6  Spare
+                                              ,8     ,3     ,11    ,9                // State:  7  Mozaic > Current Exposure Time  
+                                              ,-1    ,7     ,-2    ,-2               // State:  8  Mozaic > Set Exposure Time  
+                                              ,10    ,3     ,7     ,11               // State:  9  Mozaic > Current Total span     
+                                              ,-1    ,9     ,-2    ,-2               // State: 10  Mozaic > Set Total span     
+                                              ,12    ,3     ,9     ,7                // State: 11  Mozaic > Start Mosaic   
+                                              ,-1    ,13    ,-1    ,-1               // State: 12  Mozaic > Mozaic in progress              (undo to cancel)
+                                              ,11    ,12    ,12    ,12               // State: 13  Mozaic >>  Sure you want to cancel ?       (enter to confirm)
+                                              ,-1    ,-1    ,-1    ,-1               // State: 14  Mozaic > spare
+                                              ,-1    ,-1    ,-1    ,-1               // State: __  
+                                              ,-1    ,-1    ,-1    ,-1               // State: __  
+                                         };
 
  
 ////////////////////////////////// DEFINES /////////////////////////////////////   
@@ -259,17 +323,32 @@ else                   free_memory = ((int)&free_memory) - ((int)__brkval);
 return free_memory;
 }
 
+/////////////////// 
+// function to set l1 and l2 based on the current state
+char l1[16]; // work lines
+char l2[16]; // work lines
+void set_line(void)
+{
+unsigned char id;
+short i1,i2;
+i1 = pgm_read_byte(&line1[d_state]) * 16;
+i2 = pgm_read_byte(&line2[d_state]) * 16;
+for ( id=0;id<16;id++ ) l1[id] = pgm_read_byte ( &linetxt[i1]+id);
+for ( id=0;id<16;id++ ) l2[id] = pgm_read_byte ( &linetxt[i2]+id);
+lcd_goto(0,0);
+lcd_print_str(l1);
+lcd_goto(1,0);
+//   lcd_print_str("State:  ");
+//   p04x(l2,d_state);
+lcd_print_str(l2);
+LCD_SET_DATA_DIR_INPUT;
+}
 
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
-
-
 int main(void)
 {
-char buf[16];
-long val=0;
-long lon=0;
 ///////////////////////////////// Init /////////////////////////////////////////
 
 init_rs232();
@@ -311,6 +390,55 @@ DDRB |= bit(7);
 DDRD |= bit(5);  
 DDRD |= bit(3);   // Buzzer
 
+#define BT_ENTER 1
+#define BT_UNDO  2
+#define BT_UP    3
+#define BT_DOWN  4
+#define BT_LONG  10
+
+d_state=0;
+set_line();  // display the initial strings
+while(1)
+   {
+   static unsigned char tog;
+   tog = !tog;
+
+   if ( tog ) { CANON_FOCUS_HIGH; }
+   else       { CANON_FOCUS_LOW;  }
+
+   rt_wait_ms(100);
+   if      (LCD_BUTTON_1 == 0 ) {button = BT_ENTER; }
+   else if (LCD_BUTTON_2 == 0 ) {button = BT_UP;    }
+   else if (LCD_BUTTON_3 == 0 ) {button = BT_UNDO;  }
+   else if (LCD_BUTTON_4 == 0 ) {button = BT_DOWN;  }
+   else                         {button = 0;        }
+
+   if ( (button>0) && (button<=BT_LONG) ) button_down++;
+
+   if      ( button_down == 1 )        { OCR2A   = 20;  OCR2B   = 10; }    // Beep
+   else if ( button_down == BT_LONG )  { OCR2A   =  8;  OCR2B   =  4; }    // Beep high pitch on long push
+   else                                { OCR2A   =  5;  OCR2B   = 10; }    // Sound off
+
+   if ( button != button_last )
+      {
+      if ( button == 0 ) //  action on key-off
+         {               // Check next state...
+         unsigned char next = pgm_read_byte( &main_state_machine[d_state*4 + button_last]);
+         //if ( (next > 0) && (next< sizeof(line1)) ) d_state = next;
+         if ( (next > 0) && (next<25 ) ) d_state = next;
+         }
+
+      button_down=0;
+      button_last = button;
+      } 
+
+   set_line();  // display the thing
+   }
+
+#ifdef ASDF
+char buf[16];
+long val=0;
+long lon=0;
 while(1)
    {
    val++;
@@ -352,11 +480,13 @@ while(1)
    else if (LCD_BUTTON_3 == 0 ) { OCR2A   = 10;  OCR2B   =  5; }    // Clock divider set to 1024, so 20 should give a wave at 1Khz
    else if (LCD_BUTTON_4 == 0 ) { OCR2A   =  8;  OCR2B   =  4; }    // Clock divider set to 1024, so 20 should give a wave at 1Khz
    else                         { OCR2A   =  5;  OCR2B   = 10; }    // Clock divider set to 1024, so 20 should give a wave at 1Khz
-//   ps("\012\015...");
+   ps("\012\015...");
 
 //   if (LCD_BUTTON_3 == 0 ) lcd_reset();
 
    }
+#endif
+
 }
 
 // #include "a328p_lcd.c"   <-- I need the makefile to compile with -DUSE_LCD

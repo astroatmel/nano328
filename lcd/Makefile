@@ -52,7 +52,10 @@ mst:
 # avrdude -v -p m328p -c avrisp2 -P /dev/ttyACM0  -U hfuse:r:high:h -U lfuse:r:low:h
 
 # to change the fuse setting:
-# avrdude -v -p m328p -c avrisp2 -P /dev/ttyACM0 -U lfuse:w:0xb6:m
+# avrdude -v -p m328p -c avrisp2 -P /dev/ttyACM0 -U lfuse:w:0xe0:m
 
 # test:
 # avrdude -v -p x128a1 -c jtag2 -P usb -U flash:w:timer.hex
+
+
+
