@@ -113,8 +113,19 @@ void lcd_reset(void)
 lcd_requires_reset = 1;
 }
 
+// pmichel : define custom characters here, each one is 8 bytes, and only the 5 lower bits are used
+PROGMEM const char my_characters[]={0x15,0x0A,0x15,0x0A,0x15,0x0A,0x15,0x0A       // Race Flag
+                                   ,0x0E,0x0A,0x0E,0x00,0x00,0x00,0x00,0x00       // Deg
+                                   ,0x0A,0x0A,0x0A,0x00,0x00,0x00,0x00,0x00       // min
+                                   ,0x04,0x04,0x04,0x00,0x00,0x00,0x00,0x00       // Sec
+                                   ,0x00,0x04,0x0E,0x1F,0x00,0x00,0x00,0x00       // Up
+                                   ,0x00,0x00,0x00,0x00,0x00,0x1F,0x0E,0x04       // Down
+                                   ,0x00,0x04,0x0E,0x1F,0x00,0x1F,0x0E,0x04       // Up/Down
+                                   };
+
 void lcd_init(void)
 {
+unsigned char iii,base=0x40;
 LCD_SET_CTRL_DIR_OUTPUT
 LCD_SET_DATA_DIR_INPUT;
 LCD_SET_E_LOW;
@@ -135,6 +146,13 @@ rt_wait_us(500);   // LCD executiuon time
 lcd_send(0x06); // Send 0x06 = Set entry mode: cursor shifts right, don't scroll
 rt_wait_us(500);   // LCD executiuon time
 lcd_send(0x0C); // Send 0x0C = Display on, cursor off, blinking off
+
+// pmichel custom characters test:
+for ( iii=0 ; iii<sizeof(my_characters) ; iii++ )
+   {
+   lcd_send(base++);
+   lcd_text(pgm_read_byte(&my_characters[iii]));
+   } 
 }
 
 

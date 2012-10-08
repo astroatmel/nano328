@@ -26,10 +26,13 @@ long cdb[10];
 //  7: Shot DEC id   9x9 grid
 //  8: Total # shot
 
+// Degre symbol : \337
+// Min symbol   : \042   (")
+//                           "Camera Driver   "  //  1: 
 PROGMEM const char linetxt[]="                "  //  0: 
-                             "Camera Driver   "  //  1: 
-                             "Version 1.0     "  //  2: 
-                             "RA:@R           "  //  3: @R will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is E/W
+                             "W132\00145\00245.32\003  "  //  1: 
+                             "Version 1.0  \004\005\006"  //  2: 
+                             "RA:@R          \000"  //  3: @R will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is E/W
                              "RA:@H           "  //  4: @H will display "XXhXXmXX.XXs"   Hour/Min/Sec  
                              "DE:@D           "  //  5: @D will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is N/S
                              "Mozaic Menu...  "  //  6: 
@@ -395,11 +398,10 @@ lcd_go_rt = 1;
 
 while(1)
    {
-   static unsigned char tog;
-   tog = !tog;
-
-   if ( tog ) { CANON_FOCUS_HIGH; }
-   else       { CANON_FOCUS_LOW;  }
+   // static unsigned char tog;
+   // tog = !tog;
+   // if ( tog ) { CANON_FOCUS_HIGH; }
+   // else       { CANON_FOCUS_LOW;  }
 
    rt_wait_ms(10);
    if      (LCD_BUTTON_1 == 0 ) {button = BT_ENTER; }
