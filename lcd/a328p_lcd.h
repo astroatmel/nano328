@@ -1,5 +1,5 @@
 //
-// Atmel a328p LCD driver routines
+// Atmel a328p LCD driver routines (see: HD44780.pdf)
 // by pmichel
 //
 
@@ -34,8 +34,10 @@
 #ifdef A328P_LCD_MAIN
    // local labels only to LCD_MAIN module
    unsigned char lcd_requires_reset=1;                // run-time reset request
+   unsigned char lcd_lines[4*16];                    // LCD display
 #else
    extern unsigned char lcd_requires_reset;           // run-time reset request
+   extern unsigned char lcd_lines[4*16];             // LCD display
 #endif
 
 #define LCD_BUTTON_1  (PINB & 0x02)
@@ -82,6 +84,7 @@ void lcd_init(void);
 void lcd_goto(unsigned char row,unsigned char col);
 void lcd_print_str(char *STR);
 void lcd_reset();
+void lcd_rt_print_next(void);  // function to print to LCD in real-time ... just fill lcd_lines[] and call lcd_rt_print_next() at 1khz
 
 // Internal functions
 unsigned char lcd_read_4_bits(void);
@@ -92,6 +95,7 @@ void lcd_send(unsigned char data);
 void lcd_text(unsigned char data);
 
 
+
 #else   // USE_LCD
 
    // if USE_LCD not defined, void the usage of the user functions:
@@ -99,6 +103,7 @@ void lcd_text(unsigned char data);
    #define lcd_goto(row,col)   ;
    #define lcd_print_str(STR)  ;
    #define lcd_reset()         ;
+   #define lcd_rt_print_next() ;
 
    #define LCD_SET_DATA_DIR_OUTPUT   ;
    #define LCD_SET_DATA_DIR_INPUT    ;

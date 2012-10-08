@@ -8,6 +8,7 @@
 #include "a328p_rt.h"
 
 unsigned long d_ram;
+unsigned char lcd_go_rt=0;
 
 volatile unsigned long d_USART_RX;
 volatile unsigned long d_USART_TX;
@@ -247,20 +248,22 @@ volatile unsigned char SS,MM,HH;
 
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 10 KHz
 {
-static char tog=0;
 rt_TIMER1++;
 
-tog++;
-if ( rs232_to==0 )
-   {
-   if ( tog & 0x01 ) PORTD |=  0x40; 
-   else              PORTD &= ~0x40;
-   }
-else
-   {
-   if ( tog & 0x02 ) PORTD |=  0x40; 
-   else              PORTD &= ~0x40;
-   }
+if ( lcd_go_rt ) lcd_rt_print_next();
+
+// static char tog=0;
+// tog++;
+// if ( rs232_to==0 )
+//    {
+//    if ( tog & 0x01 ) PORTD |=  0x40;    // Driving PORTD pin6
+//    else              PORTD &= ~0x40;
+//    }
+// else
+//    {
+//    if ( tog & 0x02 ) PORTD |=  0x40; 
+//    else              PORTD &= ~0x40;
+//    }
 
 msms++;
 if ( msms >= 1000 ) 
@@ -325,23 +328,14 @@ return free_memory;
 
 /////////////////// 
 // function to set l1 and l2 based on the current state
-char l1[16]; // work lines
-char l2[16]; // work lines
 void set_line(void)
 {
 unsigned char id;
 short i1,i2;
 i1 = pgm_read_byte(&line1[d_state]) * 16;
 i2 = pgm_read_byte(&line2[d_state]) * 16;
-for ( id=0;id<16;id++ ) l1[id] = pgm_read_byte ( &linetxt[i1]+id);
-for ( id=0;id<16;id++ ) l2[id] = pgm_read_byte ( &linetxt[i2]+id);
-lcd_goto(0,0);
-lcd_print_str(l1);
-lcd_goto(1,0);
-//   lcd_print_str("State:  ");
-//   p04x(l2,d_state);
-lcd_print_str(l2);
-LCD_SET_DATA_DIR_INPUT;
+for ( id=0;id<16;id++ ) lcd_lines[id+0x00] = pgm_read_byte ( &linetxt[i1]+id);
+for ( id=0;id<16;id++ ) lcd_lines[id+0x10] = pgm_read_byte ( &linetxt[i2]+id);
 }
 
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
@@ -394,10 +388,11 @@ DDRD |= bit(3);   // Buzzer
 #define BT_UNDO  2
 #define BT_UP    3
 #define BT_DOWN  4
-#define BT_LONG  10
+#define BT_LONG  100
 
 d_state=0;
-set_line();  // display the initial strings
+lcd_go_rt = 1;
+
 while(1)
    {
    static unsigned char tog;
@@ -406,7 +401,7 @@ while(1)
    if ( tog ) { CANON_FOCUS_HIGH; }
    else       { CANON_FOCUS_LOW;  }
 
-   rt_wait_ms(100);
+   rt_wait_ms(10);
    if      (LCD_BUTTON_1 == 0 ) {button = BT_ENTER; }
    else if (LCD_BUTTON_2 == 0 ) {button = BT_UP;    }
    else if (LCD_BUTTON_3 == 0 ) {button = BT_UNDO;  }

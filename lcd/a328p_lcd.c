@@ -140,6 +140,7 @@ lcd_send(0x0C); // Send 0x0C = Display on, cursor off, blinking off
 
 void lcd_print_str(char *STR)
 {
+unsigned char max=16;  // print one line max 
 if ( lcd_requires_reset ) 
    {
    #ifdef A328P_RS232_AVAILABLE
@@ -150,7 +151,62 @@ if ( lcd_requires_reset )
    lcd_init();
    }
 
-while (*STR) lcd_text(*STR++);
+while (*STR) 
+   {
+   lcd_text(*STR++);
+   if ( max-- == 0 ) return;
+   }
+}
+
+
+// Function to call at 1 Khz and will send the next character, no wait, no checks
+// the function assumes that 1ms between writes does not require any checks
+void lcd_rt_print_next(void)
+{
+unsigned long now;
+unsigned char pb,pd,data;
+static unsigned char chunk=0,ptr=0,CCC[4]; 
+if ( lcd_requires_reset ) return; // dont drive the LCD if it's not ready yet
+
+if (chunk==0)  // a new character to send
+   {
+   if ( (ptr & 0x0F) == 0 )  // start of a new line
+      {
+      chunk = 4;
+      if ( ptr == 0x10 ) CCC[3] = 0x0C;  // upper chunk of command 0x80  (goto 0,0)
+      else               CCC[3] = 0x08;  // upper chunk of command 0xC0  (goto 0,0)
+                         CCC[2] = 0x00;  // lower chunk fisrt
+      }
+   else chunk = 2;
+   CCC[1] = lcd_lines[ptr] >> 4; 
+   CCC[0] = lcd_lines[ptr] & 0x0F;
+   ptr = (ptr+1)&0x1F;  // 
+   }
+
+LCD_SET_E_LOW;
+if ( chunk < 3 ) {LCD_SET_RS_HIGH; }  // text
+else             {LCD_SET_RS_LOW;  }  // command
+LCD_SET_RW_LOW;   // write
+
+data = CCC[--chunk];
+
+   pb=PORTB & ~0x32;
+   pd=PORTD & ~0x80;
+   if ( data & 0x01 ) pb |= 0x02;
+   if ( data & 0x02 ) pb |= 0x10;
+   if ( data & 0x04 ) pb |= 0x20;
+   if ( data & 0x08 ) pd |= 0x80;
+   LCD_SET_DATA_DIR_OUTPUT
+   PORTB = pb;
+   PORTD = pd;
+      now = TCNT1 + 20;  // 20 clock tick is 1 us
+      while ( now > TCNT1) ; // wait 1 us
+   LCD_SET_E_HIGH;
+      now = TCNT1 + 80;  // 20 clock tick is 1 us
+      while ( now > TCNT1) ; // wait 4 us
+   LCD_SET_E_LOW;
+      
+LCD_SET_DATA_DIR_INPUT;
 }
 
 void lcd_goto(unsigned char row,unsigned char col)
