@@ -9,6 +9,7 @@
 
 unsigned long d_ram;
 unsigned char lcd_go_rt=0;
+unsigned short beep_time_ms;
 
 volatile unsigned long d_USART_RX;
 volatile unsigned long d_USART_TX;
@@ -26,42 +27,42 @@ long cdb[10];
 //  7: Shot DEC id   9x9 grid
 //  8: Total # shot
 
-// Degre symbol : \337
-// Min symbol   : \042   (")
-//                           "Camera Driver   "  //  1: 
+//   "W132\00145\00245.32\003 \006"  //  Example of custom characters 
 PROGMEM const char linetxt[]="                "  //  0: 
-                             "W132\00145\00245.32\003  "  //  1: 
-                             "Version 1.0  \004\005\006"  //  2: 
-                             "RA:@R          \000"  //  3: @R will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is E/W
-                             "RA:@H           "  //  4: @H will display "XXhXXmXX.XXs"   Hour/Min/Sec  
-                             "DE:@D           "  //  5: @D will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is N/S
+                             "                "  //  1: 
+                             "Version 1.0     "  //  2: 
+                             "RA:\242R\001          "  //  3: @R will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is E/W
+                             "RA:\242H\001          "  //  4: @H will display "XXhXXmXX.XXs"   Hour/Min/Sec  
+                             "DE:\242D\001          "  //  5: @D will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is N/S
                              "Mozaic Menu...  "  //  6: 
                              "Timelap Menu... "  //  7:
                              "Total Span:     "  //  8:    Mozaic span in deg:min:sec
                              "Exposure Time:  "  //  9:    
                              "Delta Time:     "  // 10:
-                             "Current:@s      "  // 11: @s will display "XXX Sec"
-                             "    Set:@s      "  // 12:
-                             "Cur:@h          "  // 13: @h will display "XXhXXm"
-                             "Set:@h          "  // 14:
-                             "Cur:@d          "  // 15: @d will display "XXX:XX:XX.XX"  Deg/Min/Sec
-                             "Set:@d          "  // 16:
+                             "Current:\242s\001     "  // 11: @s will display "XXX Sec"
+                             "    Set:\243s\001     "  // 12:
+                             "Cur:\242h\001         "  // 13: @h will display "XXhXXm"
+                             "Set:\243h\001         "  // 14:
+                             "Cur:\242d\001         "  // 15: @d will display "XXX:XX:XX.XX"  Deg/Min/Sec
+                             "Set:\243d\001         "  // 16:
                              "Start Mozaic... "  // 17:
                              "Start Timelaps.."  // 18:
                              "Really Cancel ? "  // 19:
-                             "Mozaic: @o      "  // 20: @o will display "xx of yy" and use two consecutive CDB location
-                             "Pos Id: @p      "  // 21: @p will display xx,yy  and use two consecutive CDB location
+                             "Mozaic: \242o\001     "  // 20: @o will display "xx of yy" and use two consecutive CDB location
+                             "Pos Id: \242p\001     "  // 21: @p will display xx,yy  and use two consecutive CDB location
+
+                             "Camera Driver   "  //  always last to make sure all are 16 bytes wide... the \xxx makes it a bit difficult
 ;
 
 //                                              M  T  .  .  M  M  M  M  M  M  M  M
 // States:                             0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20
-PROGMEM const unsigned char line1[] = {1 ,3 ,4 ,6 ,7 ,0 ,0 ,9 ,9 ,8 ,8 ,17,20,19,0 ,0 ,0 ,0 ,0 ,0 ,0  };   // what string to display on line 1 for each states
+PROGMEM const unsigned char line1[] = {22,3 ,4 ,6 ,7 ,0 ,0 ,9 ,9 ,8 ,8 ,17,20,19,0 ,0 ,0 ,0 ,0 ,0 ,0  };   // what string to display on line 1 for each states
 PROGMEM const unsigned char line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,11,12,0 ,21,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0  };   // what string to display on line 2 for each states
 
 short d_state;   // main state machine that controls what to display
-unsigned char button_down;   // check how long a button is held down
-unsigned char button     ;   // Current button
-unsigned char button_last;   // Prevous button
+#define BT_LONG  1000            // a long push is 1 sec (1000 ticks)
+volatile unsigned char  button,button_sp,button_lp;   // Current button and real-time sets the short push and long push
+unsigned char  button_last;   // Prevous button
 
 PROGMEM const char main_state_machine[]= {0,// ENTER  UNDO   UP     DOWN             // -1 means no action    -2 means edit ?
                                                1     ,1     ,1     ,1                // State:  0  welcome message, any key to go to state 1
@@ -251,22 +252,24 @@ volatile unsigned char SS,MM,HH;
 
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 10 KHz
 {
+static unsigned short button_down_ms;   // check how long a button is held down
+
 rt_TIMER1++;
 
 if ( lcd_go_rt ) lcd_rt_print_next();
-
-// static char tog=0;
-// tog++;
-// if ( rs232_to==0 )
-//    {
-//    if ( tog & 0x01 ) PORTD |=  0x40;    // Driving PORTD pin6
-//    else              PORTD &= ~0x40;
-//    }
-// else
-//    {
-//    if ( tog & 0x02 ) PORTD |=  0x40; 
-//    else              PORTD &= ~0x40;
-//    }
+if ( beep_time_ms )
+   {
+   OCR2B = 10;
+   OCR2A = 20;
+   if ( 0 == --beep_time_ms ) OCR2B = 254;  // stop the beep
+   }
+if ( button ) 
+   {
+   if (button<=BT_LONG) button_down_ms++; // check how long the button is down;
+   if      ( button_down_ms == 10 )       { beep_time_ms = 10; button_sp = button; }    // Beep
+   else if ( button_down_ms == BT_LONG )  { beep_time_ms = 10; button_lp = button; }    // Beep high pitch on long push
+   }
+else button_down_ms=0;
 
 msms++;
 if ( msms >= 1000 ) 
@@ -285,6 +288,7 @@ if ( msms >= 1000 )
          }
       }
    }
+// TODO: put an histogram...
 }
 
 ISR(USART_RX_vect)
@@ -329,23 +333,12 @@ else                   free_memory = ((int)&free_memory) - ((int)__brkval);
 return free_memory;
 }
 
-/////////////////// 
-// function to set l1 and l2 based on the current state
-void set_line(void)
-{
-unsigned char id;
-short i1,i2;
-i1 = pgm_read_byte(&line1[d_state]) * 16;
-i2 = pgm_read_byte(&line2[d_state]) * 16;
-for ( id=0;id<16;id++ ) lcd_lines[id+0x00] = pgm_read_byte ( &linetxt[i1]+id);
-for ( id=0;id<16;id++ ) lcd_lines[id+0x10] = pgm_read_byte ( &linetxt[i2]+id);
-}
-
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
 int main(void)
 {
+unsigned char iii;
 ///////////////////////////////// Init /////////////////////////////////////////
 
 init_rs232();
@@ -391,45 +384,53 @@ DDRD |= bit(3);   // Buzzer
 #define BT_UNDO  2
 #define BT_UP    3
 #define BT_DOWN  4
-#define BT_LONG  100
 
 d_state=0;
 lcd_go_rt = 1;
 
 while(1)
    {
-   // static unsigned char tog;
-   // tog = !tog;
-   // if ( tog ) { CANON_FOCUS_HIGH; }
-   // else       { CANON_FOCUS_LOW;  }
+   static unsigned char id=255;
+   static unsigned char set[10],fmt[10],pos[10],off[10]; // show/edit format position cdb-offset    <- values used to set/show values on LCD
+   short i1,i2;
 
-   rt_wait_ms(10);
    if      (LCD_BUTTON_1 == 0 ) {button = BT_ENTER; }
    else if (LCD_BUTTON_2 == 0 ) {button = BT_UP;    }
    else if (LCD_BUTTON_3 == 0 ) {button = BT_UNDO;  }
    else if (LCD_BUTTON_4 == 0 ) {button = BT_DOWN;  }
-   else                         {button = 0;        }
+   else                         {button = button_sp = 0; } // _sp gets set when button is at least 10ms down
 
-   if ( (button>0) && (button<=BT_LONG) ) button_down++;
-
-   if      ( button_down == 1 )        { OCR2A   = 20;  OCR2B   = 10; }    // Beep
-   else if ( button_down == BT_LONG )  { OCR2A   =  8;  OCR2B   =  4; }    // Beep high pitch on long push
-   else                                { OCR2A   =  5;  OCR2B   = 10; }    // Sound off
-
-   if ( button != button_last )
+   if ( (button_sp != button_last) || (id==255))   // is=255 used as a first pass
       {
-      if ( button == 0 ) //  action on key-off
+      if ( button_sp == 0 ) //  action on key-off
          {               // Check next state...
          unsigned char next = pgm_read_byte( &main_state_machine[d_state*4 + button_last]);
-         //if ( (next > 0) && (next< sizeof(line1)) ) d_state = next;
-         if ( (next > 0) && (next<25 ) ) d_state = next;
+         // if ( button_lp ) if long push, then different meaning
+         if ( next< sizeof(line1) ) d_state = next;
          }
 
-      button_down=0;
-      button_last = button;
+      button_last = button_sp;
+      i1 = pgm_read_byte(&line1[d_state]) * 16;
+      i2 = pgm_read_byte(&line2[d_state]) * 16;
+      for ( id=0;id<16;id++ ) 
+         {
+         lcd_lines[id+0x00] = pgm_read_byte ( &linetxt[i1]+id);
+         lcd_lines[id+0x10] = pgm_read_byte ( &linetxt[i2]+id);
+         } 
+      fmt[0] = fmt[1] = iii = 0; // assume nothing to do
+      for ( id=0;id<32;id++ ) // check for printable / editable strings
+         {
+         if ( (lcd_lines[id] == '\242') || (lcd_lines[id] == '\243') )  // we have something to do...
+            {
+            set[iii] = lcd_lines[id];   // show/edit
+            fmt[iii] = lcd_lines[id+1]; // format
+            off[iii] = lcd_lines[id+2]; // CDB label offset
+            pos[iii] = id;
+            iii++;
+            }
+         } 
       } 
 
-   set_line();  // display the thing
    }
 
 #ifdef ASDF
@@ -438,6 +439,10 @@ long val=0;
 long lon=0;
 while(1)
    {
+   // static unsigned char tog;
+   // tog = !tog;
+   // if ( tog ) { CANON_FOCUS_HIGH; }
+   // else       { CANON_FOCUS_LOW;  }
    val++;
    lon+=16;
    lcd_goto(0,0);
