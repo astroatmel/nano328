@@ -16,7 +16,7 @@ volatile unsigned long d_USART_TX;
 
 
 #define CDB_SIZE 10
-long cdb[10];
+volatile long cdb[10];
 //  0: Runnig time in seconds
 //  1: RA from CGEM
 //  2: DE from CGEN 
@@ -28,28 +28,28 @@ long cdb[10];
 //  8: Total # shot
 
 //   "W132\00145\00245.32\003 \006"  //  Example of custom characters 
-PROGMEM const char linetxt[]="                "  //  0: 
-                             "                "  //  1: 
-                             "Version 1.0     "  //  2: 
-                             "RA:\242R\001          "  //  3: @R will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is E/W
-                             "RA:\242H\001          "  //  4: @H will display "XXhXXmXX.XXs"   Hour/Min/Sec  
-                             "DE:\242D\001          "  //  5: @D will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is N/S
-                             "Mozaic Menu...  "  //  6: 
-                             "Timelap Menu... "  //  7:
-                             "Total Span:     "  //  8:    Mozaic span in deg:min:sec
-                             "Exposure Time:  "  //  9:    
-                             "Delta Time:     "  // 10:
-                             "Current:\242s\001     "  // 11: @s will display "XXX Sec"
-                             "    Set:\243s\001     "  // 12:
-                             "Cur:\242h\001         "  // 13: @h will display "XXhXXm"
-                             "Set:\243h\001         "  // 14:
-                             "Cur:\242d\001         "  // 15: @d will display "XXX:XX:XX.XX"  Deg/Min/Sec
-                             "Set:\243d\001         "  // 16:
-                             "Start Mozaic... "  // 17:
-                             "Start Timelaps.."  // 18:
-                             "Really Cancel ? "  // 19:
-                             "Mozaic: \242o\001     "  // 20: @o will display "xx of yy" and use two consecutive CDB location
-                             "Pos Id: \242p\001     "  // 21: @p will display xx,yy  and use two consecutive CDB location
+PROGMEM const char linetxt[]="                "        //  0: 
+                             "                "        //  1: 
+                             "Version 1.0     "        //  2: 
+                             "RA:\242R\000          "  //  3: @R will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is E/W
+                             "RA:\242H\000          "  //  4: @H will display "XXhXXmXX.XXs"   Hour/Min/Sec  
+                             "DE:\242D\000          "  //  5: @D will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is N/S
+                             "Mozaic Menu...  "        //  6: 
+                             "Timelap Menu... "        //  7:
+                             "Total Span:     "        //  8:    Mozaic span in deg:min:sec
+                             "Exposure Time:  "        //  9:    
+                             "Delta Time:     "        // 10:
+                             "Current:\242s\000 sec "  // 11: @s will display "XXX Sec"
+                             "    Set:\243s\000 sec "  // 12:
+                             "Cur:\242h\000         "  // 13: @h will display "XXhXXm"
+                             "Set:\243h\000         "  // 14:
+                             "Cur:\242d\000         "  // 15: @d will display "XXX:XX:XX.XX"  Deg/Min/Sec
+                             "Set:\243d\000         "  // 16:
+                             "Start Mozaic... "        // 17:
+                             "Start Timelaps.."        // 18:
+                             "Really Cancel ? "        // 19:
+                             "Mozaic: \242o\000     "  // 20: @o will display "xx of yy" and use two consecutive CDB location
+                             "Pos Id: \242p\000     "  // 21: @p will display xx,yy  and use two consecutive CDB location
 
                              "Camera Driver   "  //  always last to make sure all are 16 bytes wide... the \xxx makes it a bit difficult
 ;
@@ -73,9 +73,9 @@ PROGMEM const char main_state_machine[]= {0,// ENTER  UNDO   UP     DOWN        
                                               ,-1    ,-1    ,-1    ,-1               // State:  5  Spare
                                               ,-1    ,-1    ,-1    ,-1               // State:  6  Spare
                                               ,8     ,3     ,11    ,9                // State:  7  Mozaic > Current Exposure Time  
-                                              ,-1    ,7     ,-2    ,-2               // State:  8  Mozaic > Set Exposure Time  
+                                              ,7     ,7     ,-2    ,-2               // State:  8  Mozaic > Set Exposure Time  
                                               ,10    ,3     ,7     ,11               // State:  9  Mozaic > Current Total span     
-                                              ,-1    ,9     ,-2    ,-2               // State: 10  Mozaic > Set Total span     
+                                              ,9     ,9     ,-2    ,-2               // State: 10  Mozaic > Set Total span     
                                               ,12    ,3     ,9     ,7                // State: 11  Mozaic > Start Mosaic   
                                               ,-1    ,13    ,-1    ,-1               // State: 12  Mozaic > Mozaic in progress              (undo to cancel)
                                               ,11    ,12    ,12    ,12               // State: 13  Mozaic >>  Sure you want to cancel ?       (enter to confirm)
@@ -127,35 +127,44 @@ while ( tc )
 }
 
 // digit is the demanded precision
-char *pxxd(char *buf,long val,short digit)
+void p_val(unsigned char *buf,short val,unsigned char option_digit)
 {
-short iii,nnn;
-long  max=1;
-if ( digit>12 ) digit = 12;
-if ( digit<1  ) digit = 1;
+unsigned char nnn;
+unsigned char digit = 1 + (option_digit & 0x07);  // 3 lsb = nb digits
+unsigned char sign = (option_digit & 0x30);  // this bit means...  0x00: dont show +/-  0x10: showw only "-" if negative   0x30: show +/-
+unsigned char lead = (option_digit & 0x40);  // this bit means we want to display leaging zeros
+short iii;
+long  max;
 nnn = val < 0;
+if ( sign ) max = 1;
+else        max = 10; // if not displaying signs, then we have one more character
 
-for ( iii=0 ; iii<digit ; iii++ ) max=max*10;
-//if(val<-(max-1))   // 10000000000  (10^digit)-1
-//   {
-//   for ( iii=0 ; iii<digit ; iii++ ) buf[iii] = '-';   // below max negative displayable
-//   }
-//else if (val>(max*10))
-//   {
-//   for ( iii=0 ; iii<digit ; iii++ ) buf[iii] = '+';   // above max positive displayable
-//   }
-//else
-//   {
+for ( iii=2 ; iii<digit ; iii++ ) max=max*10;
+if(val<=-max)   // 10000000000  (10^digit)-1
+   {
+   for ( iii=0 ; iii<digit ; iii++ ) buf[iii] = '-';   // below max negative displayable
+   }
+else if (val>=max*10)
+   {
+   for ( iii=0 ; iii<digit ; iii++ ) buf[iii] = '+';   // above max positive displayable
+   }
+else
+   {
    if ( nnn ) val = -val;
-   for ( iii=digit-1 ; iii>=0 ; iii-- , val /= 10 )
+   for ( iii=digit-1 ; val>0 ; val /= 10 ) buf[iii--] = val%10 + '0';
+   if ( iii < 0 ) return; // no space left
+   if ( lead )
       {
-      buf[iii] = val%10 + '0';
+      while (iii>0) buf[iii--] = '0';
+      if ( sign == 0 ) buf[iii--] = '0';
       }
-//   if ( nnn ) buf[0] = '-';
-//   else       buf[0] = ' ';  // was buf[0] = '+';
-//   }
-buf[digit] = 0;
-return &buf[digit];
+   if ( sign ) 
+      {
+      if ( nnn )               buf[iii--] = '-';
+      else if ( sign == 0x30 ) buf[iii--] = '+';
+      }
+   while (iii>=0) buf[iii--] = ' ';
+   }
 }
 
 void p02x(char *buf,char val)
@@ -276,6 +285,7 @@ if ( msms >= 1000 )
    { 
    msms = 0;
    SS++;
+   cdb[0]++; // running time
    if ( SS >= 60 )
       {
       SS = 0;
@@ -338,7 +348,8 @@ return free_memory;
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
 int main(void)
 {
-unsigned char iii;
+unsigned char iii,jjj,nb_display=0;
+long lll;
 ///////////////////////////////// Init /////////////////////////////////////////
 
 init_rs232();
@@ -398,7 +409,7 @@ while(1)
    else if (LCD_BUTTON_2 == 0 ) {button = BT_UP;    }
    else if (LCD_BUTTON_3 == 0 ) {button = BT_UNDO;  }
    else if (LCD_BUTTON_4 == 0 ) {button = BT_DOWN;  }
-   else                         {button = button_sp = 0; } // _sp gets set when button is at least 10ms down
+   else                         {button = button_lp = button_sp = 0; } // _sp gets set when button is at least 10ms down
 
    if ( (button_sp != button_last) || (id==255))   // is=255 used as a first pass
       {
@@ -417,20 +428,35 @@ while(1)
          lcd_lines[id+0x00] = pgm_read_byte ( &linetxt[i1]+id);
          lcd_lines[id+0x10] = pgm_read_byte ( &linetxt[i2]+id);
          } 
-      fmt[0] = fmt[1] = iii = 0; // assume nothing to do
+      nb_display = 0; // assume nothing to do
       for ( id=0;id<32;id++ ) // check for printable / editable strings
          {
-         if ( (lcd_lines[id] == '\242') || (lcd_lines[id] == '\243') )  // we have something to do...
+         if ( (lcd_lines[id] == 0xA2) || (lcd_lines[id] == 0xA3) )    // we have something to do...
             {
-            set[iii] = lcd_lines[id];   // show/edit
-            fmt[iii] = lcd_lines[id+1]; // format
-            off[iii] = lcd_lines[id+2]; // CDB label offset
-            pos[iii] = id;
-            iii++;
+            set[nb_display] = lcd_lines[id]==0xA2;   // show ?
+            fmt[nb_display] = lcd_lines[id+1]; // format
+            off[nb_display] = lcd_lines[id+2]; // CDB label offset
+            pos[nb_display] = id;
+            nb_display++;
             }
          } 
       } 
 
+   for ( iii=0 ; iii < nb_display ; iii++ )  // display required values
+      {
+      if ( fmt[iii] == 's' )  // @XXX format
+         {
+         lll = cdb[off[iii]];
+         jjj = pos[iii];
+         p_val(&lcd_lines[jjj],lll,0x00 + 0x02);
+//         if ( set[iii] )
+//            {
+//            lcd_lines[jjj+2] = '0'+lll%10; lll = lll/10;
+//            lcd_lines[jjj+1] = '0'+lll%10; lll = lll/10;
+//            lcd_lines[jjj+0] = '0'+lll;
+//            }
+         }
+      }
    }
 
 #ifdef ASDF
