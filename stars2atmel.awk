@@ -124,7 +124,7 @@ KCONST["Mon"]=""
 KCONST["Mus"]=""
 KCONST["Nor"]=""
 KCONST["Oct"]=""
-KCONST["Oph"]=""
+KCONST["Oph"]="Ophiuchus"
 KCONST["Ori"]="Orion"
 KCONST["Pav"]=""
 KCONST["Peg"]="Pegasus"
@@ -196,11 +196,13 @@ if ( match($0,"^[^#]"))   # if not a comment ...collect data
 }
 
 END{
+asort(RA,RA_Sorted)
+
 CCC=0
 qqq = asorti(KName)
-for( iii=1 ; iii<=qqq ; iii++ ) 
+for( iii=1 ; iii<=qqq ; iii++ ) # not sure why we need to sort, but Kid[] contains the constellation ID
    {
-   # print KName[iii] " -- " KCONST[KName[iii]]
+   #print KName[iii] " -- " KCONST[KName[iii]] "==" iii
    Kid[KName[iii]]=iii
    CCC++
    }
@@ -209,21 +211,22 @@ for( iii=1 ; iii<=qqq ; iii++ )
 print "PROGMEM const char pgm_stars_name_reduced[]   =  // format: byte:StarID byte:ConstelationId Star Name string"
 print "   {                                             // Names are for only a few prefered stars to save memory space"
 count=1
-for ( iii=0 ; iii<NB ; iii++)
+for ( sss=0 ; sss<NB ; sss++)
    {
+   for ( jjj=0 ; jjj<NB; jjj++) if ( RA_Sorted[sss+1] == RA[jjj] ) iii = jjj;   # re-order
    if ( iii>=NBNB ) 
       {
       SSSN = substr(KNOWN[iii]"          ",1,STAR_NAME_LEN)
-      printf("   \"\\%03o\\%03o%s\"   /* Coord ID:%3d  ; %s */  \\\n",iii,255,SSSN,iii,COM[iii])
-      printf("   RA:%s / DEC:%s -  %s   Coord ID:%3d  ; %s\n",RA[iii],DE[iii],SSSN,iii,COM[iii]) > DOC_FILE
+      printf("   \"\\%03o\\%03o%s\"   /* Coord ID:%3d  ; %s */  \\\n",sss,255,SSSN,sss,COM[iii])
+      printf("   RA:%s / DEC:%s -  %s   Coord ID:%3d  ; %s\n",RA[iii],DE[iii],SSSN,sss,COM[iii]) > DOC_FILE
       count++
       }
    else if ( KNOWN[Name[iii]]!="" )
       {
       SSSN = substr(KNOWN[Name[iii]]"          ",1,STAR_NAME_LEN)
       CCCN = substr(KCONST[CName[iii]]"          ",1,12)
-      printf("   \"\\%03o\\%03o%s\"   /*  Star ID:%3d  Constellation:%s */  \\\n",iii,Kid[CName[iii]],SSSN,iii,CCCN)
-      printf("   RA:%s / DEC:%s - %s   Coord ID:%3d  ; Constellation:%s   \n",RA[iii],DE[iii],SSSN,iii,CCCN) > DOC_FILE
+      printf("   \"\\%03o\\%03o%s\"   /*  Star ID:%3d  Constellation:%s */  \\\n",sss,Kid[CName[iii]],SSSN,sss,CCCN)
+      printf("   RA:%s / DEC:%s - %s   Coord ID:%3d  ; Constellation:%s   \n",RA[iii],DE[iii],SSSN,sss,CCCN) > DOC_FILE
       req_const[CName[iii]]=1   # Lets define strings only for required Constellations
       count++
       }
@@ -263,8 +266,10 @@ print "   };   // This table uses " count*(CONSTEL_NAME_LEN+1) " bytes..."
 print ""
 print "PROGMEM const unsigned long pgm_stars_pos[] = // The next "NBNB" stars are used for polar alignment : they are reference stars"
 print "   {"
-for ( iii=0 ; iii<NB ; iii++)
+for ( sss=0 ; sss<NB ; sss++)
    {
+   for ( jjj=0 ; jjj<NB; jjj++) if ( RA_Sorted[sss+1] == RA[jjj] ) iii = jjj;   # re-order
+
    RR = my_split(RA[iii])
    DD = my_split(DE[iii])
    if ( match (DE[iii],"^-")) DEDE = "    " DE[iii]
@@ -273,9 +278,9 @@ for ( iii=0 ; iii<NB ; iii++)
    if ( HIGHLIGHT=="" ) HIGHLIGHT=CName[iii]
    NAME = KNOWN[Name[iii]];
    if ( NAME=="" ) NAME = SName[iii];
-   if ( iii==NBNB ) print "   // Start of my own points of interest ..."
-   if ( iii <NBNB ) print "   ("RR,"),("DD"), // "sprintf("%3d",iii)" " NAME " " HIGHLIGHT "  " DEDE
-   else             print "   ("RR,"),("DD"), // "sprintf("%3d",iii)" >"KNOWN[iii]
+#   if ( iii==NBNB ) print "   // Start of my own points of interest ..."
+   if ( iii <NBNB ) print "   ("RR,"),("DD"), // "sprintf("%3d",sss)" " NAME " " HIGHLIGHT "  " DEDE
+   else             print "   ("RR,"),("DD"), // "sprintf("%3d",sss)" >"KNOWN[iii]
    }
 print "   0,0  // origin and Null terminator" ; NB++ 
 print "   };   // This table uses " NB*8 " bytes..."

@@ -180,6 +180,7 @@ char fast_portc=0;
 // Stupid me... the two define above are not used anymore....
 #define POLOLU           1
 #define ACCEL_PERIOD     100
+#define GOTO_ACCEL       2
 // Maximum number of step per full circle on RA axis
 // FALSE: one turn on RA is 3 deg, so 360 deg is 130 turns
 // FALSE: the gear ration is 130 for 24, so the ration is 5 (5 turn of the stepper moter is one turn on the RA axis)
@@ -344,6 +345,7 @@ PROGMEM const char mosaic_grid_ra[MOZA*MOZA+1]  = { 1,1,2,2,2,0,0,0,1,1 };  // a
 // I use two 3x3 grid, one is 3 time bigger than the other one, and both are added, so the total mosaic is 9x9 ... So I will take 81 pictures per mosaic
 char   mosaic_grid_seq_small; // counts : 0 1 2 3 4 5 6 7 8     (no fast frame)
 char   mosaic_grid_seq_big;  //  counts : 0 1 2 3 4 5 6 7 8 9   (9th is the fast frame)
+char   mosaic_pause=0; 
 
 
 long   mosaic_base_ra,mosaic_base_dec;
@@ -453,22 +455,22 @@ PROGMEM const char pgm_selected_west[]="West selected...";
 #endif
 #ifndef  HARDCODED_MATRIX
    #ifdef AT_MASTER
-      PROGMEM const char pgm_starting[]="Telescope v2.0 Master Starting...";
+      PROGMEM const char pgm_starting[]="Telescope v2.1 Master Starting...";
    #else
       #ifdef AT_SLAVE
-         PROGMEM const char pgm_starting[]="Telescope v2.0 Slave Starting...";
+         PROGMEM const char pgm_starting[]="Telescope v2.1 Slave Starting...";
       #else
-         PROGMEM const char pgm_starting[]="Telescope v2.0 Starting...";
+         PROGMEM const char pgm_starting[]="Telescope v2.1 Starting...";
       #endif
    #endif
 #else
    #ifdef AT_MASTER
-      PROGMEM const char pgm_starting[]="Telescope v2.0 Master Starting... HARDCODED_MATRIX";
+      PROGMEM const char pgm_starting[]="Telescope v2.1 Master Starting... HARDCODED_MATRIX";
    #else
       #ifdef AT_SLAVE
-         PROGMEM const char pgm_starting[]="Telescope v2.0 Slave Starting... HARDCODED_MATRIX";
+         PROGMEM const char pgm_starting[]="Telescope v2.1 Slave Starting... HARDCODED_MATRIX";
       #else
-         PROGMEM const char pgm_starting[]="Telescope v2.0 Starting... HARDCODED_MATRIX";
+         PROGMEM const char pgm_starting[]="Telescope v2.1 Starting... HARDCODED_MATRIX";
       #endif
    #endif
 #endif
@@ -1656,6 +1658,7 @@ cur_sec = dd_v[DDS_SECONDS]&0x7F;
 if ( (debug_page == 7) && (cur_sec != lll) ) 
    {
    lll = cur_sec; // reduce output frequency, this will update every seconds
+   dd_v[DDS_DEBUG + 0x08] = (long)mosaic_pause           + 0x1F000000;
    dd_v[DDS_DEBUG + 0x08] = (long)mosaic_seconds         + 0x11000000;
    dd_v[DDS_DEBUG + 0x09] = (long)mosaic_start_stop_cnt  + 0x22000000;
    dd_v[DDS_DEBUG + 0x0A] = (long)mosaic_grid_seq_big    + 0x33000000;
@@ -1689,6 +1692,8 @@ if ( mosaic_seconds==-2 ) //cancel
    return;
    }
 
+if ( (mosaic_pause!=0) && (mosaic_seconds > mosaic_dt) ) return; // if pause..then wait...
+
 if ( cur_sec != last_sec ) mosaic_seconds++;  // for now, hardcode to 35 seconds (assume 30 seconds photos)
 last_sec = cur_sec;
 
@@ -1700,7 +1705,7 @@ if ( (mosaic_seq % 10) == 0 )
 else mosaic_dt = mosaic_dt_ref;
 dd_v[DDS_DEBUG + 0x15] = (long)mosaic_dt       + 0xBB000000;
 
-if ( mosaic_seconds > mosaic_dt )  // next move...
+if ( mosaic_seconds > mosaic_dt + 2 )  // next move...
    {
    mosaic_seq++;
    mosaic_seconds = 1;  // restart the cycle
@@ -1772,6 +1777,7 @@ if ( mosaic_seconds > mosaic_dt )  // next move...
 #define PROSCAN_VCR1_TRAK_M 0x021F5E0A
 #define PROSCAN_VCR1_MUTE   0x020C0F3F
 #define PROSCAN_VCR1_SPEED  0x021B9E46
+#define PROSCAN_VCR1_PAUSE  0x021E6E19
 
 #define IDX_VCR1_0          0
 #define IDX_VCR1_1          1
@@ -1809,6 +1815,7 @@ if ( mosaic_seconds > mosaic_dt )  // next move...
 #define IDX_VCR1_TRAK_M     33
 #define IDX_VCR1_MUTE       34
 #define IDX_VCR1_SPEED      35
+#define IDX_VCR1_PAUSE      36
 
 /*
 - the following IR commands clear after 3 seconds  ... The IR sends values to the RS232 buffer same as keyboard  3sec is 
@@ -1841,14 +1848,14 @@ PROSCAN_VCR1_0      ,PROSCAN_VCR1_1      ,PROSCAN_VCR1_2      ,PROSCAN_VCR1_3   
 PROSCAN_VCR1_8      ,PROSCAN_VCR1_9      ,PROSCAN_VCR1_NORTH  ,PROSCAN_VCR1_SOUTH  ,PROSCAN_VCR1_WEST   ,PROSCAN_VCR1_EAST   ,PROSCAN_VCR1_OK     ,PROSCAN_VCR1_STOP   ,// 8
 PROSCAN_VCR1_PLAY   ,PROSCAN_VCR1_RECORD ,PROSCAN_VCR1_CH_P   ,PROSCAN_VCR1_CH_M   ,PROSCAN_VCR1_VOL_P  ,PROSCAN_VCR1_VOL_M  ,PROSCAN_VCR1_FWD    ,PROSCAN_VCR1_REW    ,// 16
 PROSCAN_VCR1_SEARCH ,PROSCAN_VCR1_GOBACK ,PROSCAN_VCR1_INPUT  ,PROSCAN_VCR1_ANTENA ,PROSCAN_VCR1_CLEAR  ,PROSCAN_VCR1_GUIDE  ,PROSCAN_VCR1_INFO   ,PROSCAN_VCR1_POWER  ,// 24
-PROSCAN_VCR1_TRAK_P ,PROSCAN_VCR1_TRAK_M ,PROSCAN_VCR1_MUTE   ,PROSCAN_VCR1_SPEED                                                                                             // 32
+PROSCAN_VCR1_TRAK_P ,PROSCAN_VCR1_TRAK_M ,PROSCAN_VCR1_MUTE   ,PROSCAN_VCR1_SPEED  ,PROSCAN_VCR1_PAUSE                                                                        // 32
                                   };
 PROGMEM short         RS232EQVs[]= {  // The order is important, each rs232 character is assigned a PROSCAN equivalent
 '0'                 ,'1'                 ,'2'                 ,'3'                 ,'4'                 ,'5'                 ,'6'                 ,'7'                 , 
 '8'                 ,'9'                 ,0x5B41              ,0x5B42              ,0x5B44              ,0x5B43              ,13                  ,'s'                 ,
 'p'                 ,'r'                 ,'i'                 ,'m'                 ,'k'                 ,'j'                 ,'>'                 ,'<'                 , 
 '/'                 ,'*'                 ,'.'                 ,'!'                 ,0x7E                ,'g'                 ,'?'                 ,0x60                ,
-'+'                 ,'-'                 ,'%'                 ,'$'
+'+'                 ,'-'                 ,'%'                 ,'$'                 ,'"'
                                   };  
 char idx_code,next_input;
 
@@ -1863,7 +1870,7 @@ if ( idx_code == IDX_VCR1_INPUT                   )           return 4;  // INPU
 if ( idx_code == IDX_VCR1_ANTENA                  )           return 5;  // ANTENA / '!'
 if ( idx_code >= IDX_VCR1_CH_P && idx_code <=IDX_VCR1_VOL_M ) return 6;  // CH_P   / 'i'      CH_M   / 'm'    OL_P  / 'k'    VOL_M  / 'j'    
 if ( idx_code == IDX_VCR1_SEARCH                  )           return 6;  // SEARCH / 'p'
-else                                                          return -1; // PLAY   / 'p'
+else                                                          return -1; // 
 }
 #endif
 
@@ -2045,6 +2052,7 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
                }
             else if ( cmd_val[1] <= IDX_VCR1_9 || cmd_val[1] >= IDX_VCR1_6 )   // GUIDE [6789] X X : mosaic
                {
+               mosaic_pause = 0;
                mosaic_base_ra  = ra->pos;
                mosaic_base_dec = dec->pos;
 //               mosaic_nb_tiles = cmd_val[2]<<MOSAIC_MULT;  // GUIDE 9 NB-TILES X
@@ -2115,7 +2123,6 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
       {
       if      ( code_idx >= IDX_VCR1_NORTH && code_idx <= IDX_VCR1_STOP    ) 
          {
-         slew_cmd = code_idx;  // Slew commande: North South East West and Stop
          if ( meridian == 0 )
             {
             if ( code_idx == IDX_VCR1_EAST ) { meridian = 1;
@@ -2123,6 +2130,7 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
             if ( code_idx == IDX_VCR1_WEST ) { meridian = -1;
                                                display_data((char*)console_buf,0,20,pgm_selected_west,0,FMT_NO_VAL + FMT_CONSOLE); }
             }
+         else slew_cmd = code_idx;  // Slew commande: North South East West and Stop
          }
       else if ( code_idx == IDX_VCR1_TRAK_P  ) earth_tracking=1;         // Start tracking
       else if ( code_idx == IDX_VCR1_TRAK_M  ) earth_tracking=0;         // Stop tracking
@@ -2157,6 +2165,10 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
          {
          if ( dd_v[DDS_CUR_STAR_REQ] == 0 )  dd_v[DDS_CUR_STAR_REQ]   = STARS_COORD_TOTAL-1; // we reached the first star
          else                                dd_v[DDS_CUR_STAR_REQ]  --;  
+         }
+      else if ( code_idx == IDX_VCR1_PAUSE ) 
+         {
+         mosaic_pause = ! mosaic_pause;   // toggle pause..
          }
  
       }
@@ -2626,7 +2638,6 @@ if      ( axis->state == 0 ) // idle ready to receive a command
    }
 else if ( axis->state == 1 ) // setup the goto
    {
-   short tt;
    axis->pos_initial  = axis->pos; 
    axis->accel_seq    = 0;  // reset the sequence 
    axis->pos_displ    = 0;  // This position counter is independant of the DEAD_BAND
@@ -2637,42 +2648,36 @@ else if ( axis->state == 1 ) // setup the goto
       {
       if ( (unsigned long) axis->pos_target > (unsigned long)(axis->pos_initial + TICKS_P_180_DEG ) )   // Yes we will cross over it
          {
-         axis->accel = -10; // going backward
+         axis->accel = -GOTO_ACCEL; // going backward
          axis->pos_delta    = axis->pos_target - axis->pos_initial + DEAD_BAND;
-         tt=1;
          }
       else if ( (unsigned long) axis->pos_target < (unsigned long)(axis->pos_initial) )  
          {
-         axis->accel = -10; // going backward
+         axis->accel = -GOTO_ACCEL; // going backward
          axis->pos_delta    = axis->pos_target - axis->pos_initial;
-         tt=1;
          }
       else
          {
-         axis->accel =  10; // going forward
+         axis->accel =  GOTO_ACCEL; // going forward
          axis->pos_delta    = axis->pos_target - axis->pos_initial;
-         tt=2;
          }
       }
    else  // axis->pos_initial > TICKS_P_180_DEG
       {
       if ( (unsigned long) axis->pos_target < (unsigned long) axis->pos_initial - (unsigned long)TICKS_P_180_DEG )   // Yes we will cross over it
          {
-         axis->accel =  10; // going forward
+         axis->accel =  GOTO_ACCEL; // going forward
          axis->pos_delta    = axis->pos_target - axis->pos_initial - DEAD_BAND;
-         tt=3;
          }
       else if ( (unsigned long) axis->pos_target > (unsigned long)(axis->pos_initial) )  
          {
-         axis->accel =  10; // going forward
+         axis->accel =  GOTO_ACCEL; // going forward
          axis->pos_delta    = axis->pos_target - axis->pos_initial;
-         tt=1;
          }
       else
          {
-         axis->accel = -10; // going backward
+         axis->accel = -GOTO_ACCEL; // going backward
          axis->pos_delta    = axis->pos_target - axis->pos_initial;
-         tt=4;
          }
       }
 
@@ -2749,12 +2754,16 @@ else if ( axis->state == 3 )  // cruise speed
       }
    if ( slew_cmd ) axis->state = 20; // decelerate - emergency stop
    }
-else if ( axis->state == 4 )  // set deceleration
+else if ( (axis->state == 4) || (axis->state == 44) )  // set deceleration
    {
-   if ( axis->pos_delta > 0 ) axis->accel = -10; // going forward but decelerate
-   else                       axis->accel =  10; // going backward but decelerate
+   char ACCEL;
+   if ( axis->state == 44 )   ACCEL = 50;           // set emergency deceleration
+   else                       ACCEL = GOTO_ACCEL;   // Normal deceleration
 
-   axis->state++;
+   if ( axis->pos_delta > 0 ) axis->accel = -ACCEL; // going forward but decelerate
+   else                       axis->accel =  ACCEL; // going backward but decelerate
+
+   axis->state=5;
    axis->speed = axis->last_high_speed;  // restore last high speed
    }
 else if ( axis->state == 5 )  // deceleration

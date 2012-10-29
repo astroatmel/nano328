@@ -3,67 +3,69 @@
 //
    RA:00 08 23.259 / DEC:+29 05 25.56  - Alpherat,b   Coord ID:  0  ; Constellation:Andromeda      
    RA:00 13 14.153 / DEC:+15 11 00.95  - Algenib. B   Coord ID:  1  ; Constellation:Pegasus        
-   RA:01 09 43.924 / DEC:+35 37 14.01  - Mirach.  r   Coord ID:  3  ; Constellation:Andromeda      
-   RA:02 03 53.953 / DEC:+42 19 47.01  - Almaak,  r   Coord ID:  5  ; Constellation:Andromeda      
-   RA:02 07 10.407 / DEC:+23 27 44.72  - Hamal.       Coord ID:  6  ; Constellation:Aries          
-   RA:03 02 16.772 / DEC:+04 05 23.04  - Menkar.  R   Coord ID:  7  ; Constellation:Cetus          
-   RA:03 08 10.132 / DEC:+40 57 20.33  - Algol.       Coord ID:  8  ; Constellation:Perceus        
-   RA:03 24 19.370 / DEC:+49 51 40.25  - Mirphak,     Coord ID:  9  ; Constellation:Perceus        
-   RA:03 47 29.077 / DEC:+24 06 18.49  - Alcyone. b   Coord ID: 10  ; Constellation:Taurus         
-   RA:03 58 01.766 / DEC:-13 30 30.65  - Zaurac.  r   Coord ID: 13  ; Constellation:Eridanus       
-   RA:04 35 55.239 / DEC:+16 30 33.48  - Aldebara.r   Coord ID: 14  ; Constellation:Taurus         
-   RA:05 07 50.985 / DEC:-05 05 11.21  - Cursa.       Coord ID: 16  ; Constellation:Eridanus       
-   RA:05 14 32.272 / DEC:-08 12 05.91  - Rigel.       Coord ID: 17  ; Constellation:Orion          
-   RA:05 16 41.359 / DEC:+45 59 52.77  - Capella,     Coord ID: 18  ; Constellation:Auriga         
-   RA:05 25 07.863 / DEC:+06 20 58.93  - BellatrixB   Coord ID: 19  ; Constellation:Orion          
-   RA:05 32 00.398 / DEC:-00 17 56.69  - Mintaka. b   Coord ID: 21  ; Constellation:Orion          
-   RA:05 36 12.813 / DEC:-01 12 06.91  - Alnilam  B   Coord ID: 24  ; Constellation:Orion          
-   RA:05 40 45.527 / DEC:-01 56 33.26  - Alnitak  B   Coord ID: 26  ; Constellation:Orion          
-   RA:05 47 45.389 / DEC:-09 40 10.58  - Ori      B   Coord ID: 27  ; Constellation:Orion          
-   RA:05 55 10.305 / DEC:+07 24 25.43  - BetelgeusR   Coord ID: 28  ; Constellation:Orion          
-   RA:06 45 08.917 / DEC:-16 42 58.02  - Sirius   b   Coord ID: 34  ; Constellation:Canis Major    
-   RA:07 34 35.863 / DEC:+31 53 17.79  - Castor       Coord ID: 36  ; Constellation:Gemini         
-   RA:07 34 36.100 / DEC:+31 53 18.57  - Castor       Coord ID: 37  ; Constellation:Gemini         
-   RA:07 39 18.118 / DEC:+05 13 29.98  - Procyon      Coord ID: 38  ; Constellation:Canis Minor    
-   RA:07 45 18.950 / DEC:+28 01 34.32  - Pollux       Coord ID: 39  ; Constellation:Gemini         
-   RA:09 27 35.243 / DEC:-08 39 30.97  - Alphard  r   Coord ID: 40  ; Constellation:Hydra          
-   RA:10 08 22.311 / DEC:+11 58 01.94  - Regulus  B   Coord ID: 42  ; Constellation:Leo            
-   RA:10 19 58.355 / DEC:+19 50 29.36  - Algieba.     Coord ID: 43  ; Constellation:Leo            
-   RA:11 14 06.501 / DEC:+20 31 25.38  - Zosma.       Coord ID: 45  ; Constellation:Leo            
-   RA:11 49 03.578 / DEC:+14 34 19.42  - Denebola.    Coord ID: 46  ; Constellation:Leo            
-   RA:13 02 10.597 / DEC:+10 57 32.94  - Vindemiat;   Coord ID: 51  ; Constellation:Virgo          
-   RA:13 25 11.579 / DEC:-11 09 40.76  - Spica.   b   Coord ID: 52  ; Constellation:Virgo          
-   RA:13 47 32.438 / DEC:+49 18 47.75  - Alkaid.  b   Coord ID: 53  ; Constellation:Ursa Major     
-   RA:14 15 39.672 / DEC:+19 10 56.69  - Arcturus.r   Coord ID: 55  ; Constellation:Boothes        
-   RA:15 44 16.075 / DEC:+06 25 32.26  - Unukalhai.   Coord ID: 60  ; Constellation:Serpens Capu   
-   RA:18 36 56.336 / DEC:+38 47 01.29  - Vega.    b   Coord ID: 70  ; Constellation:Lyra           
-   RA:19 46 15.580 / DEC:+10 36 47.74  - Tarazed. r   Coord ID: 73  ; Constellation:Aquila         
-   RA:19 50 46.999 / DEC:+08 52 05.96  - Altair.      Coord ID: 74  ; Constellation:Aquila         
-   RA:20 41 25.915 / DEC:+45 16 49.22  - Deneb.       Coord ID: 76  ; Constellation:Cygnus         
-   RA:22 05 47.036 / DEC:-00 19 11.46  - Sadalmeli;   Coord ID: 81  ; Constellation:Aquarius       
-   RA:22 43 00.137 / DEC:+30 13 16.48  - Matar.       Coord ID: 82  ; Constellation:Pegasus        
-   RA:23 03 46.458 / DEC:+28 04 58.04  - Sheat,   R   Coord ID: 83  ; Constellation:Pegasus        
-   RA:23 04 45.654 / DEC:+15 12 18.95  - Markab.  b   Coord ID: 84  ; Constellation:Pegasus        
-   RA:00 42 44.300 / DEC:+41 16 08.10 -  M31 Androm   Coord ID: 85  ; From Aladin: Andromeda Galaxy TODO
-   RA:00 52 48.000 / DEC:+56 37 00.00 -  CAS:Packma   Coord ID: 86  ; From Google: Packman Nebula NGC 281 (Cassiopia) TODO
-   RA:02 57 08.000 / DEC:+60 39 44.00 -  HIP13665     Coord ID: 87  ; From Google: Interesting Nebula
-   RA:05 35 16.000 / DEC:-04 49 15.00 -  42 Ori Neb   Coord ID: 88  ; From Aladin: Northern nebula under Orion's belt 
-   RA:05 35 22.900 / DEC:-05 24 58.00 -  2 Ori Neb    Coord ID: 89  ; From Aladin: Southern nebula under Orion's belt 
-   RA:05 40 58.920 / DEC:-02 24 58.60 -  Horsehead    Coord ID: 90  ; From Aladin: Nose of the horse
-   RA:05 41 45.150 / DEC:-01 51 15.30 -  Near Horse   Coord ID: 91  ; From Aladin: North of horse head, left of Alnitak
-   RA:06 31 27.380 / DEC:+04 56 11.80 -  Rosett Neb   Coord ID: 92  ; From Aladin: Rosette Nebula in Monoceros
-   RA:07 04 52.480 / DEC:-10 30 56.48 -  Sirius Neb   Coord ID: 93  ; From Google Earth: Nebula near Sirius
-   RA:11 18 54.000 / DEC:+13 05 00.00 -  M65 Galaxy   Coord ID: 94  ; From Stellarium J2000              
-   RA:11 20 12.000 / DEC:+12 59 00.00 -  M66 Galaxy   Coord ID: 95  ; From Stellarium J2000              
-   RA:11 20 18.000 / DEC:+13 36 00.00 -  NGC3628 Gx   Coord ID: 96  ; From Stellarium J2000              
-   RA:12 50 53.600 / DEC:+41 07 15.52 -  M94          Coord ID: 97  ; From Google: M94
-   RA:13 00 08.000 / DEC:+27 58 37.60 -  ManyGxy      Coord ID: 98  ; From Google: Mosaic of distant Galaxies
-   RA:13 29 54.000 / DEC:+47 12 00.00 -  M54          Coord ID: 99  ; From Stellarium: Galaxy at the tip of Ursa Major
-   RA:13 30 00.000 / DEC:+47 16 00.00 -  M51          Coord ID:100  ; From Stellarium: Whirlpool Galaxy TODO
-   RA:14 03 13.400 / DEC:+54 20 57.00 -  M101         Coord ID:101  ; From Google: Galaxy at the tip of Ursa Major
-   RA:18 18 52.700 / DEC:-13 49 43.00 -  Eagle Nebu   Coord ID:102  ; From Stellarium HIP 89743
-   RA:19 43 10.830 / DEC:+23 17 45.70 -  Vulpec Neb   Coord ID:103  ; From Aladin: 
-   RA:19 59 36.000 / DEC:+22 43 00.00 -  Dumbbell N   Coord ID:104  ; From Stellarium J2000 TODO
-   RA:20 26 04.320 / DEC:+40 23 41.20 -  CygnusNeb2   Coord ID:105  ; From Google: HIP100784 TODO
-   RA:20 51 15.000 / DEC:+44 25 00.00 -  CygnusNeb3   Coord ID:106  ; From Google: 56CYG-57CYG TODO
-   RA:20 59 31.800 / DEC:+43 57 57.00 -  CygnusNeb4   Coord ID:107  ; From Google: HIP103559 (red) TODO
+   RA:00 42 44.300 / DEC:+41 16 08.10 -  M31 Androm   Coord ID:  2  ; From Aladin: Andromeda Galaxy TODO
+   RA:00 52 48.000 / DEC:+56 37 00.00 -  CAS:Packma   Coord ID:  4  ; From Google: Packman Nebula NGC 281 (Cassiopia) TODO
+   RA:01 09 43.924 / DEC:+35 37 14.01  - Mirach.  r   Coord ID:  5  ; Constellation:Andromeda      
+   RA:02 03 53.953 / DEC:+42 19 47.01  - Almaak,  r   Coord ID:  7  ; Constellation:Andromeda      
+   RA:02 07 10.407 / DEC:+23 27 44.72  - Hamal.       Coord ID:  8  ; Constellation:Aries          
+   RA:02 57 08.000 / DEC:+60 39 44.00 -  HIP13665     Coord ID:  9  ; From Google: Interesting Nebula
+   RA:03 02 16.772 / DEC:+04 05 23.04  - Menkar.  R   Coord ID: 10  ; Constellation:Cetus          
+   RA:03 08 10.132 / DEC:+40 57 20.33  - Algol.       Coord ID: 11  ; Constellation:Perceus        
+   RA:03 24 19.370 / DEC:+49 51 40.25  - Mirphak,     Coord ID: 12  ; Constellation:Perceus        
+   RA:03 47 29.077 / DEC:+24 06 18.49  - Alcyone. b   Coord ID: 13  ; Constellation:Taurus         
+   RA:03 58 01.766 / DEC:-13 30 30.65  - Zaurac.  r   Coord ID: 16  ; Constellation:Eridanus       
+   RA:04 35 55.239 / DEC:+16 30 33.48  - Aldebara.r   Coord ID: 17  ; Constellation:Taurus         
+   RA:05 07 50.985 / DEC:-05 05 11.21  - Cursa.       Coord ID: 19  ; Constellation:Eridanus       
+   RA:05 14 32.272 / DEC:-08 12 05.91  - Rigel.       Coord ID: 20  ; Constellation:Orion          
+   RA:05 16 41.359 / DEC:+45 59 52.77  - Capella,     Coord ID: 21  ; Constellation:Auriga         
+   RA:05 25 07.863 / DEC:+06 20 58.93  - BellatrixB   Coord ID: 22  ; Constellation:Orion          
+   RA:05 32 00.398 / DEC:-00 17 56.69  - Mintaka. b   Coord ID: 24  ; Constellation:Orion          
+   RA:05 35 16.000 / DEC:-04 49 15.00 -  42 Ori Neb   Coord ID: 26  ; From Aladin: Northern nebula under Orion's belt 
+   RA:05 35 22.900 / DEC:-05 24 58.00 -  2 Ori Neb    Coord ID: 27  ; From Aladin: Southern nebula under Orion's belt 
+   RA:05 36 12.813 / DEC:-01 12 06.91  - Alnilam  B   Coord ID: 29  ; Constellation:Orion          
+   RA:05 40 45.527 / DEC:-01 56 33.26  - Alnitak  B   Coord ID: 31  ; Constellation:Orion          
+   RA:05 40 58.920 / DEC:-02 24 58.60 -  Horsehead    Coord ID: 32  ; From Aladin: Nose of the horse
+   RA:05 41 45.150 / DEC:-01 51 15.30 -  Near Horse   Coord ID: 33  ; From Aladin: North of horse head, left of Alnitak
+   RA:05 47 45.389 / DEC:-09 40 10.58  - Ori      B   Coord ID: 34  ; Constellation:Orion          
+   RA:05 55 10.305 / DEC:+07 24 25.43  - BetelgeusR   Coord ID: 35  ; Constellation:Orion          
+   RA:06 31 27.380 / DEC:+04 56 11.80 -  Rosett Neb   Coord ID: 40  ; From Aladin: Rosette Nebula in Monoceros
+   RA:06 45 08.917 / DEC:-16 42 58.02  - Sirius   b   Coord ID: 42  ; Constellation:Canis Major    
+   RA:07 04 52.480 / DEC:-10 30 56.48 -  Sirius Neb   Coord ID: 43  ; From Google Earth: Nebula near Sirius
+   RA:07 34 35.863 / DEC:+31 53 17.79  - Castor       Coord ID: 45  ; Constellation:Gemini         
+   RA:07 34 36.100 / DEC:+31 53 18.57  - Castor       Coord ID: 46  ; Constellation:Gemini         
+   RA:07 39 18.118 / DEC:+05 13 29.98  - Procyon      Coord ID: 47  ; Constellation:Canis Minor    
+   RA:07 45 18.950 / DEC:+28 01 34.32  - Pollux       Coord ID: 48  ; Constellation:Gemini         
+   RA:09 27 35.243 / DEC:-08 39 30.97  - Alphard  r   Coord ID: 49  ; Constellation:Hydra          
+   RA:10 08 22.311 / DEC:+11 58 01.94  - Regulus  B   Coord ID: 51  ; Constellation:Leo            
+   RA:10 19 58.355 / DEC:+19 50 29.36  - Algieba.     Coord ID: 52  ; Constellation:Leo            
+   RA:11 14 06.501 / DEC:+20 31 25.38  - Zosma.       Coord ID: 54  ; Constellation:Leo            
+   RA:11 18 54.000 / DEC:+13 05 00.00 -  M65 Galaxy   Coord ID: 55  ; From Stellarium J2000              
+   RA:11 20 12.000 / DEC:+12 59 00.00 -  M66 Galaxy   Coord ID: 56  ; From Stellarium J2000              
+   RA:11 20 18.000 / DEC:+13 36 00.00 -  NGC3628 Gx   Coord ID: 57  ; From Stellarium J2000              
+   RA:11 49 03.578 / DEC:+14 34 19.42  - Denebola.    Coord ID: 58  ; Constellation:Leo            
+   RA:12 50 53.600 / DEC:+41 07 15.52 -  M94          Coord ID: 62  ; From Google: M94
+   RA:13 00 08.000 / DEC:+27 58 37.60 -  ManyGxy      Coord ID: 64  ; From Google: Mosaic of distant Galaxies
+   RA:13 02 10.597 / DEC:+10 57 32.94  - Vindemiat;   Coord ID: 65  ; Constellation:Virgo          
+   RA:13 25 11.579 / DEC:-11 09 40.76  - Spica.   b   Coord ID: 66  ; Constellation:Virgo          
+   RA:13 29 54.000 / DEC:+47 12 00.00 -  M54          Coord ID: 67  ; From Stellarium: Galaxy at the tip of Ursa Major
+   RA:13 30 00.000 / DEC:+47 16 00.00 -  M51          Coord ID: 68  ; From Stellarium: Whirlpool Galaxy TODO
+   RA:13 47 32.438 / DEC:+49 18 47.75  - Alkaid.  b   Coord ID: 69  ; Constellation:Ursa Major     
+   RA:14 03 13.400 / DEC:+54 20 57.00 -  M101         Coord ID: 71  ; From Google: Galaxy at the tip of Ursa Major
+   RA:14 15 39.672 / DEC:+19 10 56.69  - Arcturus.r   Coord ID: 72  ; Constellation:Boothes        
+   RA:15 44 16.075 / DEC:+06 25 32.26  - Unukalhai.   Coord ID: 77  ; Constellation:Serpens Capu   
+   RA:17 34 56.071 / DEC:+12 33 36.12  - Rasalhague   Coord ID: 85  ; Constellation:Ophiuchus      
+   RA:17 43 28.353 / DEC:+04 34 02.29  - Cebalrai     Coord ID: 86  ; Constellation:Ophiuchus      
+   RA:18 18 52.700 / DEC:-13 49 43.00 -  Eagle Nebu   Coord ID: 87  ; From Stellarium HIP 89743
+   RA:18 36 56.336 / DEC:+38 47 01.29  - Vega.    b   Coord ID: 88  ; Constellation:Lyra           
+   RA:19 43 10.830 / DEC:+23 17 45.70 -  Vulpec Neb   Coord ID: 90  ; From Aladin: 
+   RA:19 46 15.580 / DEC:+10 36 47.74  - Tarazed. r   Coord ID: 92  ; Constellation:Aquila         
+   RA:19 50 46.999 / DEC:+08 52 05.96  - Altair.      Coord ID: 93  ; Constellation:Aquila         
+   RA:19 59 36.000 / DEC:+22 43 00.00 -  Dumbbell N   Coord ID: 94  ; From Stellarium J2000 TODO
+   RA:20 26 04.320 / DEC:+40 23 41.20 -  CygnusNeb2   Coord ID: 96  ; From Google: HIP100784 TODO
+   RA:20 41 25.915 / DEC:+45 16 49.22  - Deneb.       Coord ID: 97  ; Constellation:Cygnus         
+   RA:20 51 15.000 / DEC:+44 25 00.00 -  CygnusNeb3   Coord ID: 99  ; From Google: 56CYG-57CYG TODO
+   RA:20 59 31.800 / DEC:+43 57 57.00 -  CygnusNeb4   Coord ID:100  ; From Google: HIP103559 (red) TODO
+   RA:22 05 47.036 / DEC:-00 19 11.46  - Sadalmeli;   Coord ID:104  ; Constellation:Aquarius       
+   RA:22 43 00.137 / DEC:+30 13 16.48  - Matar.       Coord ID:105  ; Constellation:Pegasus        
+   RA:23 03 46.458 / DEC:+28 04 58.04  - Sheat,   R   Coord ID:106  ; Constellation:Pegasus        
+   RA:23 04 45.654 / DEC:+15 12 18.95  - Markab.  b   Coord ID:107  ; Constellation:Pegasus        

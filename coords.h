@@ -6,72 +6,74 @@ PROGMEM const char pgm_stars_name_reduced[]   =  // format: byte:StarID byte:Con
    {                                             // Names are for only a few prefered stars to save memory space
    "\000\003Alpherat,b"   /*  Star ID:  0  Constellation:Andromeda    */  \
    "\001\040Algenib. B"   /*  Star ID:  1  Constellation:Pegasus      */  \
-   "\003\003Mirach.  r"   /*  Star ID:  3  Constellation:Andromeda    */  \
-   "\005\003Almaak,  r"   /*  Star ID:  5  Constellation:Andromeda    */  \
-   "\006\006Hamal.    "   /*  Star ID:  6  Constellation:Aries        */  \
-   "\007\015Menkar.  R"   /*  Star ID:  7  Constellation:Cetus        */  \
-   "\010\041Algol.    "   /*  Star ID:  8  Constellation:Perceus      */  \
-   "\011\041Mirphak,  "   /*  Star ID:  9  Constellation:Perceus      */  \
-   "\012\044Alcyone. b"   /*  Star ID: 10  Constellation:Taurus       */  \
-   "\015\021Zaurac.  r"   /*  Star ID: 13  Constellation:Eridanus     */  \
-   "\016\044Aldebara.r"   /*  Star ID: 14  Constellation:Taurus       */  \
-   "\020\021Cursa.    "   /*  Star ID: 16  Constellation:Eridanus     */  \
-   "\021\037Rigel.    "   /*  Star ID: 17  Constellation:Orion        */  \
-   "\022\007Capella,  "   /*  Star ID: 18  Constellation:Auriga       */  \
-   "\023\037BellatrixB"   /*  Star ID: 19  Constellation:Orion        */  \
-   "\025\037Mintaka. b"   /*  Star ID: 21  Constellation:Orion        */  \
-   "\030\037Alnilam  B"   /*  Star ID: 24  Constellation:Orion        */  \
-   "\032\037Alnitak  B"   /*  Star ID: 26  Constellation:Orion        */  \
-   "\033\037Ori      B"   /*  Star ID: 27  Constellation:Orion        */  \
-   "\034\037BetelgeusR"   /*  Star ID: 28  Constellation:Orion        */  \
-   "\042\011Sirius   b"   /*  Star ID: 34  Constellation:Canis Major  */  \
-   "\044\022Castor    "   /*  Star ID: 36  Constellation:Gemini       */  \
-   "\045\022Castor    "   /*  Star ID: 37  Constellation:Gemini       */  \
-   "\046\012Procyon   "   /*  Star ID: 38  Constellation:Canis Minor  */  \
-   "\047\022Pollux    "   /*  Star ID: 39  Constellation:Gemini       */  \
-   "\050\025Alphard  r"   /*  Star ID: 40  Constellation:Hydra        */  \
-   "\052\026Regulus  B"   /*  Star ID: 42  Constellation:Leo          */  \
-   "\053\026Algieba.  "   /*  Star ID: 43  Constellation:Leo          */  \
-   "\055\026Zosma.    "   /*  Star ID: 45  Constellation:Leo          */  \
-   "\056\026Denebola. "   /*  Star ID: 46  Constellation:Leo          */  \
-   "\063\046Vindemiat;"   /*  Star ID: 51  Constellation:Virgo        */  \
-   "\064\046Spica.   b"   /*  Star ID: 52  Constellation:Virgo        */  \
-   "\065\045Alkaid.  b"   /*  Star ID: 53  Constellation:Ursa Major   */  \
-   "\067\010Arcturus.r"   /*  Star ID: 55  Constellation:Boothes      */  \
-   "\074\043Unukalhai."   /*  Star ID: 60  Constellation:Serpens Capu */  \
-   "\106\031Vega.    b"   /*  Star ID: 70  Constellation:Lyra         */  \
-   "\111\004Tarazed. r"   /*  Star ID: 73  Constellation:Aquila       */  \
-   "\112\004Altair.   "   /*  Star ID: 74  Constellation:Aquila       */  \
-   "\114\020Deneb.    "   /*  Star ID: 76  Constellation:Cygnus       */  \
-   "\121\005Sadalmeli;"   /*  Star ID: 81  Constellation:Aquarius     */  \
-   "\122\040Matar.    "   /*  Star ID: 82  Constellation:Pegasus      */  \
-   "\123\040Sheat,   R"   /*  Star ID: 83  Constellation:Pegasus      */  \
-   "\124\040Markab.  b"   /*  Star ID: 84  Constellation:Pegasus      */  \
-   "\125\377M31 Androm"   /* Coord ID: 85  ; From Aladin: Andromeda Galaxy TODO */  \
-   "\126\377CAS:Packma"   /* Coord ID: 86  ; From Google: Packman Nebula NGC 281 (Cassiopia) TODO */  \
-   "\127\377HIP13665  "   /* Coord ID: 87  ; From Google: Interesting Nebula */  \
-   "\130\37742 Ori Neb"   /* Coord ID: 88  ; From Aladin: Northern nebula under Orion's belt  */  \
-   "\131\3772 Ori Neb "   /* Coord ID: 89  ; From Aladin: Southern nebula under Orion's belt  */  \
-   "\132\377Horsehead "   /* Coord ID: 90  ; From Aladin: Nose of the horse */  \
-   "\133\377Near Horse"   /* Coord ID: 91  ; From Aladin: North of horse head, left of Alnitak */  \
-   "\134\377Rosett Neb"   /* Coord ID: 92  ; From Aladin: Rosette Nebula in Monoceros */  \
-   "\135\377Sirius Neb"   /* Coord ID: 93  ; From Google Earth: Nebula near Sirius */  \
-   "\136\377M65 Galaxy"   /* Coord ID: 94  ; From Stellarium J2000               */  \
-   "\137\377M66 Galaxy"   /* Coord ID: 95  ; From Stellarium J2000               */  \
-   "\140\377NGC3628 Gx"   /* Coord ID: 96  ; From Stellarium J2000               */  \
-   "\141\377M94       "   /* Coord ID: 97  ; From Google: M94 */  \
-   "\142\377ManyGxy   "   /* Coord ID: 98  ; From Google: Mosaic of distant Galaxies */  \
-   "\143\377M54       "   /* Coord ID: 99  ; From Stellarium: Galaxy at the tip of Ursa Major */  \
-   "\144\377M51       "   /* Coord ID:100  ; From Stellarium: Whirlpool Galaxy TODO */  \
-   "\145\377M101      "   /* Coord ID:101  ; From Google: Galaxy at the tip of Ursa Major */  \
-   "\146\377Eagle Nebu"   /* Coord ID:102  ; From Stellarium HIP 89743 */  \
-   "\147\377Vulpec Neb"   /* Coord ID:103  ; From Aladin:  */  \
-   "\150\377Dumbbell N"   /* Coord ID:104  ; From Stellarium J2000 TODO */  \
-   "\151\377CygnusNeb2"   /* Coord ID:105  ; From Google: HIP100784 TODO */  \
-   "\152\377CygnusNeb3"   /* Coord ID:106  ; From Google: 56CYG-57CYG TODO */  \
-   "\153\377CygnusNeb4"   /* Coord ID:107  ; From Google: HIP103559 (red) TODO */  \
+   "\002\377M31 Androm"   /* Coord ID:  2  ; From Aladin: Andromeda Galaxy TODO */  \
+   "\004\377CAS:Packma"   /* Coord ID:  4  ; From Google: Packman Nebula NGC 281 (Cassiopia) TODO */  \
+   "\005\003Mirach.  r"   /*  Star ID:  5  Constellation:Andromeda    */  \
+   "\007\003Almaak,  r"   /*  Star ID:  7  Constellation:Andromeda    */  \
+   "\010\006Hamal.    "   /*  Star ID:  8  Constellation:Aries        */  \
+   "\011\377HIP13665  "   /* Coord ID:  9  ; From Google: Interesting Nebula */  \
+   "\012\015Menkar.  R"   /*  Star ID: 10  Constellation:Cetus        */  \
+   "\013\041Algol.    "   /*  Star ID: 11  Constellation:Perceus      */  \
+   "\014\041Mirphak,  "   /*  Star ID: 12  Constellation:Perceus      */  \
+   "\015\044Alcyone. b"   /*  Star ID: 13  Constellation:Taurus       */  \
+   "\020\021Zaurac.  r"   /*  Star ID: 16  Constellation:Eridanus     */  \
+   "\021\044Aldebara.r"   /*  Star ID: 17  Constellation:Taurus       */  \
+   "\023\021Cursa.    "   /*  Star ID: 19  Constellation:Eridanus     */  \
+   "\024\037Rigel.    "   /*  Star ID: 20  Constellation:Orion        */  \
+   "\025\007Capella,  "   /*  Star ID: 21  Constellation:Auriga       */  \
+   "\026\037BellatrixB"   /*  Star ID: 22  Constellation:Orion        */  \
+   "\030\037Mintaka. b"   /*  Star ID: 24  Constellation:Orion        */  \
+   "\032\37742 Ori Neb"   /* Coord ID: 26  ; From Aladin: Northern nebula under Orion's belt  */  \
+   "\033\3772 Ori Neb "   /* Coord ID: 27  ; From Aladin: Southern nebula under Orion's belt  */  \
+   "\035\037Alnilam  B"   /*  Star ID: 29  Constellation:Orion        */  \
+   "\037\037Alnitak  B"   /*  Star ID: 31  Constellation:Orion        */  \
+   "\040\377Horsehead "   /* Coord ID: 32  ; From Aladin: Nose of the horse */  \
+   "\041\377Near Horse"   /* Coord ID: 33  ; From Aladin: North of horse head, left of Alnitak */  \
+   "\042\037Ori      B"   /*  Star ID: 34  Constellation:Orion        */  \
+   "\043\037BetelgeusR"   /*  Star ID: 35  Constellation:Orion        */  \
+   "\050\377Rosett Neb"   /* Coord ID: 40  ; From Aladin: Rosette Nebula in Monoceros */  \
+   "\052\011Sirius   b"   /*  Star ID: 42  Constellation:Canis Major  */  \
+   "\053\377Sirius Neb"   /* Coord ID: 43  ; From Google Earth: Nebula near Sirius */  \
+   "\055\022Castor    "   /*  Star ID: 45  Constellation:Gemini       */  \
+   "\056\022Castor    "   /*  Star ID: 46  Constellation:Gemini       */  \
+   "\057\012Procyon   "   /*  Star ID: 47  Constellation:Canis Minor  */  \
+   "\060\022Pollux    "   /*  Star ID: 48  Constellation:Gemini       */  \
+   "\061\025Alphard  r"   /*  Star ID: 49  Constellation:Hydra        */  \
+   "\063\026Regulus  B"   /*  Star ID: 51  Constellation:Leo          */  \
+   "\064\026Algieba.  "   /*  Star ID: 52  Constellation:Leo          */  \
+   "\066\026Zosma.    "   /*  Star ID: 54  Constellation:Leo          */  \
+   "\067\377M65 Galaxy"   /* Coord ID: 55  ; From Stellarium J2000               */  \
+   "\070\377M66 Galaxy"   /* Coord ID: 56  ; From Stellarium J2000               */  \
+   "\071\377NGC3628 Gx"   /* Coord ID: 57  ; From Stellarium J2000               */  \
+   "\072\026Denebola. "   /*  Star ID: 58  Constellation:Leo          */  \
+   "\076\377M94       "   /* Coord ID: 62  ; From Google: M94 */  \
+   "\100\377ManyGxy   "   /* Coord ID: 64  ; From Google: Mosaic of distant Galaxies */  \
+   "\101\046Vindemiat;"   /*  Star ID: 65  Constellation:Virgo        */  \
+   "\102\046Spica.   b"   /*  Star ID: 66  Constellation:Virgo        */  \
+   "\103\377M54       "   /* Coord ID: 67  ; From Stellarium: Galaxy at the tip of Ursa Major */  \
+   "\104\377M51       "   /* Coord ID: 68  ; From Stellarium: Whirlpool Galaxy TODO */  \
+   "\105\045Alkaid.  b"   /*  Star ID: 69  Constellation:Ursa Major   */  \
+   "\107\377M101      "   /* Coord ID: 71  ; From Google: Galaxy at the tip of Ursa Major */  \
+   "\110\010Arcturus.r"   /*  Star ID: 72  Constellation:Boothes      */  \
+   "\115\043Unukalhai."   /*  Star ID: 77  Constellation:Serpens Capu */  \
+   "\125\036Rasalhague"   /*  Star ID: 85  Constellation:Ophiuchus    */  \
+   "\126\036Cebalrai  "   /*  Star ID: 86  Constellation:Ophiuchus    */  \
+   "\127\377Eagle Nebu"   /* Coord ID: 87  ; From Stellarium HIP 89743 */  \
+   "\130\031Vega.    b"   /*  Star ID: 88  Constellation:Lyra         */  \
+   "\132\377Vulpec Neb"   /* Coord ID: 90  ; From Aladin:  */  \
+   "\134\004Tarazed. r"   /*  Star ID: 92  Constellation:Aquila       */  \
+   "\135\004Altair.   "   /*  Star ID: 93  Constellation:Aquila       */  \
+   "\136\377Dumbbell N"   /* Coord ID: 94  ; From Stellarium J2000 TODO */  \
+   "\140\377CygnusNeb2"   /* Coord ID: 96  ; From Google: HIP100784 TODO */  \
+   "\141\020Deneb.    "   /*  Star ID: 97  Constellation:Cygnus       */  \
+   "\143\377CygnusNeb3"   /* Coord ID: 99  ; From Google: 56CYG-57CYG TODO */  \
+   "\144\377CygnusNeb4"   /* Coord ID:100  ; From Google: HIP103559 (red) TODO */  \
+   "\150\005Sadalmeli;"   /*  Star ID:104  Constellation:Aquarius     */  \
+   "\151\040Matar.    "   /*  Star ID:105  Constellation:Pegasus      */  \
+   "\152\040Sheat,   R"   /*  Star ID:106  Constellation:Pegasus      */  \
+   "\153\040Markab.  b"   /*  Star ID:107  Constellation:Pegasus      */  \
    "\377\377Unknown   "   /* Coord ID: -1  ;  */  \
-   };   // This table uses 804 bytes...
+   };   // This table uses 828 bytes...
 
 PROGMEM const char pgm_const_name[]   =  // format: byte:ConstelationId Constellation Name string
    {                                     // Names are for only a few prefered stars to save memory space
@@ -90,6 +92,7 @@ PROGMEM const char pgm_const_name[]   =  // format: byte:ConstelationId Constell
    "\025Hydra       "   /* Const ID: 21  */  \
    "\026Leo         "   /* Const ID: 22  */  \
    "\031Lyra        "   /* Const ID: 25  */  \
+   "\036Ophiuchus   "   /* Const ID: 30  */  \
    "\037Orion       "   /* Const ID: 31  */  \
    "\040Pegasus     "   /* Const ID: 32  */  \
    "\041Perceus     "   /* Const ID: 33  */  \
@@ -98,127 +101,126 @@ PROGMEM const char pgm_const_name[]   =  // format: byte:ConstelationId Constell
    "\045Ursa Major  "   /* Const ID: 37  */  \
    "\046Virgo       "   /* Const ID: 38  */  \
    "\377            "   /* Const ID: -1  */  \
-   };   // This table uses 299 bytes...
+   };   // This table uses 312 bytes...
 
 PROGMEM const unsigned long pgm_stars_pos[] = // The next 85 stars are used for polar alignment : they are reference stars
    {
    (  0*TICKS_P_HOUR + 8*TICKS_P_MIN +23.259*TICKS_P_SEC ),( 29*TICKS_P_DEG + 5*TICKS_P_DEG_MIN + 25.56*TICKS_P_DEG_SEC), //   0 Alpherat,b Andromeda  
    (  0*TICKS_P_HOUR +13*TICKS_P_MIN +14.153*TICKS_P_SEC ),( 15*TICKS_P_DEG +11*TICKS_P_DEG_MIN +  0.95*TICKS_P_DEG_SEC), //   1 Algenib. B Pegasus  
-   (  0*TICKS_P_HOUR +43*TICKS_P_MIN +35.371*TICKS_P_SEC ),(342*TICKS_P_DEG + 0*TICKS_P_DEG_MIN + 48.22*TICKS_P_DEG_SEC), //   2 16bet Cetus      -17 59 11.78 
-   (  1*TICKS_P_HOUR + 9*TICKS_P_MIN +43.924*TICKS_P_SEC ),( 35*TICKS_P_DEG +37*TICKS_P_DEG_MIN + 14.01*TICKS_P_DEG_SEC), //   3 Mirach.  r Andromeda  
-   (  1*TICKS_P_HOUR +54*TICKS_P_MIN +38.409*TICKS_P_SEC ),( 20*TICKS_P_DEG +48*TICKS_P_DEG_MIN + 28.93*TICKS_P_DEG_SEC), //   4 6bet Aries  
-   (  2*TICKS_P_HOUR + 3*TICKS_P_MIN +53.953*TICKS_P_SEC ),( 42*TICKS_P_DEG +19*TICKS_P_DEG_MIN + 47.01*TICKS_P_DEG_SEC), //   5 Almaak,  r Andromeda  
-   (  2*TICKS_P_HOUR + 7*TICKS_P_MIN +10.407*TICKS_P_SEC ),( 23*TICKS_P_DEG +27*TICKS_P_DEG_MIN + 44.72*TICKS_P_DEG_SEC), //   6 Hamal.     Aries  
-   (  3*TICKS_P_HOUR + 2*TICKS_P_MIN +16.772*TICKS_P_SEC ),(  4*TICKS_P_DEG + 5*TICKS_P_DEG_MIN + 23.04*TICKS_P_DEG_SEC), //   7 Menkar.  R Cetus  
-   (  3*TICKS_P_HOUR + 8*TICKS_P_MIN +10.132*TICKS_P_SEC ),( 40*TICKS_P_DEG +57*TICKS_P_DEG_MIN + 20.33*TICKS_P_DEG_SEC), //   8 Algol.     Perceus  
-   (  3*TICKS_P_HOUR +24*TICKS_P_MIN + 19.37*TICKS_P_SEC ),( 49*TICKS_P_DEG +51*TICKS_P_DEG_MIN + 40.25*TICKS_P_DEG_SEC), //   9 Mirphak,   Perceus  
-   (  3*TICKS_P_HOUR +47*TICKS_P_MIN +29.077*TICKS_P_SEC ),( 24*TICKS_P_DEG + 6*TICKS_P_DEG_MIN + 18.49*TICKS_P_DEG_SEC), //  10 Alcyone. b Taurus  
-   (  3*TICKS_P_HOUR +54*TICKS_P_MIN + 7.922*TICKS_P_SEC ),( 31*TICKS_P_DEG +53*TICKS_P_DEG_MIN +  1.09*TICKS_P_DEG_SEC), //  11 44zet Perceus  
-   (  3*TICKS_P_HOUR +57*TICKS_P_MIN +51.231*TICKS_P_SEC ),( 40*TICKS_P_DEG + 0*TICKS_P_DEG_MIN + 36.77*TICKS_P_DEG_SEC), //  12 45eps Perceus  
-   (  3*TICKS_P_HOUR +58*TICKS_P_MIN + 1.766*TICKS_P_SEC ),(346*TICKS_P_DEG +29*TICKS_P_DEG_MIN + 29.35*TICKS_P_DEG_SEC), //  13 Zaurac.  r Eridanus      -13 30 30.65 
-   (  4*TICKS_P_HOUR +35*TICKS_P_MIN +55.239*TICKS_P_SEC ),( 16*TICKS_P_DEG +30*TICKS_P_DEG_MIN + 33.48*TICKS_P_DEG_SEC), //  14 Aldebara.r Taurus  
-   (  4*TICKS_P_HOUR +56*TICKS_P_MIN +59.619*TICKS_P_SEC ),( 33*TICKS_P_DEG + 9*TICKS_P_DEG_MIN + 57.92*TICKS_P_DEG_SEC), //  15 3iot Auriga  
-   (  5*TICKS_P_HOUR + 7*TICKS_P_MIN +50.985*TICKS_P_SEC ),(354*TICKS_P_DEG +54*TICKS_P_DEG_MIN + 48.79*TICKS_P_DEG_SEC), //  16 Cursa.     Eridanus      -05 05 11.21 
-   (  5*TICKS_P_HOUR +14*TICKS_P_MIN +32.272*TICKS_P_SEC ),(351*TICKS_P_DEG +47*TICKS_P_DEG_MIN + 54.09*TICKS_P_DEG_SEC), //  17 Rigel.     Orion      -08 12 05.91 
-   (  5*TICKS_P_HOUR +16*TICKS_P_MIN +41.359*TICKS_P_SEC ),( 45*TICKS_P_DEG +59*TICKS_P_DEG_MIN + 52.77*TICKS_P_DEG_SEC), //  18 Capella,   Auriga  
-   (  5*TICKS_P_HOUR +25*TICKS_P_MIN + 7.863*TICKS_P_SEC ),(  6*TICKS_P_DEG +20*TICKS_P_DEG_MIN + 58.93*TICKS_P_DEG_SEC), //  19 BellatrixB Orion  
-   (  5*TICKS_P_HOUR +26*TICKS_P_MIN +17.513*TICKS_P_SEC ),( 28*TICKS_P_DEG +36*TICKS_P_DEG_MIN + 26.82*TICKS_P_DEG_SEC), //  20 112bet Taurus  
-   (  5*TICKS_P_HOUR +32*TICKS_P_MIN + 0.398*TICKS_P_SEC ),(359*TICKS_P_DEG +42*TICKS_P_DEG_MIN +  3.31*TICKS_P_DEG_SEC), //  21 Mintaka. b Orion      -00 17 56.69 
-   (  5*TICKS_P_HOUR +32*TICKS_P_MIN +43.816*TICKS_P_SEC ),(342*TICKS_P_DEG +10*TICKS_P_DEG_MIN + 39.76*TICKS_P_DEG_SEC), //  22 11alp Lep      -17 49 20.24 
-   (  5*TICKS_P_HOUR +35*TICKS_P_MIN +25.983*TICKS_P_SEC ),(354*TICKS_P_DEG + 5*TICKS_P_DEG_MIN + 24.36*TICKS_P_DEG_SEC), //  23 44iot Orion      -05 54 35.64 
-   (  5*TICKS_P_HOUR +36*TICKS_P_MIN +12.813*TICKS_P_SEC ),(358*TICKS_P_DEG +47*TICKS_P_DEG_MIN + 53.09*TICKS_P_DEG_SEC), //  24 Alnilam  B Orion      -01 12 06.91 
-   (  5*TICKS_P_HOUR +37*TICKS_P_MIN +38.686*TICKS_P_SEC ),( 21*TICKS_P_DEG + 8*TICKS_P_DEG_MIN + 33.18*TICKS_P_DEG_SEC), //  25 123zet Taurus  
-   (  5*TICKS_P_HOUR +40*TICKS_P_MIN +45.527*TICKS_P_SEC ),(358*TICKS_P_DEG + 3*TICKS_P_DEG_MIN + 26.74*TICKS_P_DEG_SEC), //  26 Alnitak  B Orion      -01 56 33.26 
-   (  5*TICKS_P_HOUR +47*TICKS_P_MIN +45.389*TICKS_P_SEC ),(350*TICKS_P_DEG +19*TICKS_P_DEG_MIN + 49.42*TICKS_P_DEG_SEC), //  27 Ori      B Orion      -09 40 10.58 
-   (  5*TICKS_P_HOUR +55*TICKS_P_MIN +10.305*TICKS_P_SEC ),(  7*TICKS_P_DEG +24*TICKS_P_DEG_MIN + 25.43*TICKS_P_DEG_SEC), //  28 BetelgeusR Orion  
-   (  5*TICKS_P_HOUR +59*TICKS_P_MIN +31.723*TICKS_P_SEC ),( 44*TICKS_P_DEG +56*TICKS_P_DEG_MIN + 50.76*TICKS_P_DEG_SEC), //  29 34bet Auriga  
-   (  5*TICKS_P_HOUR +59*TICKS_P_MIN +43.269*TICKS_P_SEC ),( 37*TICKS_P_DEG +12*TICKS_P_DEG_MIN + 45.31*TICKS_P_DEG_SEC), //  30 37the Auriga  
-   (  6*TICKS_P_HOUR +22*TICKS_P_MIN +41.985*TICKS_P_SEC ),(342*TICKS_P_DEG + 2*TICKS_P_DEG_MIN +  38.7*TICKS_P_DEG_SEC), //  31 2bet Canis Major      -17 57 21.30 
-   (  6*TICKS_P_HOUR +22*TICKS_P_MIN +57.627*TICKS_P_SEC ),( 22*TICKS_P_DEG +30*TICKS_P_DEG_MIN + 48.91*TICKS_P_DEG_SEC), //  32 13mu Gemini  
-   (  6*TICKS_P_HOUR +37*TICKS_P_MIN +42.701*TICKS_P_SEC ),( 16*TICKS_P_DEG +23*TICKS_P_DEG_MIN + 57.31*TICKS_P_DEG_SEC), //  33 24gam Gemini  
-   (  6*TICKS_P_HOUR +45*TICKS_P_MIN + 8.917*TICKS_P_SEC ),(343*TICKS_P_DEG +17*TICKS_P_DEG_MIN +  1.98*TICKS_P_DEG_SEC), //  34 Sirius   b Canis Major      -16 42 58.02 
-   (  7*TICKS_P_HOUR +27*TICKS_P_MIN + 9.043*TICKS_P_SEC ),(  8*TICKS_P_DEG +17*TICKS_P_DEG_MIN + 21.54*TICKS_P_DEG_SEC), //  35 3bet Canis Minor  
-   (  7*TICKS_P_HOUR +34*TICKS_P_MIN +35.863*TICKS_P_SEC ),( 31*TICKS_P_DEG +53*TICKS_P_DEG_MIN + 17.79*TICKS_P_DEG_SEC), //  36 Castor     Gemini  
-   (  7*TICKS_P_HOUR +34*TICKS_P_MIN +  36.1*TICKS_P_SEC ),( 31*TICKS_P_DEG +53*TICKS_P_DEG_MIN + 18.57*TICKS_P_DEG_SEC), //  37 Castor     Gemini  
-   (  7*TICKS_P_HOUR +39*TICKS_P_MIN +18.118*TICKS_P_SEC ),(  5*TICKS_P_DEG +13*TICKS_P_DEG_MIN + 29.98*TICKS_P_DEG_SEC), //  38 Procyon    Canis Minor  
-   (  7*TICKS_P_HOUR +45*TICKS_P_MIN + 18.95*TICKS_P_SEC ),( 28*TICKS_P_DEG + 1*TICKS_P_DEG_MIN + 34.32*TICKS_P_DEG_SEC), //  39 Pollux     Gemini  
-   (  9*TICKS_P_HOUR +27*TICKS_P_MIN +35.243*TICKS_P_SEC ),(351*TICKS_P_DEG +20*TICKS_P_DEG_MIN + 29.03*TICKS_P_DEG_SEC), //  40 Alphard  r Hydra      -08 39 30.97 
-   (  9*TICKS_P_HOUR +45*TICKS_P_MIN +51.073*TICKS_P_SEC ),( 23*TICKS_P_DEG +46*TICKS_P_DEG_MIN + 27.32*TICKS_P_DEG_SEC), //  41 17eps Leo  
-   ( 10*TICKS_P_HOUR + 8*TICKS_P_MIN +22.311*TICKS_P_SEC ),( 11*TICKS_P_DEG +58*TICKS_P_DEG_MIN +  1.94*TICKS_P_DEG_SEC), //  42 Regulus  B Leo  
-   ( 10*TICKS_P_HOUR +19*TICKS_P_MIN +58.355*TICKS_P_SEC ),( 19*TICKS_P_DEG +50*TICKS_P_DEG_MIN + 29.36*TICKS_P_DEG_SEC), //  43 Algieba.   Leo  
-   ( 11*TICKS_P_HOUR + 9*TICKS_P_MIN +39.808*TICKS_P_SEC ),( 44*TICKS_P_DEG +29*TICKS_P_DEG_MIN + 54.55*TICKS_P_DEG_SEC), //  44 52psi Ursa Major  
-   ( 11*TICKS_P_HOUR +14*TICKS_P_MIN + 6.501*TICKS_P_SEC ),( 20*TICKS_P_DEG +31*TICKS_P_DEG_MIN + 25.38*TICKS_P_DEG_SEC), //  45 Zosma.     Leo  
-   ( 11*TICKS_P_HOUR +49*TICKS_P_MIN + 3.578*TICKS_P_SEC ),( 14*TICKS_P_DEG +34*TICKS_P_DEG_MIN + 19.42*TICKS_P_DEG_SEC), //  46 Denebola.  Leo  
-   ( 12*TICKS_P_HOUR +15*TICKS_P_MIN + 48.37*TICKS_P_SEC ),(342*TICKS_P_DEG +27*TICKS_P_DEG_MIN + 29.05*TICKS_P_DEG_SEC), //  47 4gam Crv      -17 32 30.95 
-   ( 12*TICKS_P_HOUR +29*TICKS_P_MIN +51.855*TICKS_P_SEC ),(343*TICKS_P_DEG +29*TICKS_P_DEG_MIN +  4.44*TICKS_P_DEG_SEC), //  48 7del Crv      -16 30 55.56 
-   ( 12*TICKS_P_HOUR +41*TICKS_P_MIN +39.642*TICKS_P_SEC ),(358*TICKS_P_DEG +33*TICKS_P_DEG_MIN +  2.25*TICKS_P_DEG_SEC), //  49 29gam Virgo      -01 26 57.75 
-   ( 12*TICKS_P_HOUR +56*TICKS_P_MIN + 1.667*TICKS_P_SEC ),( 38*TICKS_P_DEG +19*TICKS_P_DEG_MIN +  6.17*TICKS_P_DEG_SEC), //  50 12alp2 CVn  
-   ( 13*TICKS_P_HOUR + 2*TICKS_P_MIN +10.597*TICKS_P_SEC ),( 10*TICKS_P_DEG +57*TICKS_P_DEG_MIN + 32.94*TICKS_P_DEG_SEC), //  51 Vindemiat; Virgo  
-   ( 13*TICKS_P_HOUR +25*TICKS_P_MIN +11.579*TICKS_P_SEC ),(348*TICKS_P_DEG +50*TICKS_P_DEG_MIN + 19.24*TICKS_P_DEG_SEC), //  52 Spica.   b Virgo      -11 09 40.76 
-   ( 13*TICKS_P_HOUR +47*TICKS_P_MIN +32.438*TICKS_P_SEC ),( 49*TICKS_P_DEG +18*TICKS_P_DEG_MIN + 47.75*TICKS_P_DEG_SEC), //  53 Alkaid.  b Ursa Major  
-   ( 13*TICKS_P_HOUR +54*TICKS_P_MIN +41.079*TICKS_P_SEC ),( 18*TICKS_P_DEG +23*TICKS_P_DEG_MIN + 51.78*TICKS_P_DEG_SEC), //  54 8eta Boothes  
-   ( 14*TICKS_P_HOUR +15*TICKS_P_MIN +39.672*TICKS_P_SEC ),( 19*TICKS_P_DEG +10*TICKS_P_DEG_MIN + 56.69*TICKS_P_DEG_SEC), //  55 Arcturus.r Boothes  
-   ( 14*TICKS_P_HOUR +44*TICKS_P_MIN +59.218*TICKS_P_SEC ),( 27*TICKS_P_DEG + 4*TICKS_P_DEG_MIN +  27.2*TICKS_P_DEG_SEC), //  56 36eps Boothes  
-   ( 14*TICKS_P_HOUR +50*TICKS_P_MIN +52.713*TICKS_P_SEC ),(343*TICKS_P_DEG +57*TICKS_P_DEG_MIN +  29.6*TICKS_P_DEG_SEC), //  57 9alp2 Lib      -16 02 30.40 
-   ( 15*TICKS_P_HOUR +17*TICKS_P_MIN + 0.415*TICKS_P_SEC ),(350*TICKS_P_DEG +37*TICKS_P_DEG_MIN +   1.5*TICKS_P_DEG_SEC), //  58 27bet Lib      -09 22 58.50 
-   ( 15*TICKS_P_HOUR +34*TICKS_P_MIN +41.268*TICKS_P_SEC ),( 26*TICKS_P_DEG +42*TICKS_P_DEG_MIN + 52.89*TICKS_P_DEG_SEC), //  59 5alp CrB  
-   ( 15*TICKS_P_HOUR +44*TICKS_P_MIN +16.075*TICKS_P_SEC ),(  6*TICKS_P_DEG +25*TICKS_P_DEG_MIN + 32.26*TICKS_P_DEG_SEC), //  60 Unukalhai. Serpens Caput  
-   ( 16*TICKS_P_HOUR + 5*TICKS_P_MIN +26.231*TICKS_P_SEC ),(340*TICKS_P_DEG +11*TICKS_P_DEG_MIN + 40.37*TICKS_P_DEG_SEC), //  61 8bet1 Sco      -19 48 19.63 
-   ( 16*TICKS_P_HOUR +14*TICKS_P_MIN + 20.74*TICKS_P_SEC ),(356*TICKS_P_DEG +18*TICKS_P_DEG_MIN + 20.44*TICKS_P_DEG_SEC), //  62 1del Oph      -03 41 39.56 
-   ( 16*TICKS_P_HOUR +30*TICKS_P_MIN +  13.2*TICKS_P_SEC ),( 21*TICKS_P_DEG +29*TICKS_P_DEG_MIN + 22.61*TICKS_P_DEG_SEC), //  63 27bet Her  
-   ( 16*TICKS_P_HOUR +37*TICKS_P_MIN + 9.538*TICKS_P_SEC ),(349*TICKS_P_DEG +25*TICKS_P_DEG_MIN + 58.48*TICKS_P_DEG_SEC), //  64 13zet Oph      -10 34 01.52 
-   ( 16*TICKS_P_HOUR +41*TICKS_P_MIN + 17.16*TICKS_P_SEC ),( 31*TICKS_P_DEG +36*TICKS_P_DEG_MIN +  9.81*TICKS_P_DEG_SEC), //  65 40zet Her  
-   ( 17*TICKS_P_HOUR +10*TICKS_P_MIN +22.687*TICKS_P_SEC ),(344*TICKS_P_DEG +16*TICKS_P_DEG_MIN + 30.32*TICKS_P_DEG_SEC), //  66 35eta Oph      -15 43 29.68 
-   ( 17*TICKS_P_HOUR +14*TICKS_P_MIN +38.858*TICKS_P_SEC ),( 14*TICKS_P_DEG +23*TICKS_P_DEG_MIN +  25.2*TICKS_P_DEG_SEC), //  67 64alp1 Her  
-   ( 17*TICKS_P_HOUR +34*TICKS_P_MIN +56.071*TICKS_P_SEC ),( 12*TICKS_P_DEG +33*TICKS_P_DEG_MIN + 36.12*TICKS_P_DEG_SEC), //  68 55alp Oph  
-   ( 17*TICKS_P_HOUR +43*TICKS_P_MIN +28.353*TICKS_P_SEC ),(  4*TICKS_P_DEG +34*TICKS_P_DEG_MIN +  2.29*TICKS_P_DEG_SEC), //  69 60bet Oph  
-   ( 18*TICKS_P_HOUR +36*TICKS_P_MIN +56.336*TICKS_P_SEC ),( 38*TICKS_P_DEG +47*TICKS_P_DEG_MIN +  1.29*TICKS_P_DEG_SEC), //  70 Vega.    b Lyra  
-   ( 19*TICKS_P_HOUR + 5*TICKS_P_MIN +24.608*TICKS_P_SEC ),( 13*TICKS_P_DEG +51*TICKS_P_DEG_MIN + 48.52*TICKS_P_DEG_SEC), //  71 17zet Aquila  
-   ( 19*TICKS_P_HOUR +44*TICKS_P_MIN +58.478*TICKS_P_SEC ),( 45*TICKS_P_DEG + 7*TICKS_P_DEG_MIN + 50.91*TICKS_P_DEG_SEC), //  72 18del Cygnus  
-   ( 19*TICKS_P_HOUR +46*TICKS_P_MIN + 15.58*TICKS_P_SEC ),( 10*TICKS_P_DEG +36*TICKS_P_DEG_MIN + 47.74*TICKS_P_DEG_SEC), //  73 Tarazed. r Aquila  
-   ( 19*TICKS_P_HOUR +50*TICKS_P_MIN +46.999*TICKS_P_SEC ),(  8*TICKS_P_DEG +52*TICKS_P_DEG_MIN +  5.96*TICKS_P_DEG_SEC), //  74 Altair.    Aquila  
-   ( 20*TICKS_P_HOUR +22*TICKS_P_MIN +13.702*TICKS_P_SEC ),( 40*TICKS_P_DEG +15*TICKS_P_DEG_MIN + 24.04*TICKS_P_DEG_SEC), //  75 37gam Cygnus  
-   ( 20*TICKS_P_HOUR +41*TICKS_P_MIN +25.915*TICKS_P_SEC ),( 45*TICKS_P_DEG +16*TICKS_P_DEG_MIN + 49.22*TICKS_P_DEG_SEC), //  76 Deneb.     Cygnus  
-   ( 20*TICKS_P_HOUR +46*TICKS_P_MIN +12.683*TICKS_P_SEC ),( 33*TICKS_P_DEG +58*TICKS_P_DEG_MIN + 12.92*TICKS_P_DEG_SEC), //  77 53eps Cygnus  
-   ( 21*TICKS_P_HOUR +31*TICKS_P_MIN +33.534*TICKS_P_SEC ),(354*TICKS_P_DEG +25*TICKS_P_DEG_MIN + 43.78*TICKS_P_DEG_SEC), //  78 22bet Aquarius      -05 34 16.22 
-   ( 21*TICKS_P_HOUR +44*TICKS_P_MIN +11.158*TICKS_P_SEC ),(  9*TICKS_P_DEG +52*TICKS_P_DEG_MIN + 30.04*TICKS_P_DEG_SEC), //  79 8eps Pegasus  
-   ( 21*TICKS_P_HOUR +47*TICKS_P_MIN + 2.445*TICKS_P_SEC ),(343*TICKS_P_DEG +52*TICKS_P_DEG_MIN + 21.77*TICKS_P_DEG_SEC), //  80 49del Cap      -16 07 38.23 
-   ( 22*TICKS_P_HOUR + 5*TICKS_P_MIN +47.036*TICKS_P_SEC ),(359*TICKS_P_DEG +40*TICKS_P_DEG_MIN + 48.54*TICKS_P_DEG_SEC), //  81 Sadalmeli; Aquarius      -00 19 11.46 
-   ( 22*TICKS_P_HOUR +43*TICKS_P_MIN + 0.137*TICKS_P_SEC ),( 30*TICKS_P_DEG +13*TICKS_P_DEG_MIN + 16.48*TICKS_P_DEG_SEC), //  82 Matar.     Pegasus  
-   ( 23*TICKS_P_HOUR + 3*TICKS_P_MIN +46.458*TICKS_P_SEC ),( 28*TICKS_P_DEG + 4*TICKS_P_DEG_MIN + 58.04*TICKS_P_DEG_SEC), //  83 Sheat,   R Pegasus  
-   ( 23*TICKS_P_HOUR + 4*TICKS_P_MIN +45.654*TICKS_P_SEC ),( 15*TICKS_P_DEG +12*TICKS_P_DEG_MIN + 18.95*TICKS_P_DEG_SEC), //  84 Markab.  b Pegasus  
-   // Start of my own points of interest ...
-   (  0*TICKS_P_HOUR +42*TICKS_P_MIN +  44.3*TICKS_P_SEC ),( 41*TICKS_P_DEG +16*TICKS_P_DEG_MIN +   8.1*TICKS_P_DEG_SEC), //  85 >M31 Andromeda
-   (  0*TICKS_P_HOUR +52*TICKS_P_MIN +    48*TICKS_P_SEC ),( 56*TICKS_P_DEG +37*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), //  86 >CAS:Packma
-   (  2*TICKS_P_HOUR +57*TICKS_P_MIN +     8*TICKS_P_SEC ),( 60*TICKS_P_DEG +39*TICKS_P_DEG_MIN +    44*TICKS_P_DEG_SEC), //  87 >HIP13665
-   (  5*TICKS_P_HOUR +35*TICKS_P_MIN +    16*TICKS_P_SEC ),(355*TICKS_P_DEG +10*TICKS_P_DEG_MIN +    45*TICKS_P_DEG_SEC), //  88 >42 Ori Neb
-   (  5*TICKS_P_HOUR +35*TICKS_P_MIN +  22.9*TICKS_P_SEC ),(354*TICKS_P_DEG +35*TICKS_P_DEG_MIN +     2*TICKS_P_DEG_SEC), //  89 >2 Ori Neb
-   (  5*TICKS_P_HOUR +40*TICKS_P_MIN + 58.92*TICKS_P_SEC ),(357*TICKS_P_DEG +35*TICKS_P_DEG_MIN +   1.4*TICKS_P_DEG_SEC), //  90 >Horsehead Nebula
-   (  5*TICKS_P_HOUR +41*TICKS_P_MIN + 45.15*TICKS_P_SEC ),(358*TICKS_P_DEG + 8*TICKS_P_DEG_MIN +  44.7*TICKS_P_DEG_SEC), //  91 >Near Horsehead
-   (  6*TICKS_P_HOUR +31*TICKS_P_MIN + 27.38*TICKS_P_SEC ),(  4*TICKS_P_DEG +56*TICKS_P_DEG_MIN +  11.8*TICKS_P_DEG_SEC), //  92 >Rosett Neb
-   (  7*TICKS_P_HOUR + 4*TICKS_P_MIN + 52.48*TICKS_P_SEC ),(349*TICKS_P_DEG +29*TICKS_P_DEG_MIN +  3.52*TICKS_P_DEG_SEC), //  93 >Sirius Nebula
-   ( 11*TICKS_P_HOUR +18*TICKS_P_MIN +    54*TICKS_P_SEC ),( 13*TICKS_P_DEG + 5*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), //  94 >M65 Galaxy
-   ( 11*TICKS_P_HOUR +20*TICKS_P_MIN +    12*TICKS_P_SEC ),( 12*TICKS_P_DEG +59*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), //  95 >M66 Galaxy
-   ( 11*TICKS_P_HOUR +20*TICKS_P_MIN +    18*TICKS_P_SEC ),( 13*TICKS_P_DEG +36*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), //  96 >NGC3628 Gxy
-   ( 12*TICKS_P_HOUR +50*TICKS_P_MIN +  53.6*TICKS_P_SEC ),( 41*TICKS_P_DEG + 7*TICKS_P_DEG_MIN + 15.52*TICKS_P_DEG_SEC), //  97 >M94
-   ( 13*TICKS_P_HOUR + 0*TICKS_P_MIN +     8*TICKS_P_SEC ),( 27*TICKS_P_DEG +58*TICKS_P_DEG_MIN +  37.6*TICKS_P_DEG_SEC), //  98 >ManyGxy
-   ( 13*TICKS_P_HOUR +29*TICKS_P_MIN +    54*TICKS_P_SEC ),( 47*TICKS_P_DEG +12*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), //  99 >M54
-   ( 13*TICKS_P_HOUR +30*TICKS_P_MIN +     0*TICKS_P_SEC ),( 47*TICKS_P_DEG +16*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), // 100 >M51
-   ( 14*TICKS_P_HOUR + 3*TICKS_P_MIN +  13.4*TICKS_P_SEC ),( 54*TICKS_P_DEG +20*TICKS_P_DEG_MIN +    57*TICKS_P_DEG_SEC), // 101 >M101
-   ( 18*TICKS_P_HOUR +18*TICKS_P_MIN +  52.7*TICKS_P_SEC ),(346*TICKS_P_DEG +10*TICKS_P_DEG_MIN +    17*TICKS_P_DEG_SEC), // 102 >Eagle Nebula
-   ( 19*TICKS_P_HOUR +43*TICKS_P_MIN + 10.83*TICKS_P_SEC ),( 23*TICKS_P_DEG +17*TICKS_P_DEG_MIN +  45.7*TICKS_P_DEG_SEC), // 103 >Vulpec Nebula
-   ( 19*TICKS_P_HOUR +59*TICKS_P_MIN +    36*TICKS_P_SEC ),( 22*TICKS_P_DEG +43*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), // 104 >Dumbbell Nebula
-   ( 20*TICKS_P_HOUR +26*TICKS_P_MIN +  4.32*TICKS_P_SEC ),( 40*TICKS_P_DEG +23*TICKS_P_DEG_MIN +  41.2*TICKS_P_DEG_SEC), // 105 >CygnusNeb2
-   ( 20*TICKS_P_HOUR +51*TICKS_P_MIN +    15*TICKS_P_SEC ),( 44*TICKS_P_DEG +25*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), // 106 >CygnusNeb3
-   ( 20*TICKS_P_HOUR +59*TICKS_P_MIN +  31.8*TICKS_P_SEC ),( 43*TICKS_P_DEG +57*TICKS_P_DEG_MIN +    57*TICKS_P_DEG_SEC), // 107 >CygnusNeb4
+   (  0*TICKS_P_HOUR +42*TICKS_P_MIN +  44.3*TICKS_P_SEC ),( 41*TICKS_P_DEG +16*TICKS_P_DEG_MIN +   8.1*TICKS_P_DEG_SEC), //   2 >M31 Andromeda
+   (  0*TICKS_P_HOUR +43*TICKS_P_MIN +35.371*TICKS_P_SEC ),(342*TICKS_P_DEG + 0*TICKS_P_DEG_MIN + 48.22*TICKS_P_DEG_SEC), //   3 16bet Cetus      -17 59 11.78 
+   (  0*TICKS_P_HOUR +52*TICKS_P_MIN +    48*TICKS_P_SEC ),( 56*TICKS_P_DEG +37*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), //   4 >CAS:Packma
+   (  1*TICKS_P_HOUR + 9*TICKS_P_MIN +43.924*TICKS_P_SEC ),( 35*TICKS_P_DEG +37*TICKS_P_DEG_MIN + 14.01*TICKS_P_DEG_SEC), //   5 Mirach.  r Andromeda  
+   (  1*TICKS_P_HOUR +54*TICKS_P_MIN +38.409*TICKS_P_SEC ),( 20*TICKS_P_DEG +48*TICKS_P_DEG_MIN + 28.93*TICKS_P_DEG_SEC), //   6 6bet Aries  
+   (  2*TICKS_P_HOUR + 3*TICKS_P_MIN +53.953*TICKS_P_SEC ),( 42*TICKS_P_DEG +19*TICKS_P_DEG_MIN + 47.01*TICKS_P_DEG_SEC), //   7 Almaak,  r Andromeda  
+   (  2*TICKS_P_HOUR + 7*TICKS_P_MIN +10.407*TICKS_P_SEC ),( 23*TICKS_P_DEG +27*TICKS_P_DEG_MIN + 44.72*TICKS_P_DEG_SEC), //   8 Hamal.     Aries  
+   (  2*TICKS_P_HOUR +57*TICKS_P_MIN +     8*TICKS_P_SEC ),( 60*TICKS_P_DEG +39*TICKS_P_DEG_MIN +    44*TICKS_P_DEG_SEC), //   9 >HIP13665
+   (  3*TICKS_P_HOUR + 2*TICKS_P_MIN +16.772*TICKS_P_SEC ),(  4*TICKS_P_DEG + 5*TICKS_P_DEG_MIN + 23.04*TICKS_P_DEG_SEC), //  10 Menkar.  R Cetus  
+   (  3*TICKS_P_HOUR + 8*TICKS_P_MIN +10.132*TICKS_P_SEC ),( 40*TICKS_P_DEG +57*TICKS_P_DEG_MIN + 20.33*TICKS_P_DEG_SEC), //  11 Algol.     Perceus  
+   (  3*TICKS_P_HOUR +24*TICKS_P_MIN + 19.37*TICKS_P_SEC ),( 49*TICKS_P_DEG +51*TICKS_P_DEG_MIN + 40.25*TICKS_P_DEG_SEC), //  12 Mirphak,   Perceus  
+   (  3*TICKS_P_HOUR +47*TICKS_P_MIN +29.077*TICKS_P_SEC ),( 24*TICKS_P_DEG + 6*TICKS_P_DEG_MIN + 18.49*TICKS_P_DEG_SEC), //  13 Alcyone. b Taurus  
+   (  3*TICKS_P_HOUR +54*TICKS_P_MIN + 7.922*TICKS_P_SEC ),( 31*TICKS_P_DEG +53*TICKS_P_DEG_MIN +  1.09*TICKS_P_DEG_SEC), //  14 44zet Perceus  
+   (  3*TICKS_P_HOUR +57*TICKS_P_MIN +51.231*TICKS_P_SEC ),( 40*TICKS_P_DEG + 0*TICKS_P_DEG_MIN + 36.77*TICKS_P_DEG_SEC), //  15 45eps Perceus  
+   (  3*TICKS_P_HOUR +58*TICKS_P_MIN + 1.766*TICKS_P_SEC ),(346*TICKS_P_DEG +29*TICKS_P_DEG_MIN + 29.35*TICKS_P_DEG_SEC), //  16 Zaurac.  r Eridanus      -13 30 30.65 
+   (  4*TICKS_P_HOUR +35*TICKS_P_MIN +55.239*TICKS_P_SEC ),( 16*TICKS_P_DEG +30*TICKS_P_DEG_MIN + 33.48*TICKS_P_DEG_SEC), //  17 Aldebara.r Taurus  
+   (  4*TICKS_P_HOUR +56*TICKS_P_MIN +59.619*TICKS_P_SEC ),( 33*TICKS_P_DEG + 9*TICKS_P_DEG_MIN + 57.92*TICKS_P_DEG_SEC), //  18 3iot Auriga  
+   (  5*TICKS_P_HOUR + 7*TICKS_P_MIN +50.985*TICKS_P_SEC ),(354*TICKS_P_DEG +54*TICKS_P_DEG_MIN + 48.79*TICKS_P_DEG_SEC), //  19 Cursa.     Eridanus      -05 05 11.21 
+   (  5*TICKS_P_HOUR +14*TICKS_P_MIN +32.272*TICKS_P_SEC ),(351*TICKS_P_DEG +47*TICKS_P_DEG_MIN + 54.09*TICKS_P_DEG_SEC), //  20 Rigel.     Orion      -08 12 05.91 
+   (  5*TICKS_P_HOUR +16*TICKS_P_MIN +41.359*TICKS_P_SEC ),( 45*TICKS_P_DEG +59*TICKS_P_DEG_MIN + 52.77*TICKS_P_DEG_SEC), //  21 Capella,   Auriga  
+   (  5*TICKS_P_HOUR +25*TICKS_P_MIN + 7.863*TICKS_P_SEC ),(  6*TICKS_P_DEG +20*TICKS_P_DEG_MIN + 58.93*TICKS_P_DEG_SEC), //  22 BellatrixB Orion  
+   (  5*TICKS_P_HOUR +26*TICKS_P_MIN +17.513*TICKS_P_SEC ),( 28*TICKS_P_DEG +36*TICKS_P_DEG_MIN + 26.82*TICKS_P_DEG_SEC), //  23 112bet Taurus  
+   (  5*TICKS_P_HOUR +32*TICKS_P_MIN + 0.398*TICKS_P_SEC ),(359*TICKS_P_DEG +42*TICKS_P_DEG_MIN +  3.31*TICKS_P_DEG_SEC), //  24 Mintaka. b Orion      -00 17 56.69 
+   (  5*TICKS_P_HOUR +32*TICKS_P_MIN +43.816*TICKS_P_SEC ),(342*TICKS_P_DEG +10*TICKS_P_DEG_MIN + 39.76*TICKS_P_DEG_SEC), //  25 11alp Lep      -17 49 20.24 
+   (  5*TICKS_P_HOUR +35*TICKS_P_MIN +    16*TICKS_P_SEC ),(355*TICKS_P_DEG +10*TICKS_P_DEG_MIN +    45*TICKS_P_DEG_SEC), //  26 >42 Ori Neb
+   (  5*TICKS_P_HOUR +35*TICKS_P_MIN +  22.9*TICKS_P_SEC ),(354*TICKS_P_DEG +35*TICKS_P_DEG_MIN +     2*TICKS_P_DEG_SEC), //  27 >2 Ori Neb
+   (  5*TICKS_P_HOUR +35*TICKS_P_MIN +25.983*TICKS_P_SEC ),(354*TICKS_P_DEG + 5*TICKS_P_DEG_MIN + 24.36*TICKS_P_DEG_SEC), //  28 44iot Orion      -05 54 35.64 
+   (  5*TICKS_P_HOUR +36*TICKS_P_MIN +12.813*TICKS_P_SEC ),(358*TICKS_P_DEG +47*TICKS_P_DEG_MIN + 53.09*TICKS_P_DEG_SEC), //  29 Alnilam  B Orion      -01 12 06.91 
+   (  5*TICKS_P_HOUR +37*TICKS_P_MIN +38.686*TICKS_P_SEC ),( 21*TICKS_P_DEG + 8*TICKS_P_DEG_MIN + 33.18*TICKS_P_DEG_SEC), //  30 123zet Taurus  
+   (  5*TICKS_P_HOUR +40*TICKS_P_MIN +45.527*TICKS_P_SEC ),(358*TICKS_P_DEG + 3*TICKS_P_DEG_MIN + 26.74*TICKS_P_DEG_SEC), //  31 Alnitak  B Orion      -01 56 33.26 
+   (  5*TICKS_P_HOUR +40*TICKS_P_MIN + 58.92*TICKS_P_SEC ),(357*TICKS_P_DEG +35*TICKS_P_DEG_MIN +   1.4*TICKS_P_DEG_SEC), //  32 >Horsehead Nebula
+   (  5*TICKS_P_HOUR +41*TICKS_P_MIN + 45.15*TICKS_P_SEC ),(358*TICKS_P_DEG + 8*TICKS_P_DEG_MIN +  44.7*TICKS_P_DEG_SEC), //  33 >Near Horsehead
+   (  5*TICKS_P_HOUR +47*TICKS_P_MIN +45.389*TICKS_P_SEC ),(350*TICKS_P_DEG +19*TICKS_P_DEG_MIN + 49.42*TICKS_P_DEG_SEC), //  34 Ori      B Orion      -09 40 10.58 
+   (  5*TICKS_P_HOUR +55*TICKS_P_MIN +10.305*TICKS_P_SEC ),(  7*TICKS_P_DEG +24*TICKS_P_DEG_MIN + 25.43*TICKS_P_DEG_SEC), //  35 BetelgeusR Orion  
+   (  5*TICKS_P_HOUR +59*TICKS_P_MIN +31.723*TICKS_P_SEC ),( 44*TICKS_P_DEG +56*TICKS_P_DEG_MIN + 50.76*TICKS_P_DEG_SEC), //  36 34bet Auriga  
+   (  5*TICKS_P_HOUR +59*TICKS_P_MIN +43.269*TICKS_P_SEC ),( 37*TICKS_P_DEG +12*TICKS_P_DEG_MIN + 45.31*TICKS_P_DEG_SEC), //  37 37the Auriga  
+   (  6*TICKS_P_HOUR +22*TICKS_P_MIN +41.985*TICKS_P_SEC ),(342*TICKS_P_DEG + 2*TICKS_P_DEG_MIN +  38.7*TICKS_P_DEG_SEC), //  38 2bet Canis Major      -17 57 21.30 
+   (  6*TICKS_P_HOUR +22*TICKS_P_MIN +57.627*TICKS_P_SEC ),( 22*TICKS_P_DEG +30*TICKS_P_DEG_MIN + 48.91*TICKS_P_DEG_SEC), //  39 13mu Gemini  
+   (  6*TICKS_P_HOUR +31*TICKS_P_MIN + 27.38*TICKS_P_SEC ),(  4*TICKS_P_DEG +56*TICKS_P_DEG_MIN +  11.8*TICKS_P_DEG_SEC), //  40 >Rosett Neb
+   (  6*TICKS_P_HOUR +37*TICKS_P_MIN +42.701*TICKS_P_SEC ),( 16*TICKS_P_DEG +23*TICKS_P_DEG_MIN + 57.31*TICKS_P_DEG_SEC), //  41 24gam Gemini  
+   (  6*TICKS_P_HOUR +45*TICKS_P_MIN + 8.917*TICKS_P_SEC ),(343*TICKS_P_DEG +17*TICKS_P_DEG_MIN +  1.98*TICKS_P_DEG_SEC), //  42 Sirius   b Canis Major      -16 42 58.02 
+   (  7*TICKS_P_HOUR + 4*TICKS_P_MIN + 52.48*TICKS_P_SEC ),(349*TICKS_P_DEG +29*TICKS_P_DEG_MIN +  3.52*TICKS_P_DEG_SEC), //  43 >Sirius Nebula
+   (  7*TICKS_P_HOUR +27*TICKS_P_MIN + 9.043*TICKS_P_SEC ),(  8*TICKS_P_DEG +17*TICKS_P_DEG_MIN + 21.54*TICKS_P_DEG_SEC), //  44 3bet Canis Minor  
+   (  7*TICKS_P_HOUR +34*TICKS_P_MIN +35.863*TICKS_P_SEC ),( 31*TICKS_P_DEG +53*TICKS_P_DEG_MIN + 17.79*TICKS_P_DEG_SEC), //  45 Castor     Gemini  
+   (  7*TICKS_P_HOUR +34*TICKS_P_MIN +  36.1*TICKS_P_SEC ),( 31*TICKS_P_DEG +53*TICKS_P_DEG_MIN + 18.57*TICKS_P_DEG_SEC), //  46 Castor     Gemini  
+   (  7*TICKS_P_HOUR +39*TICKS_P_MIN +18.118*TICKS_P_SEC ),(  5*TICKS_P_DEG +13*TICKS_P_DEG_MIN + 29.98*TICKS_P_DEG_SEC), //  47 Procyon    Canis Minor  
+   (  7*TICKS_P_HOUR +45*TICKS_P_MIN + 18.95*TICKS_P_SEC ),( 28*TICKS_P_DEG + 1*TICKS_P_DEG_MIN + 34.32*TICKS_P_DEG_SEC), //  48 Pollux     Gemini  
+   (  9*TICKS_P_HOUR +27*TICKS_P_MIN +35.243*TICKS_P_SEC ),(351*TICKS_P_DEG +20*TICKS_P_DEG_MIN + 29.03*TICKS_P_DEG_SEC), //  49 Alphard  r Hydra      -08 39 30.97 
+   (  9*TICKS_P_HOUR +45*TICKS_P_MIN +51.073*TICKS_P_SEC ),( 23*TICKS_P_DEG +46*TICKS_P_DEG_MIN + 27.32*TICKS_P_DEG_SEC), //  50 17eps Leo  
+   ( 10*TICKS_P_HOUR + 8*TICKS_P_MIN +22.311*TICKS_P_SEC ),( 11*TICKS_P_DEG +58*TICKS_P_DEG_MIN +  1.94*TICKS_P_DEG_SEC), //  51 Regulus  B Leo  
+   ( 10*TICKS_P_HOUR +19*TICKS_P_MIN +58.355*TICKS_P_SEC ),( 19*TICKS_P_DEG +50*TICKS_P_DEG_MIN + 29.36*TICKS_P_DEG_SEC), //  52 Algieba.   Leo  
+   ( 11*TICKS_P_HOUR + 9*TICKS_P_MIN +39.808*TICKS_P_SEC ),( 44*TICKS_P_DEG +29*TICKS_P_DEG_MIN + 54.55*TICKS_P_DEG_SEC), //  53 52psi Ursa Major  
+   ( 11*TICKS_P_HOUR +14*TICKS_P_MIN + 6.501*TICKS_P_SEC ),( 20*TICKS_P_DEG +31*TICKS_P_DEG_MIN + 25.38*TICKS_P_DEG_SEC), //  54 Zosma.     Leo  
+   ( 11*TICKS_P_HOUR +18*TICKS_P_MIN +    54*TICKS_P_SEC ),( 13*TICKS_P_DEG + 5*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), //  55 >M65 Galaxy
+   ( 11*TICKS_P_HOUR +20*TICKS_P_MIN +    12*TICKS_P_SEC ),( 12*TICKS_P_DEG +59*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), //  56 >M66 Galaxy
+   ( 11*TICKS_P_HOUR +20*TICKS_P_MIN +    18*TICKS_P_SEC ),( 13*TICKS_P_DEG +36*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), //  57 >NGC3628 Gxy
+   ( 11*TICKS_P_HOUR +49*TICKS_P_MIN + 3.578*TICKS_P_SEC ),( 14*TICKS_P_DEG +34*TICKS_P_DEG_MIN + 19.42*TICKS_P_DEG_SEC), //  58 Denebola.  Leo  
+   ( 12*TICKS_P_HOUR +15*TICKS_P_MIN + 48.37*TICKS_P_SEC ),(342*TICKS_P_DEG +27*TICKS_P_DEG_MIN + 29.05*TICKS_P_DEG_SEC), //  59 4gam Crv      -17 32 30.95 
+   ( 12*TICKS_P_HOUR +29*TICKS_P_MIN +51.855*TICKS_P_SEC ),(343*TICKS_P_DEG +29*TICKS_P_DEG_MIN +  4.44*TICKS_P_DEG_SEC), //  60 7del Crv      -16 30 55.56 
+   ( 12*TICKS_P_HOUR +41*TICKS_P_MIN +39.642*TICKS_P_SEC ),(358*TICKS_P_DEG +33*TICKS_P_DEG_MIN +  2.25*TICKS_P_DEG_SEC), //  61 29gam Virgo      -01 26 57.75 
+   ( 12*TICKS_P_HOUR +50*TICKS_P_MIN +  53.6*TICKS_P_SEC ),( 41*TICKS_P_DEG + 7*TICKS_P_DEG_MIN + 15.52*TICKS_P_DEG_SEC), //  62 >M94
+   ( 12*TICKS_P_HOUR +56*TICKS_P_MIN + 1.667*TICKS_P_SEC ),( 38*TICKS_P_DEG +19*TICKS_P_DEG_MIN +  6.17*TICKS_P_DEG_SEC), //  63 12alp2 CVn  
+   ( 13*TICKS_P_HOUR + 0*TICKS_P_MIN +     8*TICKS_P_SEC ),( 27*TICKS_P_DEG +58*TICKS_P_DEG_MIN +  37.6*TICKS_P_DEG_SEC), //  64 >ManyGxy
+   ( 13*TICKS_P_HOUR + 2*TICKS_P_MIN +10.597*TICKS_P_SEC ),( 10*TICKS_P_DEG +57*TICKS_P_DEG_MIN + 32.94*TICKS_P_DEG_SEC), //  65 Vindemiat; Virgo  
+   ( 13*TICKS_P_HOUR +25*TICKS_P_MIN +11.579*TICKS_P_SEC ),(348*TICKS_P_DEG +50*TICKS_P_DEG_MIN + 19.24*TICKS_P_DEG_SEC), //  66 Spica.   b Virgo      -11 09 40.76 
+   ( 13*TICKS_P_HOUR +29*TICKS_P_MIN +    54*TICKS_P_SEC ),( 47*TICKS_P_DEG +12*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), //  67 >M54
+   ( 13*TICKS_P_HOUR +30*TICKS_P_MIN +     0*TICKS_P_SEC ),( 47*TICKS_P_DEG +16*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), //  68 >M51
+   ( 13*TICKS_P_HOUR +47*TICKS_P_MIN +32.438*TICKS_P_SEC ),( 49*TICKS_P_DEG +18*TICKS_P_DEG_MIN + 47.75*TICKS_P_DEG_SEC), //  69 Alkaid.  b Ursa Major  
+   ( 13*TICKS_P_HOUR +54*TICKS_P_MIN +41.079*TICKS_P_SEC ),( 18*TICKS_P_DEG +23*TICKS_P_DEG_MIN + 51.78*TICKS_P_DEG_SEC), //  70 8eta Boothes  
+   ( 14*TICKS_P_HOUR + 3*TICKS_P_MIN +  13.4*TICKS_P_SEC ),( 54*TICKS_P_DEG +20*TICKS_P_DEG_MIN +    57*TICKS_P_DEG_SEC), //  71 >M101
+   ( 14*TICKS_P_HOUR +15*TICKS_P_MIN +39.672*TICKS_P_SEC ),( 19*TICKS_P_DEG +10*TICKS_P_DEG_MIN + 56.69*TICKS_P_DEG_SEC), //  72 Arcturus.r Boothes  
+   ( 14*TICKS_P_HOUR +44*TICKS_P_MIN +59.218*TICKS_P_SEC ),( 27*TICKS_P_DEG + 4*TICKS_P_DEG_MIN +  27.2*TICKS_P_DEG_SEC), //  73 36eps Boothes  
+   ( 14*TICKS_P_HOUR +50*TICKS_P_MIN +52.713*TICKS_P_SEC ),(343*TICKS_P_DEG +57*TICKS_P_DEG_MIN +  29.6*TICKS_P_DEG_SEC), //  74 9alp2 Lib      -16 02 30.40 
+   ( 15*TICKS_P_HOUR +17*TICKS_P_MIN + 0.415*TICKS_P_SEC ),(350*TICKS_P_DEG +37*TICKS_P_DEG_MIN +   1.5*TICKS_P_DEG_SEC), //  75 27bet Lib      -09 22 58.50 
+   ( 15*TICKS_P_HOUR +34*TICKS_P_MIN +41.268*TICKS_P_SEC ),( 26*TICKS_P_DEG +42*TICKS_P_DEG_MIN + 52.89*TICKS_P_DEG_SEC), //  76 5alp CrB  
+   ( 15*TICKS_P_HOUR +44*TICKS_P_MIN +16.075*TICKS_P_SEC ),(  6*TICKS_P_DEG +25*TICKS_P_DEG_MIN + 32.26*TICKS_P_DEG_SEC), //  77 Unukalhai. Serpens Caput  
+   ( 16*TICKS_P_HOUR + 5*TICKS_P_MIN +26.231*TICKS_P_SEC ),(340*TICKS_P_DEG +11*TICKS_P_DEG_MIN + 40.37*TICKS_P_DEG_SEC), //  78 8bet1 Sco      -19 48 19.63 
+   ( 16*TICKS_P_HOUR +14*TICKS_P_MIN + 20.74*TICKS_P_SEC ),(356*TICKS_P_DEG +18*TICKS_P_DEG_MIN + 20.44*TICKS_P_DEG_SEC), //  79 1del Ophiuchus      -03 41 39.56 
+   ( 16*TICKS_P_HOUR +30*TICKS_P_MIN +  13.2*TICKS_P_SEC ),( 21*TICKS_P_DEG +29*TICKS_P_DEG_MIN + 22.61*TICKS_P_DEG_SEC), //  80 27bet Her  
+   ( 16*TICKS_P_HOUR +37*TICKS_P_MIN + 9.538*TICKS_P_SEC ),(349*TICKS_P_DEG +25*TICKS_P_DEG_MIN + 58.48*TICKS_P_DEG_SEC), //  81 13zet Ophiuchus      -10 34 01.52 
+   ( 16*TICKS_P_HOUR +41*TICKS_P_MIN + 17.16*TICKS_P_SEC ),( 31*TICKS_P_DEG +36*TICKS_P_DEG_MIN +  9.81*TICKS_P_DEG_SEC), //  82 40zet Her  
+   ( 17*TICKS_P_HOUR +10*TICKS_P_MIN +22.687*TICKS_P_SEC ),(344*TICKS_P_DEG +16*TICKS_P_DEG_MIN + 30.32*TICKS_P_DEG_SEC), //  83 35eta Ophiuchus      -15 43 29.68 
+   ( 17*TICKS_P_HOUR +14*TICKS_P_MIN +38.858*TICKS_P_SEC ),( 14*TICKS_P_DEG +23*TICKS_P_DEG_MIN +  25.2*TICKS_P_DEG_SEC), //  84 64alp1 Her  
+   ( 17*TICKS_P_HOUR +34*TICKS_P_MIN +56.071*TICKS_P_SEC ),( 12*TICKS_P_DEG +33*TICKS_P_DEG_MIN + 36.12*TICKS_P_DEG_SEC), //  85 Rasalhague Ophiuchus  
+   ( 17*TICKS_P_HOUR +43*TICKS_P_MIN +28.353*TICKS_P_SEC ),(  4*TICKS_P_DEG +34*TICKS_P_DEG_MIN +  2.29*TICKS_P_DEG_SEC), //  86 Cebalrai   Ophiuchus  
+   ( 18*TICKS_P_HOUR +18*TICKS_P_MIN +  52.7*TICKS_P_SEC ),(346*TICKS_P_DEG +10*TICKS_P_DEG_MIN +    17*TICKS_P_DEG_SEC), //  87 >Eagle Nebula
+   ( 18*TICKS_P_HOUR +36*TICKS_P_MIN +56.336*TICKS_P_SEC ),( 38*TICKS_P_DEG +47*TICKS_P_DEG_MIN +  1.29*TICKS_P_DEG_SEC), //  88 Vega.    b Lyra  
+   ( 19*TICKS_P_HOUR + 5*TICKS_P_MIN +24.608*TICKS_P_SEC ),( 13*TICKS_P_DEG +51*TICKS_P_DEG_MIN + 48.52*TICKS_P_DEG_SEC), //  89 17zet Aquila  
+   ( 19*TICKS_P_HOUR +43*TICKS_P_MIN + 10.83*TICKS_P_SEC ),( 23*TICKS_P_DEG +17*TICKS_P_DEG_MIN +  45.7*TICKS_P_DEG_SEC), //  90 >Vulpec Nebula
+   ( 19*TICKS_P_HOUR +44*TICKS_P_MIN +58.478*TICKS_P_SEC ),( 45*TICKS_P_DEG + 7*TICKS_P_DEG_MIN + 50.91*TICKS_P_DEG_SEC), //  91 18del Cygnus  
+   ( 19*TICKS_P_HOUR +46*TICKS_P_MIN + 15.58*TICKS_P_SEC ),( 10*TICKS_P_DEG +36*TICKS_P_DEG_MIN + 47.74*TICKS_P_DEG_SEC), //  92 Tarazed. r Aquila  
+   ( 19*TICKS_P_HOUR +50*TICKS_P_MIN +46.999*TICKS_P_SEC ),(  8*TICKS_P_DEG +52*TICKS_P_DEG_MIN +  5.96*TICKS_P_DEG_SEC), //  93 Altair.    Aquila  
+   ( 19*TICKS_P_HOUR +59*TICKS_P_MIN +    36*TICKS_P_SEC ),( 22*TICKS_P_DEG +43*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), //  94 >Dumbbell Nebula
+   ( 20*TICKS_P_HOUR +22*TICKS_P_MIN +13.702*TICKS_P_SEC ),( 40*TICKS_P_DEG +15*TICKS_P_DEG_MIN + 24.04*TICKS_P_DEG_SEC), //  95 37gam Cygnus  
+   ( 20*TICKS_P_HOUR +26*TICKS_P_MIN +  4.32*TICKS_P_SEC ),( 40*TICKS_P_DEG +23*TICKS_P_DEG_MIN +  41.2*TICKS_P_DEG_SEC), //  96 >CygnusNeb2
+   ( 20*TICKS_P_HOUR +41*TICKS_P_MIN +25.915*TICKS_P_SEC ),( 45*TICKS_P_DEG +16*TICKS_P_DEG_MIN + 49.22*TICKS_P_DEG_SEC), //  97 Deneb.     Cygnus  
+   ( 20*TICKS_P_HOUR +46*TICKS_P_MIN +12.683*TICKS_P_SEC ),( 33*TICKS_P_DEG +58*TICKS_P_DEG_MIN + 12.92*TICKS_P_DEG_SEC), //  98 53eps Cygnus  
+   ( 20*TICKS_P_HOUR +51*TICKS_P_MIN +    15*TICKS_P_SEC ),( 44*TICKS_P_DEG +25*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), //  99 >CygnusNeb3
+   ( 20*TICKS_P_HOUR +59*TICKS_P_MIN +  31.8*TICKS_P_SEC ),( 43*TICKS_P_DEG +57*TICKS_P_DEG_MIN +    57*TICKS_P_DEG_SEC), // 100 >CygnusNeb4
+   ( 21*TICKS_P_HOUR +31*TICKS_P_MIN +33.534*TICKS_P_SEC ),(354*TICKS_P_DEG +25*TICKS_P_DEG_MIN + 43.78*TICKS_P_DEG_SEC), // 101 22bet Aquarius      -05 34 16.22 
+   ( 21*TICKS_P_HOUR +44*TICKS_P_MIN +11.158*TICKS_P_SEC ),(  9*TICKS_P_DEG +52*TICKS_P_DEG_MIN + 30.04*TICKS_P_DEG_SEC), // 102 8eps Pegasus  
+   ( 21*TICKS_P_HOUR +47*TICKS_P_MIN + 2.445*TICKS_P_SEC ),(343*TICKS_P_DEG +52*TICKS_P_DEG_MIN + 21.77*TICKS_P_DEG_SEC), // 103 49del Cap      -16 07 38.23 
+   ( 22*TICKS_P_HOUR + 5*TICKS_P_MIN +47.036*TICKS_P_SEC ),(359*TICKS_P_DEG +40*TICKS_P_DEG_MIN + 48.54*TICKS_P_DEG_SEC), // 104 Sadalmeli; Aquarius      -00 19 11.46 
+   ( 22*TICKS_P_HOUR +43*TICKS_P_MIN + 0.137*TICKS_P_SEC ),( 30*TICKS_P_DEG +13*TICKS_P_DEG_MIN + 16.48*TICKS_P_DEG_SEC), // 105 Matar.     Pegasus  
+   ( 23*TICKS_P_HOUR + 3*TICKS_P_MIN +46.458*TICKS_P_SEC ),( 28*TICKS_P_DEG + 4*TICKS_P_DEG_MIN + 58.04*TICKS_P_DEG_SEC), // 106 Sheat,   R Pegasus  
+   ( 23*TICKS_P_HOUR + 4*TICKS_P_MIN +45.654*TICKS_P_SEC ),( 15*TICKS_P_DEG +12*TICKS_P_DEG_MIN + 18.95*TICKS_P_DEG_SEC), // 107 Markab.  b Pegasus  
    0,0  // origin and Null terminator
    };   // This table uses 872 bytes...
 #endif
 #define STAR_NAME_LEN 12
-#define STAR_NAME_COUNT 67
+#define STAR_NAME_COUNT 69
 #define STAR_NAME_CODES  2
 #define CONSTEL_NAME_LEN 13
-#define CONSTEL_NAME_COUNT 23
+#define CONSTEL_NAME_COUNT 24
 #define CONSTEL_NAME_CODES 1 
 #define STARS_COORD_TOTAL 109
 #define STARS_COORD_ALIGN 85
