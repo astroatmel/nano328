@@ -75,14 +75,26 @@ PROGMEM const char linetxt[]="                "        //  0:
                              "Use Up/Down     "        // 25: 
                              "To Step         "        // 26:
                              "To change rate  "        // 27:
+                             "Status Page...  "        // 28:
+                             "Aligned:\242y\012     "        // 29:
+                             "In Goto:\242y\013     "        // 30:
+                             "Moz Err:\242e\014     "        // 31:
+                             "Pos Err:\242e\015     "        // 32:
+                             "Latency:\242E\016     "        // 33:  // show Time since last position update
+                             "Time-Out:\242e\011    "        // 34:
+                             "                "        // 35:    
+                             "                "        // __:
+                             "                "        // __:
+                             "                "        // __:
+                             "                "        // __:
 
                              "Camera Driver   "  //  always last to make sure all are 16 bytes wide... the \xxx makes it a bit difficult
 ;
 
-//                                              M  T  S  .  M  M  M  M  M  M  M  M  S  S  S
-// States:                             0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20
-PROGMEM const unsigned char line1[] = {28,3 ,4 ,6 ,7 ,22,0 ,9 ,9 ,8 ,8 ,17,20,19,0 ,23,25,24,25,0 ,0  };   // what string to display on line 1 for each states
-PROGMEM const unsigned char line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,11,12,0 ,21,0 ,0 ,0 ,26,0 ,27,0 ,0  };   // what string to display on line 2 for each states
+//                                              M  T  S  D  M  M  M  M  M  M  M  M  S  S  S
+// States:                             0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
+PROGMEM const unsigned char line1[] = {40,3 ,4 ,6 ,7 ,22,28,9 ,9 ,8 ,8 ,17,20,19,0 ,23,25,24,25,0 ,0 ,29,31,33,0 ,0 ,0 ,0 ,0 ,0 ,0  };   // what string to display on line 1 for each states
+PROGMEM const unsigned char line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,11,12,0 ,21,0 ,0 ,0 ,26,0 ,27,0 ,0 ,30,32,34,0 ,0 ,0 ,0 ,0 ,0 ,0  };   // what string to display on line 2 for each states
 
 short d_state;   // main state machine that controls what to display
 #define BT_LONG  1000            // a long push is 1 sec (1000 ticks)
@@ -90,13 +102,13 @@ volatile unsigned char  button,button_sp,button_lp;   // Current button and real
 unsigned char  button_last;   // Prevous button
 
 PROGMEM const char main_state_machine[]= {0,// ENTER  UNDO   UP     DOWN             // -1 means no action    -2 means edit ?
-                                               1     ,1     ,1     ,1                // State:  0  welcome message, any key to go to state 1
-                                              ,-1    ,-1    ,5     ,2                // State:  1  Show current telescope position {e} 
-                                              ,-1    ,-1    ,1     ,3                // State:  2  Show current telescope position {e} in hour min sec
-                                              ,7     ,-1    ,2     ,4                // State:  3  Mozaic Menu
-                                              ,-1    ,-1    ,3     ,5                // State:  4  Timelaps pictures Menu
-                                              ,15    ,-1    ,4     ,1                // State:  5  Motor Test
-                                              ,-1    ,-1    ,-1    ,-1               // State:  6  Spare
+                                               1     ,-1    ,6     ,1                // State:  0  welcome message, any key to go to state 1
+                                              ,-1    ,0     ,6     ,2                // State:  1  Show current telescope position {e} 
+                                              ,-1    ,0     ,1     ,3                // State:  2  Show current telescope position {e} in hour min sec
+                                              ,7     ,0     ,2     ,4                // State:  3  Mozaic Menu
+                                              ,-1    ,0     ,3     ,5                // State:  4  Timelaps pictures Menu
+                                              ,15    ,0     ,4     ,6                // State:  5  Motor Test
+                                              ,21    ,0     ,5     ,1                // State:  6  Debug & Status
                                               ,8     ,3     ,11    ,9                // State:  7  Mozaic > Current Exposure Time  
                                               ,7     ,7     ,-2    ,-2               // State:  8  Mozaic > Set Exposure Time  
                                               ,10    ,3     ,7     ,11               // State:  9  Mozaic > Current Total span     
@@ -110,6 +122,12 @@ PROGMEM const char main_state_machine[]= {0,// ENTER  UNDO   UP     DOWN        
                                               ,18    ,5     ,15    ,15               // State: 17  Motor  > Ramp up/down
                                               ,-1    ,17    ,-1    ,-1               // State: 18  Motor  > Use Up/Down to Change rate...
                                               ,-1    ,-1    ,-1    ,-1               // State: __  
+                                              ,-1    ,-1    ,-1    ,-1               // State: __  
+                                              ,-1    ,6     ,23    ,22               // State: 21  Debug  >
+                                              ,-1    ,6     ,21    ,23               // State: 22  Debug  > 
+                                              ,-1    ,6     ,22    ,21               // State: 23  Debug  > 
+                                              ,-1    ,-1    ,-1    ,-1               // State: 24  Debug  > 
+                                              ,-1    ,-1    ,-1    ,-1               // State: 25  Debug  > 
                                               ,-1    ,-1    ,-1    ,-1               // State: __  
                                               ,-1    ,-1    ,-1    ,-1               // State: __  
                                          };
@@ -181,7 +199,9 @@ else if (val>=max*10)
 else
    {
    if ( nnn ) val = -val;
-   for ( iii=digit-1 ; val>0 ; val /= 10 ) buf[iii--] = val%10 + '0';
+   iii=digit-1;
+   if  ( val == 0 )            buf[iii--] = '0';  
+   for ( ; val>0 ; val /= 10 ) buf[iii--] = val%10 + '0';
    if ( iii < 0 ) return; // no space left
    if ( lead )
       {
@@ -197,6 +217,109 @@ else
    }
 }
 
+long p_cgem_coord_sub(long *m128,long div)
+{
+long rrr;
+ rrr  = *m128 / div;
+*m128 = *m128 % div; 
+return rrr;
+}
+// Convert long to deg,min,sec
+void p_cgem_coord(unsigned char *bof,long *p_value,unsigned char options)
+{
+char  opt_ns  = options & 0x10;  // North/South ?
+char  opt_mhs = options & 0x20;  // Display in hour/min sec ?   
+long  val = *p_value;
+char  neg = val<0;
+short q128;  // lowest common denominator
+long  m128;
+long  hour=0,deg=0,min=0,sec=0,cen=0;
+
+if ( (neg!=0) && (opt_mhs==0)) val = -val;
+q128 = val >> 25;        // div by 2^7 lowest common denominator between 360*60*60 and 0x1000000   // 2^3*3^2*5 * 2^2*3*5 * 2^2*3*5  and 2^24
+q128 = q128 & 0x7F;      // get rid of any signh extend
+m128 = val & 0x1FFFFFF;  // (modulo) value between 0 and 10125 
+
+if ( opt_mhs )
+   { // in hour/min/sec, q128 = 24h/128 = 0.1875h = 11.25m = 0 hour + 11 min + 15 sec (flush)   which is:  0x2000000 
+   sec = q128 * 15;
+   min = q128 * 11;
+   min += 5  * p_cgem_coord_sub(&m128,0xE38E39); // 5 min = 0xE38E39 = 14913980.89
+   min += 2  * p_cgem_coord_sub(&m128,0x5B05B0); 
+   min += 1  * p_cgem_coord_sub(&m128,0x2D82D8); 
+   sec += 30 * p_cgem_coord_sub(&m128,0x16C16C);
+   sec += 15 * p_cgem_coord_sub(&m128,0xB60B6);
+   sec += 5  * p_cgem_coord_sub(&m128,0x3CAE7);
+   sec += 1  * p_cgem_coord_sub(&m128,0xC22E);
+   cen += 50 * p_cgem_coord_sub(&m128,0x6117);
+   cen += 25 * p_cgem_coord_sub(&m128,0x308C);
+   cen += 5  * p_cgem_coord_sub(&m128,0x9B6);
+   cen += 1  * p_cgem_coord_sub(&m128,0x1F1);
+   }
+else  
+   { // in deg/min/sec, q128 = 360/128 = 2.8125deg = 2 deg + 48 min + 45 sec   (flush)   which is 0x2000000
+   deg = q128 * 2;
+   min = q128 * 48;
+   sec = q128 * 45;
+   deg += 1  * p_cgem_coord_sub(&m128,0xB60B61); // 1 deg = 0xB60B61 = 11930464.71
+   min += 30 * p_cgem_coord_sub(&m128,0x5B05B0); 
+   min += 10 * p_cgem_coord_sub(&m128,0x1E573B); 
+   min += 5  * p_cgem_coord_sub(&m128,0xF2B9D); 
+   min += 1  * p_cgem_coord_sub(&m128,0x308B9); 
+   sec += 30 * p_cgem_coord_sub(&m128,0x1845C); 
+   sec += 10 * p_cgem_coord_sub(&m128,0x8174); 
+   sec += 5  * p_cgem_coord_sub(&m128,0x40BA); 
+   sec += 1  * p_cgem_coord_sub(&m128,0xCF2); 
+   cen += 50 * p_cgem_coord_sub(&m128,0x679); 
+   cen += 10 * p_cgem_coord_sub(&m128,0x14B); 
+   cen += 1  * p_cgem_coord_sub(&m128,0x21); 
+   }
+
+// add-up
+if ( cen>99 ) cen = 99;  // centime cant go over 99
+min  += sec / 60;
+sec  %= 60;
+deg  += min / 60;
+hour += min / 60;
+min  %= 60;
+// 0123456789012
+// W123'32m32.4s
+//  23h32m32.12s
+if ( opt_mhs )
+   {
+   bof[0] = ' ';
+   p_val(&bof[1],hour,0x00 + 0x01);
+   bof[3] = 'h';
+   p_val(&bof[4],min,0x40 + 0x01);
+   bof[6] = 'm';
+   p_val(&bof[7],sec,0x40 + 0x01);
+   bof[9] = '.';
+   p_val(&bof[10],cen,0x40 + 0x01);
+   bof[12] = 's';
+   }
+else    // ex:  40000000,20000000#   20000000,10000000#   10000000,22222200#    11111100,00000000#    58009F3A,A7FF60C6#   A7FF60C6,00000000#   40000000,00000000#
+   {    //      E 90 deg             E 45 deg             E 22deg 30 min        E 23 deg 59m 59.9s    E 58deg 45" 12.3'
+   if ( opt_ns )
+      {
+      if ( neg ) bof[0] = 'S';
+      else       bof[0] = 'N';
+      }
+   else
+      {
+      if ( neg ) bof[0] = 'W';
+      else       bof[0] = 'E';
+      } 
+   p_val(&bof[1],deg,0x00 + 0x02);
+   bof[4] = 1;  // deg
+   p_val(&bof[5],min,0x40 + 0x01);
+   bof[7] = 2;  // min
+   p_val(&bof[8],sec,0x40 + 0x01);
+   bof[10] = '.';
+   p_val(&bof[11],cen/10,0x40 + 0x00);
+   bof[12] = 3; // sec
+   }
+}
+
 void p02x(unsigned char *buf,char val)
 {
 unsigned short v0,v1;
@@ -209,10 +332,9 @@ if ( v1 >=0  && v1<=9  ) buf[1] = '0' + v1;
 else                     buf[1] = 'A' + v1 - 10;
 }
 
-void p08x(unsigned char *bof,long value)
+void p08x(unsigned char *bof,long *p_value)
 {
-unsigned char *p_it = (unsigned char*) &value;
-p_it = (unsigned char*) &value;
+unsigned char *p_it = (unsigned char*) p_value;
 p02x(&bof[6],*p_it++);
 p02x(&bof[4],*p_it++);
 p02x(&bof[2],*p_it++);
@@ -544,17 +666,40 @@ while(1)
          {
          p_val(&lcd_lines[jjj],lll,0x00 + 0x02);
          }
+      else if ( fmt[iii] == 'y' )  // @yX format  (yes/no)
+         {
+         if ( (lll==1) || (lll=='1') ) 
+            {
+            lcd_lines[jjj+0] = 'y';
+            lcd_lines[jjj+1] = 'e';
+            lcd_lines[jjj+2] = 's';
+            }
+         else
+            {
+            lcd_lines[jjj+0] = 'n';
+            lcd_lines[jjj+1] = 'o';
+            lcd_lines[jjj+2] = ' ';
+            }
+         }
       else if ( fmt[iii] == 'R' )  // @RX format  (RA)
          {
-         p08x(&lcd_lines[jjj],lll);
+         p_cgem_coord(&lcd_lines[jjj],&lll,0x00);
          }
       else if ( fmt[iii] == 'D' )  // @DX format  (DEC)
          {
-         p08x(&lcd_lines[jjj],lll);
+         p_cgem_coord(&lcd_lines[jjj],&lll,0x10);
          }
       else if ( fmt[iii] == 'H' )  // @HX format  (Hour)
          {
-         p08x(&lcd_lines[jjj],lll);
+         p_cgem_coord(&lcd_lines[jjj],&lll,0x20);
+         }
+      else if ( fmt[iii] == 'E' )  // @EX format  (8 Char leading zeros)
+         {
+         p_val(&lcd_lines[jjj],lll,0x00 + 0x06);
+         }
+      else if ( fmt[iii] == 'e' )  // @eX format  (4 Char leading zeros)
+         {
+         p_val(&lcd_lines[jjj],lll,0x00 + 0x03);
          }
       }
 
@@ -565,7 +710,7 @@ while(1)
          {
          cdb[9]++;   // Time-out
          rs232_rx_ptr    = 0;
-         rs232_com_state = 0;   // restart
+         rs232_com_state = 4;   // restart
          }
       else if ( rs232_rx_ptr < 0 )  // something to do... we just got a complete message
          {
