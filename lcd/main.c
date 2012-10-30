@@ -11,12 +11,25 @@ unsigned long d_ram;
 unsigned char lcd_go_rt=0;
 unsigned short beep_time_ms;
 
+char rs232_tx_cmd[32];  // null terminated
+char rs232_rx_cmd[32];  
+char rs232_tx_ptr = -1;   // -1 means last tx complete and >0 means in progress of transmitting...
+char rs232_rx_ptr = 0;   // -1 means a command was received, -2 means overflow
+short         rs232_com_to    = -1;  // Time-out
+char rs232_com_state = 0;  // Odd values are states where we are waiting for an answer from CGEM
+// States are:
+// 0: Is aligned
+// 2: Is in goto 
+// 4: get current pos
+// 6: if in mozaic mode and aligned, and the time is right, do a goto
+                      
+
 volatile unsigned long d_USART_RX;
 volatile unsigned long d_USART_TX;
 
 
-#define CDB_SIZE 10
-volatile long cdb[10];
+#define CDB_SIZE 15
+volatile long cdb[CDB_SIZE];
 //  0: Runnig time in seconds
 //  1: RA from CGEM
 //  2: DE from CGEN 
@@ -26,14 +39,20 @@ volatile long cdb[10];
 //  6: Shot RA  id   9x9 grid
 //  7: Shot DEC id   9x9 grid
 //  8: Total # shot
+//  9: Communication Time-Out RS232 (no response from CGEM)
+// 10: Aligned ?
+// 11: In goto ?
+// 12: Mozaic goto error
+// 13: get position error {e}
+// 14: Time since last position update
 
 //   "W132\00145\00245.32\003 \006"  //  Example of custom characters 
 PROGMEM const char linetxt[]="                "        //  0: 
                              "                "        //  1: 
                              "Version 1.0     "        //  2: 
-                             "RA:\242R\000          "  //  3: @R will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is E/W
-                             "RA:\242H\000          "  //  4: @H will display "XXhXXmXX.XXs"   Hour/Min/Sec  
-                             "DE:\242D\000          "  //  5: @D will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is N/S
+                             "RA:\242R\001          "  //  3: @R will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is E/W
+                             "RA:\242H\001          "  //  4: @H will display "XXhXXmXX.XXs"   Hour/Min/Sec  
+                             "DE:\242D\002          "  //  5: @D will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is N/S
                              "Mozaic Menu...  "        //  6: 
                              "Timelap Menu... "        //  7:
                              "Total Span:     "        //  8:    Mozaic span in deg:min:sec
@@ -50,14 +69,20 @@ PROGMEM const char linetxt[]="                "        //  0:
                              "Really Cancel ? "        // 19:
                              "Mozaic: \242o\000     "  // 20: @o will display "xx of yy" and use two consecutive CDB location
                              "Pos Id: \242p\000     "  // 21: @p will display xx,yy  and use two consecutive CDB location
+                             "Motor Tests...  "        // 22:
+                             "Step up/down    "        // 23: // use up/down to control up/down
+                             "Ramp up/down    "        // 24: // use up/dowm to control the rate
+                             "Use Up/Down     "        // 25: 
+                             "To Step         "        // 26:
+                             "To change rate  "        // 27:
 
                              "Camera Driver   "  //  always last to make sure all are 16 bytes wide... the \xxx makes it a bit difficult
 ;
 
-//                                              M  T  .  .  M  M  M  M  M  M  M  M
+//                                              M  T  S  .  M  M  M  M  M  M  M  M  S  S  S
 // States:                             0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20
-PROGMEM const unsigned char line1[] = {22,3 ,4 ,6 ,7 ,0 ,0 ,9 ,9 ,8 ,8 ,17,20,19,0 ,0 ,0 ,0 ,0 ,0 ,0  };   // what string to display on line 1 for each states
-PROGMEM const unsigned char line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,11,12,0 ,21,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0  };   // what string to display on line 2 for each states
+PROGMEM const unsigned char line1[] = {28,3 ,4 ,6 ,7 ,22,0 ,9 ,9 ,8 ,8 ,17,20,19,0 ,23,25,24,25,0 ,0  };   // what string to display on line 1 for each states
+PROGMEM const unsigned char line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,11,12,0 ,21,0 ,0 ,0 ,26,0 ,27,0 ,0  };   // what string to display on line 2 for each states
 
 short d_state;   // main state machine that controls what to display
 #define BT_LONG  1000            // a long push is 1 sec (1000 ticks)
@@ -66,11 +91,11 @@ unsigned char  button_last;   // Prevous button
 
 PROGMEM const char main_state_machine[]= {0,// ENTER  UNDO   UP     DOWN             // -1 means no action    -2 means edit ?
                                                1     ,1     ,1     ,1                // State:  0  welcome message, any key to go to state 1
-                                              ,-1    ,-1    ,4     ,2                // State:  1  Show current telescope position {e} 
+                                              ,-1    ,-1    ,5     ,2                // State:  1  Show current telescope position {e} 
                                               ,-1    ,-1    ,1     ,3                // State:  2  Show current telescope position {e} in hour min sec
                                               ,7     ,-1    ,2     ,4                // State:  3  Mozaic Menu
-                                              ,-1    ,-1    ,3     ,1                // State:  4  Timelaps pictures Menu
-                                              ,-1    ,-1    ,-1    ,-1               // State:  5  Spare
+                                              ,-1    ,-1    ,3     ,5                // State:  4  Timelaps pictures Menu
+                                              ,15    ,-1    ,4     ,1                // State:  5  Motor Test
                                               ,-1    ,-1    ,-1    ,-1               // State:  6  Spare
                                               ,8     ,3     ,11    ,9                // State:  7  Mozaic > Current Exposure Time  
                                               ,7     ,7     ,-2    ,-2               // State:  8  Mozaic > Set Exposure Time  
@@ -80,6 +105,11 @@ PROGMEM const char main_state_machine[]= {0,// ENTER  UNDO   UP     DOWN        
                                               ,-1    ,13    ,-1    ,-1               // State: 12  Mozaic > Mozaic in progress              (undo to cancel)
                                               ,11    ,12    ,12    ,12               // State: 13  Mozaic >>  Sure you want to cancel ?       (enter to confirm)
                                               ,-1    ,-1    ,-1    ,-1               // State: 14  Mozaic > spare
+                                              ,16    ,5     ,17    ,17               // State: 15  Motor  > Step Up/Down 
+                                              ,-1    ,15    ,-1    ,-1               // State: 16  Motor  > Use Up/Down to Step...
+                                              ,18    ,5     ,15    ,15               // State: 17  Motor  > Ramp up/down
+                                              ,-1    ,17    ,-1    ,-1               // State: 18  Motor  > Use Up/Down to Change rate...
+                                              ,-1    ,-1    ,-1    ,-1               // State: __  
                                               ,-1    ,-1    ,-1    ,-1               // State: __  
                                               ,-1    ,-1    ,-1    ,-1               // State: __  
                                          };
@@ -167,7 +197,7 @@ else
    }
 }
 
-void p02x(char *buf,char val)
+void p02x(unsigned char *buf,char val)
 {
 unsigned short v0,v1;
 v0 = (val>>4)&0xF;
@@ -179,7 +209,7 @@ if ( v1 >=0  && v1<=9  ) buf[1] = '0' + v1;
 else                     buf[1] = 'A' + v1 - 10;
 }
 
-void p08x(char *bof,long value)
+void p08x(unsigned char *bof,long value)
 {
 unsigned char *p_it = (unsigned char*) &value;
 p_it = (unsigned char*) &value;
@@ -187,16 +217,14 @@ p02x(&bof[6],*p_it++);
 p02x(&bof[4],*p_it++);
 p02x(&bof[2],*p_it++);
 p02x(&bof[0],*p_it++);
-bof[8]=0;
 }
 
-void p04x(char *bof,long value)
+void p04x(unsigned char *bof,long value)
 {
 unsigned char *p_it = (unsigned char*) &value;
 p_it = (unsigned char*) &value;
 p02x(&bof[2],*p_it++);
 p02x(&bof[0],*p_it++);
-bof[4]=0;
 }
 
 
@@ -257,7 +285,7 @@ return;
 //  The code with Proscan is about 25 bits of information
 
 volatile unsigned short msms;
-volatile unsigned char SS,MM,HH;
+volatile unsigned char TT,SS,MM,HH;
 
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 10 KHz
 {
@@ -281,23 +309,52 @@ if ( button )
 else button_down_ms=0;
 
 msms++;
-if ( msms >= 1000 ) 
+if ( msms >= 100 ) 
    { 
    msms = 0;
-   SS++;
-   cdb[0]++; // running time
-   if ( SS >= 60 )
+   TT++;                              // Tenths
+   if ( TT >= 10 )
       {
-      SS = 0;
-      MM++;
-      if ( MM >= 60 )
+      SS ++;                          // Seconds
+      cdb[0]++; // running time
+      if ( SS >= 60 )
          {
-         MM = 0;
-         HH ++;
-         if ( HH >= 24 ) HH = 0;
+         SS = 0;
+         MM ++;                       // Minutes
+         if ( MM >= 60 )
+            {
+            MM = 0;
+            HH ++;                    // Hours
+            if ( HH >= 24 ) HH = 0;
+            }
          }
       }
    }
+
+if ( rs232_tx_ptr >= 0 )
+   {
+   if (UCSR0A & (1 <<UDRE0)) // TX register empty
+      {
+      UDR0 = rs232_tx_cmd[(unsigned char)rs232_tx_ptr++];
+      if ( rs232_tx_cmd[(unsigned char)rs232_tx_ptr] == 0 ) rs232_tx_ptr = -1;  // we are done
+      }
+   if ( rs232_tx_ptr > sizeof(rs232_tx_cmd) ) rs232_tx_ptr = -1;  // we are done
+   }
+if ( rs232_rx_ptr>=0 )   // real-time has control on buffer
+   {
+   if ( (UCSR0A & 0x80) != 0 )    // ********** CA CA LIT BIEN...     // RX register full
+      {
+      unsigned char CCC = UDR0;
+      rs232_rx_cmd[(unsigned char)rs232_rx_ptr++] = CCC;
+      if ( CCC == '#' ) rs232_rx_ptr = -1; // CGEM command complete...
+      }
+   }
+if ( rs232_rx_ptr >= sizeof(rs232_rx_cmd) ) rs232_rx_ptr = -2; // overflow...
+
+if ( rs232_com_to>=0 ) rs232_com_to++;  // monitor how long it takes to get the response
+
+cdb[14]++;  // monitor how old the position from CGEM is
+
 // TODO: put an histogram...
 }
 
@@ -343,12 +400,29 @@ else                   free_memory = ((int)&free_memory) - ((int)__brkval);
 return free_memory;
 }
 
+// function that convert "cnt" characters from rs232_rx_cmd starting at "where"
+// used to decode feedback from CGEM
+unsigned char rs232_rx_hex(unsigned char where, unsigned char cnt,long *tmp)
+{
+unsigned char iii,jjj,kkk;
+for ( *tmp=iii=kkk=0 ; iii<cnt ; iii++) 
+   {
+   jjj = rs232_rx_cmd[iii+where];
+   if ( (jjj >= '0') && (jjj<= '9') ) kkk = jjj-'0';
+   else if ( (jjj >= 'A') && (jjj<= 'F') ) kkk = jjj-'A' + 10;
+   else if ( (jjj >= 'a') && (jjj<= 'f') ) kkk = jjj-'a' + 10;
+   else return -1;  // problem
+   *tmp = *tmp*16 + kkk;
+   }
+return 0;
+}
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
 int main(void)
 {
 unsigned char iii,jjj,nb_display=0;
+unsigned char l_TT=0;
 long lll;
 ///////////////////////////////// Init /////////////////////////////////////////
 
@@ -440,81 +514,148 @@ while(1)
             nb_display++;
             }
          } 
+
+      if ( d_state==16 )  // Process button inputs for in Motor Step up/down mode
+         {
+         if (button == BT_UP)   CANON_FOCUS_HIGH;  
+         if (button == BT_DOWN) CANON_FOCUS_LOW;   // Led on
+         rt_wait_ms(1);
+         if ((button == BT_UP) || (button == BT_DOWN))   
+            {
+            CANON_SHOOT_HIGH;
+            rt_wait_ms(100);
+            }
+         CANON_SHOOT_LOW;
+         }
       } 
+   if ( button_lp && ( d_state==16 ) )  // Motor Tests
+      {
+            CANON_SHOOT_HIGH;
+            rt_wait_ms(100);
+            CANON_SHOOT_LOW;
+            rt_wait_ms(50);
+      }
 
    for ( iii=0 ; iii < nb_display ; iii++ )  // display required values
       {
-      if ( fmt[iii] == 's' )  // @XXX format
+      lll = cdb[off[iii]];
+      jjj = pos[iii];
+      if ( fmt[iii] == 's' )  // @sX format  (seconds)
          {
-         lll = cdb[off[iii]];
-         jjj = pos[iii];
          p_val(&lcd_lines[jjj],lll,0x00 + 0x02);
-//         if ( set[iii] )
-//            {
-//            lcd_lines[jjj+2] = '0'+lll%10; lll = lll/10;
-//            lcd_lines[jjj+1] = '0'+lll%10; lll = lll/10;
-//            lcd_lines[jjj+0] = '0'+lll;
-//            }
+         }
+      else if ( fmt[iii] == 'R' )  // @RX format  (RA)
+         {
+         p08x(&lcd_lines[jjj],lll);
+         }
+      else if ( fmt[iii] == 'D' )  // @DX format  (DEC)
+         {
+         p08x(&lcd_lines[jjj],lll);
+         }
+      else if ( fmt[iii] == 'H' )  // @HX format  (Hour)
+         {
+         p08x(&lcd_lines[jjj],lll);
          }
       }
-   }
 
-#ifdef ASDF
-char buf[16];
-long val=0;
-long lon=0;
-while(1)
-   {
-   // static unsigned char tog;
-   // tog = !tog;
-   // if ( tog ) { CANON_FOCUS_HIGH; }
-   // else       { CANON_FOCUS_LOW;  }
-   val++;
-   lon+=16;
-   lcd_goto(0,0);
+///////////////////////////// CGEM communication /////////////////////////////
+   if ( 0x01 == (rs232_com_state & 0x01) )   // we are waiting for a response
+      {
+      if ( rs232_com_to > 3000) // outch... 3 seconds without a response...
+         {
+         cdb[9]++;   // Time-out
+         rs232_rx_ptr    = 0;
+         rs232_com_state = 0;   // restart
+         }
+      else if ( rs232_rx_ptr < 0 )  // something to do... we just got a complete message
+         {
+         if ( rs232_com_state == 1 ) // response from aligned {J}
+            {
+            if ( rs232_rx_cmd[1]=='#' ) cdb[10] = rs232_rx_cmd[0];
+            }
+         else if ( rs232_com_state == 3 ) // response from in goto  {L}
+            {
+            if ( rs232_rx_cmd[1]=='#' ) cdb[11] = rs232_rx_cmd[0];
+            }
+         else if ( rs232_com_state == 5 ) // response from get pos {e}
+            {
+            long          AAA,BBB;     // {e} : C691D800,1B947B00#
+            unsigned char aaa,bbb;     //       01234567890123456789
+            aaa = rs232_rx_hex(0,8,&AAA);
+            bbb = rs232_rx_hex(9,8,&BBB);
+            if ( (rs232_rx_cmd[8]==',') && (rs232_rx_cmd[17]=='#') && (aaa == 0) && (bbb == 0))
+               {
+               cdb[1]  = AAA; 
+               cdb[2]  = BBB; 
+               cdb[14] = 0;   // reset update time
+               l_TT = -1;  // Send goto right away if in mozaic mode
+               }
+            else cdb[13]++;   // get position error
+            }
+         else if ( rs232_com_state == 7 ) // response from  goto command (mozaic)  {r}
+            {
+            if ( rs232_rx_cmd[0]=='#' ) cdb[12]++;   // goto error
+            }
 
-   lcd_print_str("Time:");
-   pxxd(buf,HH,2);
-   lcd_print_str(buf);
-   lcd_print_str(":");
-   pxxd(buf,MM,2);
-   lcd_print_str(buf);
-   lcd_print_str(":");
-   pxxd(buf,SS,2);
-   lcd_print_str(buf);
+         rs232_com_state++; // go to next state
+         if ( rs232_com_state == 8 ) rs232_com_state = 0;
 
-   lcd_goto(1,0);
-   lcd_print_str("Long:  ");
-   p04x(buf,lon);
-   lcd_print_str(buf);
+         for ( iii=0 ; iii<sizeof(rs232_rx_cmd) ; iii++ ) rs232_rx_cmd[iii]=0; // clear the buffer
+         rs232_rx_ptr = 0;  // we are done processing the message, give back the control to foreground
+         }
+      }
+   if ( 0x00 == (rs232_com_state & 0x01) )   // we are ready to send a command
+      {
+      if ( (l_TT != TT) && ( rs232_tx_ptr < 0 ))  // 10 times a second, send a new command  (as long as the last transmit is complete
+         {
+         l_TT = TT;
+         for ( iii=0 ; iii<sizeof(rs232_tx_cmd) ; iii++ ) rs232_tx_cmd[iii]=0; // clear the buffer
 
-   LCD_SET_DATA_DIR_INPUT;
-   rt_wait_ms(100);
+         rs232_com_to = 0;   // reset the time-out monitor
+         if ( rs232_com_state == 0 ) // send: aligned {J}
+            {
+            rs232_tx_cmd[0]='J';  
+            }
+         else if ( rs232_com_state == 2 ) // Send: in goto  {L}
+            {
+            rs232_tx_cmd[0]='L';  
+            }
+         else if ( rs232_com_state == 4 ) // Send:  get pos {e}
+            {
+            rs232_tx_cmd[0]='e';  
+            }
+         else if ( rs232_com_state == 6 ) // Send:  goto pos {rC691D800,1B947B00}
+            {
+            // if aligned and not in goto mode
+            //rs232_tx_cmd[0]='r';  
+            rs232_com_state = -1;   // Jumpt to state 0
+            }
+         rs232_tx_ptr    = 0;     // FG... pls tx the command
+         rs232_com_state++;       // wait response
+            
 
-   if ( SS < 5  ) CANON_FOCUS_HIGH;
-   else           CANON_FOCUS_LOW; 
 
-   if ( SS == 4 ) CANON_SHOOT_HIGH;
-   else           CANON_SHOOT_LOW; 
-
-   lon = lon & 0xFFF0;
-   if (LCD_BUTTON_1 == 0 ) lon |= 0x01;
-   if (LCD_BUTTON_2 == 0 ) lon |= 0x02;
-   if (LCD_BUTTON_3 == 0 ) lon |= 0x04;
-   if (LCD_BUTTON_4 == 0 ) lon |= 0x08;
-
-   if      (LCD_BUTTON_1 == 0 ) { OCR2A   = 20;  OCR2B   = 10; }    // Clock divider set to 1024, so 20 should give a wave at 1Khz
-   else if (LCD_BUTTON_2 == 0 ) { OCR2A   = 14;  OCR2B   =  7; }    // Clock divider set to 1024, so 20 should give a wave at 1Khz
-   else if (LCD_BUTTON_3 == 0 ) { OCR2A   = 10;  OCR2B   =  5; }    // Clock divider set to 1024, so 20 should give a wave at 1Khz
-   else if (LCD_BUTTON_4 == 0 ) { OCR2A   =  8;  OCR2B   =  4; }    // Clock divider set to 1024, so 20 should give a wave at 1Khz
-   else                         { OCR2A   =  5;  OCR2B   = 10; }    // Clock divider set to 1024, so 20 should give a wave at 1Khz
-   ps("\012\015...");
-
-//   if (LCD_BUTTON_3 == 0 ) lcd_reset();
-
-   }
-#endif
-
+//         if ( cdb[1] != 0 )  // got something: send it reversed...
+//            {
+//            rs232_tx_cmd[0] = 'r';
+//            rs232_tx_cmd[1] = 'x';
+//            rs232_tx_cmd[2] = ':';
+//            p08x(&rs232_tx_cmd[3],cdb[2]); 
+//            rs232_tx_cmd[11] = '~';
+//            p08x(&rs232_tx_cmd[12],cdb[1]); 
+//            rs232_tx_cmd[20] = 0;
+//            rs232_tx_ptr    = 0;     // FG... pls tx the command
+//            cdb[1] = 0;
+//            }
+//         else if ( rs232_tx_ptr < 0 )
+//            {
+//            rs232_tx_cmd[0] = 'e';   // temp...find better way to copy strings
+//            rs232_tx_cmd[1] = 0;
+//            rs232_tx_ptr    = 0;     // FG... pls tx the command
+//            }
+         }
+      } // if ( rs232_com_state & 0x01 )
+   } // while(1)
 }
 
 // #include "a328p_lcd.c"   <-- I need the makefile to compile with -DUSE_LCD
