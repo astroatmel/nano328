@@ -7,14 +7,40 @@
 
 #include "a328p_rt.h"
 
+#define bit(BBB) (0x01<<BBB)
+#define PORT_BIT_HIGH(P0RT,B1T) { P0RT |= bit(B1T); }
+
+#define CANON_FOCUS_HIGH     PORTB |=  bit(7)          // PORT B bit 7
+#define CANON_FOCUS_LOW      PORTB &= ~bit(7)
+
+#define CANON_SHOOT_HIGH     PORTD |=  bit(5)          // PORT D bit 5
+#define CANON_SHOOT_LOW      PORTD &= ~bit(5)
+
 unsigned long d_ram;
 unsigned char lcd_go_rt=0;
 unsigned short beep_time_ms;
 
+unsigned char m_minor,m_major;  // Mozaic sequence
+PROGMEM const char m_seq_x[] = { 0, 0, 1,    1, 1,-1,   -1,-1, 0 };   // RA
+PROGMEM const char m_seq_y[] = { 0, 1,-1,    0, 1,-1,    0, 1,-1 };   // DEC
+
+// Print strinng
+#ifdef TEST_P_VAL
+PROGMEM const char p_testing_p_val[] = "Testing p_val()\015\012";
+PROGMEM const char p_size[]          = "\015\012Size:";
+PROGMEM const char p_case1[]         = "dont show +/-:\015\012";
+PROGMEM const char p_case2[]         = "only show -:\015\012";
+PROGMEM const char p_case3[]         = "show +/-:\015\012";
+PROGMEM const char p_no_lead[]       = "No leading Zeros:\015\012";
+PROGMEM const char p_lead[]          = "Leading Zeros:\015\012";
+PROGMEM const char p_value[]         = "value:\015\012";
+PROGMEM const long p_values[]        = {123,-123,-1,1,10,-10};
+#endif
+
 char rs232_tx_cmd[32];  // null terminated
 char rs232_rx_cmd[32];  
-char rs232_tx_ptr = -1;   // -1 means last tx complete and >0 means in progress of transmitting...
-char rs232_rx_ptr = 0;   // -1 means a command was received, -2 means overflow
+volatile char rs232_tx_ptr = -1;   // -1 means last tx complete and >0 means in progress of transmitting...
+volatile char rs232_rx_ptr = 0;   // -1 means a command was received, -2 means overflow
 short         rs232_com_to    = -1;  // Time-out
 char rs232_com_state = 0;  // Odd values are states where we are waiting for an answer from CGEM
 // States are:
@@ -28,23 +54,26 @@ volatile unsigned long d_USART_RX;
 volatile unsigned long d_USART_TX;
 
 
-#define CDB_SIZE 15
+#define CDB_SIZE 20
 volatile long cdb[CDB_SIZE];
 //  0: Runnig time in seconds
 //  1: RA from CGEM
 //  2: DE from CGEN 
-//  3: Exposure time in mili-second
+//  3: Exposure time in mili second
 //  4: Delta time in mili-second between shoots
 //  5: Shot #        total: 81 on a 9x9 grid
-//  6: Shot RA  id   9x9 grid
-//  7: Shot DEC id   9x9 grid
-//  8: Total # shot
+//  6: Total # shot
+//  7: Shot RA  id   9x9 grid
+//  8: Shot DEC id   9x9 grid
 //  9: Communication Time-Out RS232 (no response from CGEM)
 // 10: Aligned ?
 // 11: In goto ?
 // 12: Mozaic goto error
 // 13: get position error {e}
 // 14: Time since last position update
+// 15: Mozaic span in degrees
+// 16: Mozaic Running time in ms ( 1000-2000:focus    2000-> cdb[3]*1000: expose    then wait 4 second to store )
+
 
 //   "W132\00145\00245.32\003 \006"  //  Example of custom characters 
 PROGMEM const char linetxt[]="                "        //  0: 
@@ -58,17 +87,17 @@ PROGMEM const char linetxt[]="                "        //  0:
                              "Total Span:     "        //  8:    Mozaic span in deg:min:sec
                              "Exposure Time:  "        //  9:    
                              "Delta Time:     "        // 10:
-                             "Current:\242s\000 sec "  // 11: @s will display "XXX Sec"
-                             "    Set:\243s\000 sec "  // 12:
-                             "Cur:\242h\000         "  // 13: @h will display "XXhXXm"
-                             "Set:\243h\000         "  // 14:
-                             "Cur:\242d\000         "  // 15: @d will display "XXX:XX:XX.XX"  Deg/Min/Sec
-                             "Set:\243d\000         "  // 16:
+                             "Current:\242s\003 sec "  // 11: @s will display "XXX Sec"                      exposure time 
+                             "    Set:\243s\003 sec "  // 12:                                                exposure time
+                             "Cur:\242h\004         "  // 13: @h will display "XXhXXm"                       delta time
+                             "Set:\243h\004         "  // 14:                                                delta time
+                             "Cur:\242d\017         "  // 15: @d will display "XXX:XX:XX.XX"  Deg/Min/Sec    total span
+                             "Set:\243d\017         "  // 16:                                                total span
                              "Start Mozaic... "        // 17:
                              "Start Timelaps.."        // 18:
                              "Really Cancel ? "        // 19:
-                             "Mozaic: \242o\000     "  // 20: @o will display "xx of yy" and use two consecutive CDB location
-                             "Pos Id: \242p\000     "  // 21: @p will display xx,yy  and use two consecutive CDB location
+                             "Mozaic:\242o\005      "  // 20: @o will display "xx of yy" and use two consecutive CDB location
+                             "Pos Id:\242p\007      "  // 21: @p will display xx,yy  and use two consecutive CDB location
                              "Motor Tests...  "        // 22:
                              "Step up/down    "        // 23: // use up/down to control up/down
                              "Ramp up/down    "        // 24: // use up/dowm to control the rate
@@ -82,19 +111,23 @@ PROGMEM const char linetxt[]="                "        //  0:
                              "Pos Err:\242e\015     "        // 32:
                              "Latency:\242E\016     "        // 33:  // show Time since last position update
                              "Time-Out:\242e\011    "        // 34:
-                             "                "        // 35:    
-                             "                "        // __:
-                             "                "        // __:
-                             "                "        // __:
-                             "                "        // __:
+                             "Time:\242m\020    sec "  // 35: @m will display xxx.xxx
+                             "Mozaic Preset:  "        // 36:
+                             "1 Second        "        // 37: // set the exposure time to 1 second
+                             "30 Seconds      "        // 38: // set the exposure time to 30 seconds
+                             "60 Seconds      "        // 39: // set the exposure time to 60 seconds
+                             "1/10 Newton     "        // 40: // set the span to 1 tenth of the field of the Newton 6 Inches       ( 1 deg / 10 -> .1 deg )
+                             "1/10 EDGE HD    "        // 41: // set the span to 1 tenth of the field of the EDGE HD 9.25 Inches   ( 1 deg / 10 -> .1 deg )
 
                              "Camera Driver   "  //  always last to make sure all are 16 bytes wide... the \xxx makes it a bit difficult
 ;
-
+//                                                                         .  .
 //                                              M  T  S  D  M  M  M  M  M  M  M  M  S  S  S
 // States:                             0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
-PROGMEM const unsigned char line1[] = {40,3 ,4 ,6 ,7 ,22,28,9 ,9 ,8 ,8 ,17,20,19,0 ,23,25,24,25,0 ,0 ,29,31,33,0 ,0 ,0 ,0 ,0 ,0 ,0  };   // what string to display on line 1 for each states
-PROGMEM const unsigned char line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,11,12,0 ,21,0 ,0 ,0 ,26,0 ,27,0 ,0 ,30,32,34,0 ,0 ,0 ,0 ,0 ,0 ,0  };   // what string to display on line 2 for each states
+PROGMEM const unsigned char line1[] = {42,3 ,4 ,6 ,7 ,22,28,9 ,9 ,8 ,8 ,17,20,19,0 ,23,25,24,25,20,0 ,29,31,33,0 ,0 ,0 ,0 ,0 ,0 ,0  };   // what string to display on line 1 for each states
+PROGMEM const unsigned char line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,15,16,0 ,21,0 ,0 ,0 ,26,0 ,27,35,0 ,30,32,34,0 ,0 ,0 ,0 ,0 ,0 ,0  };   // what string to display on line 2 for each states
+// State 12 & 13 & 19 : Mozaic is running
+// State    &    : Timelaps is running
 
 short d_state;   // main state machine that controls what to display
 #define BT_LONG  1000            // a long push is 1 sec (1000 ticks)
@@ -114,14 +147,14 @@ PROGMEM const char main_state_machine[]= {0,// ENTER  UNDO   UP     DOWN        
                                               ,10    ,3     ,7     ,11               // State:  9  Mozaic > Current Total span     
                                               ,9     ,9     ,-2    ,-2               // State: 10  Mozaic > Set Total span     
                                               ,12    ,3     ,9     ,7                // State: 11  Mozaic > Start Mosaic   
-                                              ,-1    ,13    ,-1    ,-1               // State: 12  Mozaic > Mozaic in progress              (undo to cancel)
+                                              ,-1    ,13    ,19    ,19               // State: 12  Mozaic > Mozaic in progress              (undo to cancel)
                                               ,11    ,12    ,12    ,12               // State: 13  Mozaic >>  Sure you want to cancel ?       (enter to confirm)
                                               ,-1    ,-1    ,-1    ,-1               // State: 14  Mozaic > spare
                                               ,16    ,5     ,17    ,17               // State: 15  Motor  > Step Up/Down 
                                               ,-1    ,15    ,-1    ,-1               // State: 16  Motor  > Use Up/Down to Step...
                                               ,18    ,5     ,15    ,15               // State: 17  Motor  > Ramp up/down
                                               ,-1    ,17    ,-1    ,-1               // State: 18  Motor  > Use Up/Down to Change rate...
-                                              ,-1    ,-1    ,-1    ,-1               // State: __  
+                                              ,-1    ,13    ,12    ,12               // State: 19  Mozaic > Mozaic in progress              (undo to cancel)
                                               ,-1    ,-1    ,-1    ,-1               // State: __  
                                               ,-1    ,6     ,23    ,22               // State: 21  Debug  >
                                               ,-1    ,6     ,21    ,23               // State: 22  Debug  > 
@@ -174,25 +207,43 @@ while ( tc )
    }
 }
 
+// Copy a null terminated string from PGM space
+void pgm_to_mem(const char *src,char *dst)
+{
+unsigned char CCC;
+while ( (CCC = pgm_read_byte( src++ )) ) *dst++ = CCC;
+*dst++ = 0;
+}
+
+void rt_p_pgm(const char *src)
+{
+unsigned char iii;
+pgm_to_mem(src,rs232_tx_cmd);
+rs232_tx_ptr    = 0;     // FG... pls tx the command
+while ( rs232_tx_ptr >=0 ) ;  // wait...
+for ( iii=0 ; iii < sizeof(rs232_tx_cmd) ; iii++ ) rs232_tx_cmd[iii]=0;  // clear the string
+}
+
 // digit is the demanded precision
-void p_val(unsigned char *buf,short val,unsigned char option_digit)
+void p_val(unsigned char *buf,long val,unsigned char option_digit)
 {
 unsigned char nnn;
 unsigned char digit = 1 + (option_digit & 0x07);  // 3 lsb = nb digits
-unsigned char sign = (option_digit & 0x30);  // this bit means...  0x00: dont show +/-  0x10: showw only "-" if negative   0x30: show +/-
+unsigned char sign = (option_digit & 0x30);  // this bit means...  0x00: dont show +/-  0x10: show only "-" if negative   0x30: show +/-
 unsigned char lead = (option_digit & 0x40);  // this bit means we want to display leaging zeros
 short iii;
 long  max;
 nnn = val < 0;
+if ( (sign == 0x10) && (nnn==0) ) sign=0;  // no sign snown if only displaying "-" and the value is positive
 if ( sign ) max = 1;
 else        max = 10; // if not displaying signs, then we have one more character
 
-for ( iii=2 ; iii<digit ; iii++ ) max=max*10;
+for ( iii=1 ; iii<digit ; iii++ ) max=max*10;
 if(val<=-max)   // 10000000000  (10^digit)-1
    {
    for ( iii=0 ; iii<digit ; iii++ ) buf[iii] = '-';   // below max negative displayable
    }
-else if (val>=max*10)
+else if (val>=max)
    {
    for ( iii=0 ; iii<digit ; iii++ ) buf[iii] = '+';   // above max positive displayable
    }
@@ -202,7 +253,7 @@ else
    iii=digit-1;
    if  ( val == 0 )            buf[iii--] = '0';  
    for ( ; val>0 ; val /= 10 ) buf[iii--] = val%10 + '0';
-   if ( iii < 0 ) return; // no space left
+//   if ( iii < 0 ) return; // no space left
    if ( lead )
       {
       while (iii>0) buf[iii--] = '0';
@@ -210,6 +261,7 @@ else
       }
    if ( sign ) 
       {
+      if ( iii<0 ) iii=0;
       if ( nnn )               buf[iii--] = '-';
       else if ( sign == 0x30 ) buf[iii--] = '+';
       }
@@ -227,20 +279,19 @@ return rrr;
 // Convert long to deg,min,sec
 void p_cgem_coord(unsigned char *bof,long *p_value,unsigned char options)
 {
-char  opt_ns  = options & 0x10;  // North/South ?
-char  opt_mhs = options & 0x20;  // Display in hour/min sec ?   
+char  opt = options & 0x30;  // 0x00 = No orientation, just degrees // 0x01 = North/South // 0x02 = hour/min/sec // 0x03 = East/West
 long  val = *p_value;
 char  neg = val<0;
 short q128;  // lowest common denominator
 long  m128;
 long  hour=0,deg=0,min=0,sec=0,cen=0;
 
-if ( (neg!=0) && (opt_mhs==0)) val = -val;
+if ( (neg!=0) && (opt!=0x20)) val = -val;
 q128 = val >> 25;        // div by 2^7 lowest common denominator between 360*60*60 and 0x1000000   // 2^3*3^2*5 * 2^2*3*5 * 2^2*3*5  and 2^24
 q128 = q128 & 0x7F;      // get rid of any signh extend
 m128 = val & 0x1FFFFFF;  // (modulo) value between 0 and 10125 
 
-if ( opt_mhs )
+if ( opt == 0x20 )
    { // in hour/min/sec, q128 = 24h/128 = 0.1875h = 11.25m = 0 hour + 11 min + 15 sec (flush)   which is:  0x2000000 
    sec = q128 * 15;
    min = q128 * 11;
@@ -285,7 +336,7 @@ min  %= 60;
 // 0123456789012
 // W123'32m32.4s
 //  23h32m32.12s
-if ( opt_mhs )
+if ( opt == 0x20 )
    {
    bof[0] = ' ';
    p_val(&bof[1],hour,0x00 + 0x01);
@@ -298,17 +349,19 @@ if ( opt_mhs )
    bof[12] = 's';
    }
 else    // ex:  40000000,20000000#   20000000,10000000#   10000000,22222200#    11111100,00000000#    58009F3A,A7FF60C6#   A7FF60C6,00000000#   40000000,00000000#
-   {    //      E 90 deg             E 45 deg             E 22deg 30 min        E 23 deg 59m 59.9s    E 58deg 45" 12.3'
-   if ( opt_ns )
+   {    //      E 90 deg             E 45 deg             E 22deg 30 min        E 23 deg 59m 59.9s    E 123d 45" 12.3'
+   if ( opt == 0x10 )
       {
       if ( neg ) bof[0] = 'S';
       else       bof[0] = 'N';
       }
-   else
+   else if ( opt == 0x30 )
       {
       if ( neg ) bof[0] = 'W';
       else       bof[0] = 'E';
       } 
+   else          bof[0] = ' ';
+
    p_val(&bof[1],deg,0x00 + 0x02);
    bof[4] = 1;  // deg
    p_val(&bof[5],min,0x40 + 0x01);
@@ -477,6 +530,40 @@ if ( rs232_com_to>=0 ) rs232_com_to++;  // monitor how long it takes to get the 
 
 cdb[14]++;  // monitor how old the position from CGEM is
 
+if ( (d_state == 12) || (d_state == 13) || (d_state == 19) )
+   {
+   if      ( cdb[16]<1000 ) // 1 second delay
+      {
+      cdb[16] ++;
+      CANON_FOCUS_LOW;
+      CANON_SHOOT_LOW;
+      }
+   else if ( cdb[16]<2000 ) // Focus
+      {
+      cdb[16] ++;
+      CANON_FOCUS_HIGH;   // Led on
+      CANON_SHOOT_LOW;
+      }
+   else if ( cdb[16]<cdb[3]+2000 ) // Expose
+      {
+      cdb[16] ++;
+      CANON_FOCUS_HIGH;   // Led on
+      CANON_SHOOT_HIGH;   // Led on
+      }
+   else if ( cdb[16]<cdb[3]+6000 ) // Store image
+      {
+      cdb[16] ++;
+      CANON_FOCUS_LOW;
+      CANON_SHOOT_LOW;
+      }
+   }
+else // not in mozaic mode
+   {
+   cdb[16] = d_state;
+   CANON_FOCUS_LOW;
+   CANON_SHOOT_LOW;
+   }
+
 // TODO: put an histogram...
 }
 
@@ -543,9 +630,9 @@ return 0;
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
 int main(void)
 {
-unsigned char iii,jjj,nb_display=0;
+unsigned char iii,jjj,kkk,nb_display=0;
 unsigned char l_TT=0;
-long lll;
+long lll,mmm;
 ///////////////////////////////// Init /////////////////////////////////////////
 
 init_rs232();
@@ -561,7 +648,7 @@ rt_init_disp();
 
 
 
-ps("\033[2JLCD Tests...");
+ps("\033[2JLCD Tests...\015\012");
 
 //set_analog_mode(MODE_8_BIT);                         // 8-bit analog-to-digital conversions
 d_ram = get_free_memory();
@@ -574,15 +661,39 @@ sei();         //enable global interrupts
 
 lcd_init();
 
-#define bit(BBB) (0x01<<BBB)
-#define PORT_BIT_HIGH(P0RT,B1T) { P0RT |= bit(B1T); }
+//////////////////////////////////// p_val() tests ////////////////////////////////////
+#ifdef TEST_P_VAL
+rt_p_pgm(p_testing_p_val);
+lll = 123;
+for ( kkk=0 ; kkk<6 ; kkk++ )   // Some values...
+   {
+   lll = pgm_read_dword(&p_values[kkk]);
+   rt_p_pgm(p_value);
+   p08x((unsigned char *)rs232_tx_cmd,&lll); 
+   rs232_tx_ptr    = 0;     // FG... pls tx the command
+   while ( rs232_tx_ptr >=0 ) ;  // wait...
 
-#define CANON_FOCUS_HIGH     PORTB |=  bit(7)          // PORT B bit 7
-#define CANON_FOCUS_LOW      PORTB &= ~bit(7)
-
-#define CANON_SHOOT_HIGH     PORTD |=  bit(5)          // PORT D bit 5
-#define CANON_SHOOT_LOW      PORTD &= ~bit(5)
-
+   for ( jjj=0 ; jjj<=0x40 ; jjj+=0x40 )   // Leading zeros
+      {
+      if ( jjj==0 ) rt_p_pgm(p_no_lead);
+      else          rt_p_pgm(p_lead);
+      for ( iii=0 ; iii<7 ; iii++ )   // for all the sizes
+         {
+         rt_p_pgm(p_size);
+         rs232_tx_cmd[0] = iii + '0';
+         rs232_tx_cmd[1] = 0x0D;
+         rs232_tx_cmd[2] = 0x0A;
+         rs232_tx_ptr    = 0;     // FG... pls tx the command
+         while ( rs232_tx_ptr >=0 ) ;  // wait...
+         p_val((unsigned char *)rs232_tx_cmd,lll,0x00 + jjj + iii); 
+         rs232_tx_ptr    = 0;     // FG... pls tx the command
+         while ( rs232_tx_ptr >=0 ) ;  // wait...
+         }
+       
+      }
+   }
+#endif
+///////////////////////////////////////////////////////////////////////////////////////
 DDRB |= bit(7);  
 DDRD |= bit(5);  
 DDRD |= bit(3);   // Buzzer
@@ -594,6 +705,10 @@ DDRD |= bit(3);   // Buzzer
 
 d_state=0;
 lcd_go_rt = 1;
+
+cdb[3]  = 10*1000;   // default exposure time: 30 mili seconds  (mozaic)
+cdb[4]  = 60;        // default delta time: 60 seconds (time laps)
+cdb[15] = 0x61172;   // default span: 1/10 of EDGE HD  (0.333 deg / 10 = 0.03 deg = 2 min)   { thats 1/30 of Newton)
 
 while(1)
    {
@@ -664,7 +779,7 @@ while(1)
       jjj = pos[iii];
       if ( fmt[iii] == 's' )  // @sX format  (seconds)
          {
-         p_val(&lcd_lines[jjj],lll,0x00 + 0x02);
+         p_val(&lcd_lines[jjj],lll/1000,0x00 + 0x02);
          }
       else if ( fmt[iii] == 'y' )  // @yX format  (yes/no)
          {
@@ -683,15 +798,19 @@ while(1)
          }
       else if ( fmt[iii] == 'R' )  // @RX format  (RA)
          {
-         p_cgem_coord(&lcd_lines[jjj],&lll,0x00);
+         p_cgem_coord(&lcd_lines[jjj],&lll,0x10);
          }
       else if ( fmt[iii] == 'D' )  // @DX format  (DEC)
          {
-         p_cgem_coord(&lcd_lines[jjj],&lll,0x10);
+         p_cgem_coord(&lcd_lines[jjj],&lll,0x30);
          }
       else if ( fmt[iii] == 'H' )  // @HX format  (Hour)
          {
          p_cgem_coord(&lcd_lines[jjj],&lll,0x20);
+         }
+      else if ( fmt[iii] == 'd' )  // @dX format  (span)
+         {
+         p_cgem_coord(&lcd_lines[jjj],&lll,0x00);
          }
       else if ( fmt[iii] == 'E' )  // @EX format  (8 Char leading zeros)
          {
@@ -701,8 +820,71 @@ while(1)
          {
          p_val(&lcd_lines[jjj],lll,0x00 + 0x03);
          }
+      else if ( fmt[iii] == 'o' )  // @oX format  x of y
+         {
+         mmm = cdb[off[iii]+1];
+         p_val(&lcd_lines[jjj+0],lll,0x00 + 0x02);
+         lcd_lines[jjj+4] = 'o';
+         lcd_lines[jjj+5] = 'f';
+         p_val(&lcd_lines[jjj+6],mmm,0x00 + 0x02);
+         }
+      else if ( fmt[iii] == 'p' )  // @oX format  x of y
+         {
+         mmm = cdb[off[iii]+1];
+         p_val(&lcd_lines[jjj+0],lll,0x00 + 0x01);
+         lcd_lines[jjj+2] = ',';
+         p_val(&lcd_lines[jjj+3],mmm,0x00 + 0x01);
+         }
+      else if ( fmt[iii] == 'x' )  // @xX format  (0x????????)
+         {
+         p08x(&lcd_lines[jjj],&lll);
+         }
+      else if ( fmt[iii] == 'm' )  // format  xxx.xxx ms   to display exposition time
+         {
+         long  sec = (lll/1000)-2;
+         long msec = lll%1000;
+         if ( sec < 0 ) sec = msec = 0;
+         p_val(&lcd_lines[jjj+0],sec,0x00 + 0x02);
+         lcd_lines[jjj+3] = '.';
+         p_val(&lcd_lines[jjj+4],msec/10,0x40 + 0x01);
+         
+         }
       }
 
+///////////////////////////// Mozaic Logic  /////////////////////////////
+   if ( (d_state == 12) || (d_state == 19))
+      {
+      if ( cdb[16] >= cdb[3]+6000 ) // Picture taken, ready to proceed...
+         {
+         if ( cdb[5] == cdb[6] ) 
+            {
+            d_state = 11;    // we are done go back to "start mozaic"
+            id = 255;        // force a first pass
+            }
+//       else if ( moving ) wait...
+         else                                     // Take new picture
+            {
+            cdb[5] ++;
+            m_major ++ ;
+            if ( m_major >=9 ) 
+               { 
+               m_major = 0; 
+               m_minor ++;
+               }
+            cdb[7] = 1 * pgm_read_byte( &m_seq_x[m_minor]) + 3 * pgm_read_byte( &m_seq_x[m_major]);
+            cdb[8] = 1 * pgm_read_byte( &m_seq_y[m_minor]) + 3 * pgm_read_byte( &m_seq_y[m_major]);
+            cdb[16] = 0;
+            }
+         }
+      }
+   else if ( d_state != 13 )  // use cancel to pause
+      {
+      cdb[5]  = 1;  // Shot x of
+      cdb[6]  = 11; // Total # shot
+      cdb[7]  = 0;  // x
+      cdb[8]  = 0;  // y
+      m_minor = m_major = 0;
+      }
 ///////////////////////////// CGEM communication /////////////////////////////
    if ( 0x01 == (rs232_com_state & 0x01) )   // we are waiting for a response
       {
@@ -754,7 +936,7 @@ while(1)
       if ( (l_TT != TT) && ( rs232_tx_ptr < 0 ))  // 10 times a second, send a new command  (as long as the last transmit is complete
          {
          l_TT = TT;
-         for ( iii=0 ; iii<sizeof(rs232_tx_cmd) ; iii++ ) rs232_tx_cmd[iii]=0; // clear the buffer
+         for ( kkk=0 ; kkk<sizeof(rs232_tx_cmd) ; kkk++ ) rs232_tx_cmd[kkk]=0; // clear the buffer
 
          rs232_com_to = 0;   // reset the time-out monitor
          if ( rs232_com_state == 0 ) // send: aligned {J}
@@ -777,29 +959,9 @@ while(1)
             }
          rs232_tx_ptr    = 0;     // FG... pls tx the command
          rs232_com_state++;       // wait response
-            
-
-
-//         if ( cdb[1] != 0 )  // got something: send it reversed...
-//            {
-//            rs232_tx_cmd[0] = 'r';
-//            rs232_tx_cmd[1] = 'x';
-//            rs232_tx_cmd[2] = ':';
-//            p08x(&rs232_tx_cmd[3],cdb[2]); 
-//            rs232_tx_cmd[11] = '~';
-//            p08x(&rs232_tx_cmd[12],cdb[1]); 
-//            rs232_tx_cmd[20] = 0;
-//            rs232_tx_ptr    = 0;     // FG... pls tx the command
-//            cdb[1] = 0;
-//            }
-//         else if ( rs232_tx_ptr < 0 )
-//            {
-//            rs232_tx_cmd[0] = 'e';   // temp...find better way to copy strings
-//            rs232_tx_cmd[1] = 0;
-//            rs232_tx_ptr    = 0;     // FG... pls tx the command
-//            }
          }
       } // if ( rs232_com_state & 0x01 )
+///////////////////////////////////////////////////////////////////////////////////////
    } // while(1)
 }
 
