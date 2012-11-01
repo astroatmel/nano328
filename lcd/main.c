@@ -32,6 +32,9 @@ TODO
 #define SEQ_2 1000
 #define SEQ_3 1500
 
+#define ONE_TENTH_OF_NEWTON_FOV (0x61172*3)
+#define ONE_TENTH_OF_EDGEHD_FOV 0x61172
+
 
 unsigned long d_ram;
 unsigned char lcd_go_rt=0;
@@ -65,6 +68,11 @@ volatile char rs232_rx_ptr = 0;   // -1 means a command was received, -2 means o
 short         rs232_com_to    = -1;  // Time-out
 char rs232_com_state = 0;  // Odd values are states where we are waiting for an answer from CGEM
 char mozaic_state = 0;    // to help with the handshake...
+signed char rs232_edit=-1;
+long          cdb_add_value=0;  // value to add to the current cdb label... 
+long          cdb_initial_value=0;  // value to restore in case of UNDO
+unsigned char cdb_initial_offset=0;  // value to restore in case of UNDO
+
 // States are:
 // 0: Is aligned
 // 2: Is in goto 
@@ -101,6 +109,8 @@ volatile long cdb[CDB_SIZE];
 // 20: Histogram Cur
 // 21: Histogram Max
 // 22: Tracking Mode ? 0 1 2 3
+// 23: Debug value
+// 24: Debug value
 
 
 //   "W132\00145\00245.32\003 \006"  //  Example of custom characters 
@@ -154,10 +164,13 @@ PROGMEM const char linetxt[]="                "        //  0:
                              "Camera Driver   "  //  always last to make sure all are 16 bytes wide... the \xxx makes it a bit difficult
 ;
 //                                                                         .  .
-//                                              M  T  S  D  M  M  M  M  M  M  M  M  S  S  S                          M
-// States:                             0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
-PROGMEM const unsigned char line1[] = {47,3 ,4 ,6 ,7 ,22,28,9 ,9 ,8 ,8 ,17,20,19,0 ,23,25,24,25,20,0 ,29,31,33,45,42,44,0 ,0 ,0 ,0  };   // what string to display on line 1 for each states
-PROGMEM const unsigned char line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,15,16,0 ,21,0 ,0 ,0 ,26,0 ,27,35,0 ,30,32,34,46,43,0 ,0 ,0 ,0 ,0  };   // what string to display on line 2 for each states
+//                                               M  T  S  D  M  M  M  M  M  M  M  M  S  S  S                          M
+// States:                              0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
+PROGMEM const unsigned char  line1[] = {47,3 ,4 ,6 ,7 ,22,28,9 ,9 ,8 ,8 ,17,20,19,0 ,23,25,24,25,20,0 ,29,31,33,45,42,44,0 ,0 ,0 ,0  };   // what string to display on line 1 for each states
+PROGMEM const unsigned char  line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,15,16,0 ,21,0 ,0 ,0 ,26,0 ,27,35,0 ,30,32,34,46,43,0 ,0 ,0 ,0 ,0  };   // what string to display on line 2 for each states
+PROGMEM const unsigned char edit_o[] = {-1,-1,-1,-1,-1,-1,-1,-1,26,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1 };   // where is the edit character (offset)   (if any)
+PROGMEM const unsigned char edit_i[] = {0 ,0 ,0 ,0 ,0 ,0, 0 ,0 ,1 ,0, 0 ,0 ,0 ,0 ,0, 0 ,0 ,0 ,0 ,0, 0 ,0 ,0 ,0 ,0, 0 ,0 ,0 ,0 ,0 ,0  };   // index to edit_v 
+PROGMEM const long          edit_v[] = {0 ,1000 ,ONE_TENTH_OF_EDGEHD_FOV , ONE_TENTH_OF_NEWTON_FOV};   // What value to add/remove on short push  (long push is like pressing 10 times per second)
 // State 12 & 13 & 19 : Mozaic is running
 // State    &    : Timelaps is running
 
@@ -500,7 +513,10 @@ static unsigned short button_down_ms;   // check how long a button is held down
 
 rt_TIMER1++;
 
-if ( lcd_go_rt ) lcd_rt_print_next();
+///////////////////////////// Edit Logic  /////////////////////////////
+if ( rs232_edit ) lcd_lines[rs232_edit] = 0;   // in edit mode, show the up/down character where required
+if ( lcd_go_rt )  lcd_rt_print_next();
+///////////////////////////// Edit Logic  /////////////////////////////
 if ( beep_time_ms )
    {
    OCR2B = 10;
@@ -758,17 +774,21 @@ lcd_go_rt = 1;
 
 cdb[3]  = 2*1000;    // default exposure time: 30 mili seconds  (mozaic)
 cdb[4]  = 60;        // default delta time: 60 seconds (time laps)
+
 #ifdef TRACKING_OFF
 cdb[15] = 0x100000;  // Inhouse testing
 #else
-cdb[15] = 0x61172;   // default span: 1/10 of EDGE HD  (0.333 deg / 10 = 0.03 deg = 2 min)   { thats 1/30 of Newton)
+cdb[15] = ONE_TENTH_OF_EDGEHD_FOV;   // default span: 1/10 of EDGE HD  (0.333 deg / 10 = 0.03 deg = 2 min)   { thats 1/30 of Newton)
 #endif
 
 while(1)
    {
+   static signed char c_edt=-1,l_edt=-1;  // current and last edit mode
    static unsigned char id=255;
    static unsigned char set[10],fmt[10],pos[10],off[10]; // show/edit format position cdb-offset    <- values used to set/show values on LCD
    short i1,i2;
+
+   c_edt = (signed char)pgm_read_byte( &edit_o[d_state]);  // are we in edit mode
 
    if      (LCD_BUTTON_1 == 0 ) {button = BT_ENTER; }
    else if (LCD_BUTTON_2 == 0 ) {button = BT_UP;    }
@@ -778,14 +798,16 @@ while(1)
 
    if ( (button_sp != button_last) || (id==255))   // is=255 used as a first pass
       {
+      if ( (button == BT_UNDO) && (c_edt!=-1) ) cdb[cdb_initial_offset] = cdb_initial_value;  // UNDO in EDIT mode : restore initial value
+
       if ( button_sp == 0 ) //  action on key-off
          {               // Check next state...
          unsigned char next = pgm_read_byte( &main_state_machine[d_state*4 + button_last]);
          // if ( button_lp ) if long push, then different meaning
          if ( next< sizeof(line1) ) d_state = next;
+ 
          }
 
-      button_last = button_sp;
       i1 = pgm_read_byte(&line1[d_state]) * 16;
       i2 = pgm_read_byte(&line2[d_state]) * 16;
       for ( id=0;id<16;id++ ) 
@@ -819,6 +841,22 @@ while(1)
          CANON_SHOOT_LOW;
          }
       } 
+   if ( button_lp || (button_sp != button_last)) 
+      {
+      static char l_TT;  // last tenth
+      if ( (l_TT != TT) || (button_sp != button_last) )
+         {
+         if ( pgm_read_byte( &edit_o[d_state]) != -1 ) // we are in edit mode...
+            {
+            long value = pgm_read_dword(&edit_v[pgm_read_byte(&edit_i[d_state])]);  // ouf.. get the value to add/remove
+            if ( button == BT_UP)   cdb_add_value =  value;
+            if ( button == BT_DOWN) cdb_add_value = -value;
+            }
+         }
+      l_TT = TT;
+      }
+   button_last = button_sp;
+
    if ( button_lp && ( d_state==16 ) )  // Motor Tests
       {
             CANON_SHOOT_HIGH;
@@ -831,9 +869,15 @@ while(1)
       {
       lll = cdb[off[iii]];
       jjj = pos[iii];
+      if ( cdb_add_value !=0 )  // edit mode requests add/remove..
+         {
+         cdb[off[iii]] += cdb_add_value;
+         cdb_add_value = 0;
+         }
+
       if ( fmt[iii] == 's' )  // @sX format  (seconds)
          {
-         p_val(&lcd_lines[jjj],lll/1000,0x00 + 0x02);
+         p_val(&lcd_lines[jjj],lll/1000,0x10 + 0x02);
          }
       else if ( fmt[iii] == 'y' )  // @yX format  (yes/no)
          {
@@ -923,7 +967,16 @@ while(1)
          while((kkk<lll) && (kkk<16)) lcd_lines[jjj+kkk++] = '_';  // quart block
          }
       }
+///////////////////////////// Edit Logic  /////////////////////////////
+   if ( (l_edt != c_edt) && ( c_edt != -1) )   // Entering Edit mode, remember initial value and CDB offset
+      {
+      cdb_initial_value   = cdb[off[0]];  
+      cdb_initial_offset  = off[0]; 
+      }    // cdb[cdb_initial_offset] =- cdb_initial_value
+   l_edt = c_edt;
 
+   if ( TT < 3 ) rs232_edit = c_edt;   // for cursor display
+   else          rs232_edit=-1;        // for cursor display
 ///////////////////////////// Mozaic Logic  /////////////////////////////
    if ( (d_state == 12) || (d_state == 19) || (d_state == 26))
       {
