@@ -1,5 +1,13 @@
+/*
+TODO
+-edit mode
+-re-order states
+-timelap
+-Get tracking mode and set TRACKING_OFF accordingly
+-beep beep beep when mozaic is complete
 
-#include <avr/pgmspace.h>
+*/
+#include <avr/pgmspace.h> 
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
@@ -28,6 +36,10 @@
 unsigned long d_ram;
 unsigned char lcd_go_rt=0;
 unsigned short beep_time_ms;
+
+unsigned short histo=0;
+unsigned short histo_min=0;
+unsigned short histo_max=0;
 
 unsigned char m_minor,m_major;  // Mozaic sequence
 PROGMEM const char m_seq_x[] = { 0, 0, 1,    1, 1,-1,   -1,-1, 0 };   // RA
@@ -64,7 +76,7 @@ volatile unsigned long d_USART_RX;
 volatile unsigned long d_USART_TX;
 
 
-#define CDB_SIZE 20
+#define CDB_SIZE 25
 volatile long cdb[CDB_SIZE];
 //  0: Runnig time in seconds
 //  1: RA from CGEM
@@ -85,6 +97,10 @@ volatile long cdb[CDB_SIZE];
 // 16: Mozaic Running time in ms ( 1000-2000:focus    2000-> cdb[3]*1000: expose    then wait 4 second to store )
 // 17: Mozaic Base position RA
 // 18: Mozaic Base position DEC
+// 19: Histogram Min
+// 20: Histogram Cur
+// 21: Histogram Max
+// 22: Tracking Mode ? 0 1 2 3
 
 
 //   "W132\00145\00245.32\003 \006"  //  Example of custom characters 
@@ -133,13 +149,15 @@ PROGMEM const char linetxt[]="                "        //  0:
                              "RA:\242x\001          "  // 42: @H will display "XXhXXmXX.XXs"   Hour/Min/Sec  
                              "DE:\242x\002          "  // 43: @D will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is N/S
                              "Canceling...    "        // 44: Cancelling mozaic, and goto starting point
+                             "Histogram:  (x8)"        // 45: Histogram  ---> I write x8 because SP0 uses so little CPU time that on a scale of 16, the min/cur/max is 0.87  x8 gives blocks  (Sp0 currently use 5% of 1ms)
+                             "\242h\023             "  // 46: Histogram Values
                              "Camera Driver   "  //  always last to make sure all are 16 bytes wide... the \xxx makes it a bit difficult
 ;
 //                                                                         .  .
 //                                              M  T  S  D  M  M  M  M  M  M  M  M  S  S  S                          M
 // States:                             0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
-PROGMEM const unsigned char line1[] = {45,3 ,4 ,6 ,7 ,22,28,9 ,9 ,8 ,8 ,17,20,19,0 ,23,25,24,25,20,42,29,31,33,0 ,0 ,44,0 ,0 ,0 ,0  };   // what string to display on line 1 for each states
-PROGMEM const unsigned char line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,15,16,0 ,21,0 ,0 ,0 ,26,0 ,27,35,43,30,32,34,0 ,0 ,0 ,0 ,0 ,0 ,0  };   // what string to display on line 2 for each states
+PROGMEM const unsigned char line1[] = {47,3 ,4 ,6 ,7 ,22,28,9 ,9 ,8 ,8 ,17,20,19,0 ,23,25,24,25,20,0 ,29,31,33,45,42,44,0 ,0 ,0 ,0  };   // what string to display on line 1 for each states
+PROGMEM const unsigned char line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,15,16,0 ,21,0 ,0 ,0 ,26,0 ,27,35,0 ,30,32,34,46,43,0 ,0 ,0 ,0 ,0  };   // what string to display on line 2 for each states
 // State 12 & 13 & 19 : Mozaic is running
 // State    &    : Timelaps is running
 
@@ -151,8 +169,8 @@ unsigned char  button_last;   // Prevous button
 PROGMEM const char main_state_machine[]= {0,// ENTER  UNDO   UP     DOWN             // -1 means no action    -2 means edit ?
                                                1     ,-1    ,6     ,1                // State:  0  welcome message, any key to go to state 1
                                               ,-1    ,0     ,6     ,2                // State:  1  Show current telescope position {e} 
-                                              ,-1    ,0     ,1     ,20               // State:  2  Show current telescope position {e} in hour min sec
-                                              ,7     ,0     ,20    ,4                // State:  3  Mozaic Menu
+                                              ,-1    ,0     ,1     ,3                // State:  2  Show current telescope position {e} in hour min sec
+                                              ,7     ,0     ,2     ,4                // State:  3  Mozaic Menu
                                               ,-1    ,0     ,3     ,5                // State:  4  Timelaps pictures Menu
                                               ,15    ,0     ,4     ,6                // State:  5  Motor Test
                                               ,21    ,0     ,5     ,1                // State:  6  Debug & Status
@@ -169,12 +187,12 @@ PROGMEM const char main_state_machine[]= {0,// ENTER  UNDO   UP     DOWN        
                                               ,18    ,5     ,15    ,15               // State: 17  Motor  > Ramp up/down
                                               ,-1    ,17    ,-1    ,-1               // State: 18  Motor  > Use Up/Down to Change rate...
                                               ,-1    ,13    ,12    ,12               // State: 19  Mozaic > Mozaic in progress              (undo to cancel)
-                                              ,-1    ,0     ,2     ,3                // State: 20  Show current telescope position {e} in hour min sec
-                                              ,-1    ,6     ,23    ,22               // State: 21  Debug  >
-                                              ,-1    ,6     ,21    ,23               // State: 22  Debug  > 
-                                              ,-1    ,6     ,22    ,21               // State: 23  Debug  > 
-                                              ,-1    ,-1    ,-1    ,-1               // State: 24  Debug  > 
-                                              ,-1    ,-1    ,-1    ,-1               // State: 25  Debug  > 
+                                              ,-1    ,-1    ,-1    ,-1               // State: 20  
+                                              ,-1    ,6     ,25    ,22               // State: 21  Debug  > Aligned / Goto
+                                              ,-1    ,6     ,21    ,23               // State: 22  Debug  > Moz Err / Pos err
+                                              ,-1    ,6     ,22    ,24               // State: 23  Debug  > Latency / Timeout
+                                              ,-1    ,-1    ,23    ,25               // State: 24  Debug  > Histogram
+                                              ,-1    ,-1    ,24    ,21               // State: 25  Debug  > Raw position RA/DEC
                                               ,-1    ,-1    ,-1    ,-1               // State: 26  Mozaic >>  Cancelling...
                                               ,-1    ,-1    ,-1    ,-1               // State: __  
                                          };
@@ -513,6 +531,7 @@ if ( msms >= 100 )
       if ( SS >= 60 )
          {
          SS = 0;
+         histo_min = histo_max = histo; // reset min max every minute
          MM ++;                       // Minutes
          if ( MM >= 60 )
             {
@@ -582,7 +601,24 @@ else // not in mozaic mode
    CANON_SHOOT_LOW;
    }
 
-// TODO: put an histogram...
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//   This section terminates the interrupt routine and will help estimate how much CPU time we use in the real-time interrupt
+//   This SP0 uses soooo little cpu time that I do the histogram math here  (currently using 5% of 1ms)
+if ( histo < histo_min ) histo_min = histo;
+if ( histo > histo_max ) histo_max = histo;
+// This assumes that RT_CPU_K_FRAME is 20000 (we are running at 1Khz) 
+///cdb[19] = ((long)histo_min*13421)>>24;  // value will go from 0 to 15
+///cdb[20] = ((long)histo    *13421)>>24;  // value will go from 0 to 15
+///cdb[21] = ((long)histo_max*13421)>>24;  // value will go from 0 to 15
+cdb[19] = ((long)histo_min*13421)>>21;  // value will go from 0 to 15*8
+cdb[20] = ((long)histo    *13421)>>21;  // value will go from 0 to 15*8
+cdb[21] = ((long)histo_max*13421)>>21;  // value will go from 0 to 15*8
+if ( cdb[19] < 1 ) cdb[19]=1;  
+if ( cdb[20] < 2 ) cdb[20]=2;
+if ( cdb[21] < 3 ) cdb[21]=3;
+if ( cdb[19] == cdb[20] ) cdb[19] = cdb[20] - 1;
+if ( cdb[21] == cdb[20] ) cdb[21] = cdb[20] + 1;
+histo = TCNT1;  // the division takes a lot of cycles ... about 40% of one iteration !  so lets do the rest outside sp0
 }
 
 ISR(USART_RX_vect)
@@ -875,6 +911,16 @@ while(1)
          lcd_lines[jjj+3] = '.';
          p_val(&lcd_lines[jjj+4],msec/10,0x40 + 0x01);
          
+         }
+      else if ( fmt[iii] == 'h' )  // @xX format  (0x????????)
+         {
+         kkk=0;
+         lll = cdb[off[iii]+0];
+         while((kkk<lll) && (kkk<16)) lcd_lines[jjj+kkk++] = 6;    // full block
+         lll = cdb[off[iii]+1];
+         while((kkk<lll) && (kkk<16)) lcd_lines[jjj+kkk++] = 7;    // half block
+         lll = cdb[off[iii]+2];
+         while((kkk<lll) && (kkk<16)) lcd_lines[jjj+kkk++] = '_';  // quart block
          }
       }
 
