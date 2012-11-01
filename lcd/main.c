@@ -34,6 +34,9 @@ TODO
 
 #define ONE_TENTH_OF_NEWTON_FOV (0x61172*3)
 #define ONE_TENTH_OF_EDGEHD_FOV 0x61172
+#define ONE_DEG_CGEM 0xB60B61
+#define ONE_MIN_CGEM 0x308B9
+#define ONE_SEC_CGEM 0xCF2
 
 
 unsigned long d_ram;
@@ -163,14 +166,21 @@ PROGMEM const char linetxt[]="                "        //  0:
                              "\242h\023             "  // 46: Histogram Values
                              "Camera Driver   "  //  always last to make sure all are 16 bytes wide... the \xxx makes it a bit difficult
 ;
-//                                                                         .  .
-//                                               M  T  S  D  M  M  M  M  M  M  M  M  S  S  S                          M
+//                                                              e           .  .                                         e  e  e
+//                                               M  T  S  D  M  M  M  M  M  M  M  M  S  S  S                          M  M  M  M
 // States:                              0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
-PROGMEM const unsigned char  line1[] = {47,3 ,4 ,6 ,7 ,22,28,9 ,9 ,8 ,8 ,17,20,19,0 ,23,25,24,25,20,0 ,29,31,33,45,42,44,0 ,0 ,0 ,0  };   // what string to display on line 1 for each states
-PROGMEM const unsigned char  line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,15,16,0 ,21,0 ,0 ,0 ,26,0 ,27,35,0 ,30,32,34,46,43,0 ,0 ,0 ,0 ,0  };   // what string to display on line 2 for each states
-PROGMEM const unsigned char edit_o[] = {-1,-1,-1,-1,-1,-1,-1,-1,26,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1 };   // where is the edit character (offset)   (if any)
-PROGMEM const unsigned char edit_i[] = {0 ,0 ,0 ,0 ,0 ,0, 0 ,0 ,1 ,0, 0 ,0 ,0 ,0 ,0, 0 ,0 ,0 ,0 ,0, 0 ,0 ,0 ,0 ,0, 0 ,0 ,0 ,0 ,0 ,0  };   // index to edit_v 
-PROGMEM const long          edit_v[] = {0 ,1000 ,ONE_TENTH_OF_EDGEHD_FOV , ONE_TENTH_OF_NEWTON_FOV};   // What value to add/remove on short push  (long push is like pressing 10 times per second)
+PROGMEM const unsigned char  line1[] = {47,3 ,4 ,6 ,7 ,22,28,9 ,9 ,8 ,0 ,17,20,19,0 ,23,25,24,25,20,0 ,29,31,33,45,42,44,8 ,8 ,8 ,0  };   // what string to display on line 1 for each states
+PROGMEM const unsigned char  line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,15,0 ,0 ,21,0 ,0 ,0 ,26,0 ,27,35,0 ,30,32,34,46,43,0 ,16,16,16,0  };   // what string to display on line 2 for each states
+PROGMEM const unsigned char edit_o[] = {-1,-1,-1,-1,-1,-1,-1,-1,26,-1,0 ,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,23,26,29,0  };   // where is the edit character (offset)   (if any)
+PROGMEM const unsigned char edit_i[] = {0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,2 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0, 0 ,0 ,0 ,0 ,0, 0 ,0 ,3 ,4 ,5 ,0  };   // index to edit_v 
+PROGMEM const long          edit_v[] = {0 ,
+                                        1 ,     
+                                        1000 , 
+                                        ONE_DEG_CGEM ,
+                                        ONE_MIN_CGEM ,
+                                        ONE_SEC_CGEM , 
+                                        ONE_TENTH_OF_EDGEHD_FOV , 
+                                        ONE_TENTH_OF_NEWTON_FOV};   // What value to add/remove on short push  (long push is like pressing 10 times per second)
 // State 12 & 13 & 19 : Mozaic is running
 // State    &    : Timelaps is running
 
@@ -189,8 +199,8 @@ PROGMEM const char main_state_machine[]= {0,// ENTER  UNDO   UP     DOWN        
                                               ,21    ,0     ,5     ,1                // State:  6  Debug & Status
                                               ,8     ,3     ,11    ,9                // State:  7  Mozaic > Current Exposure Time  
                                               ,7     ,7     ,-2    ,-2               // State:  8  Mozaic > Set Exposure Time  
-                                              ,10    ,3     ,7     ,11               // State:  9  Mozaic > Current Total span     
-                                              ,9     ,9     ,-2    ,-2               // State: 10  Mozaic > Set Total span     
+                                              ,27    ,3     ,7     ,11               // State:  9  Mozaic > Current Total span     
+                                              ,-1    ,-1    ,-1    ,-1               // State: 10         Mozaic > Set Total span     
                                               ,12    ,3     ,9     ,7                // State: 11  Mozaic > Start Mosaic   
                                               ,-1    ,13    ,19    ,19               // State: 12  Mozaic > Mozaic in progress              (undo to cancel)
                                               ,26    ,12    ,12    ,12               // State: 13  Mozaic >>  Sure you want to cancel ?       (enter to confirm)
@@ -207,6 +217,10 @@ PROGMEM const char main_state_machine[]= {0,// ENTER  UNDO   UP     DOWN        
                                               ,-1    ,-1    ,23    ,25               // State: 24  Debug  > Histogram
                                               ,-1    ,-1    ,24    ,21               // State: 25  Debug  > Raw position RA/DEC
                                               ,-1    ,-1    ,-1    ,-1               // State: 26  Mozaic >>  Cancelling...
+                                              ,28    ,9     ,-1    ,-1               // State: 27  Mozaic >> Set Total span (deg)
+                                              ,29    ,27    ,-1    ,-1               // State: 28  Mozaic >> Set Total span (min)
+                                              ,9     ,28    ,-1    ,-1               // State: 29  Mozaic >> Set Total span (sec)
+                                              ,-1    ,-1    ,-1    ,-1               // State: 30  Mozaic >>  Cancelling...
                                               ,-1    ,-1    ,-1    ,-1               // State: __  
                                          };
 
@@ -798,7 +812,6 @@ while(1)
 
    if ( (button_sp != button_last) || (id==255))   // is=255 used as a first pass
       {
-      if ( (button == BT_UNDO) && (c_edt!=-1) ) cdb[cdb_initial_offset] = cdb_initial_value;  // UNDO in EDIT mode : restore initial value
 
       if ( button_sp == 0 ) //  action on key-off
          {               // Check next state...
@@ -806,6 +819,11 @@ while(1)
          // if ( button_lp ) if long push, then different meaning
          if ( next< sizeof(line1) ) d_state = next;
  
+         if ( button_last == BT_UNDO) 
+            {
+            signed char t_edt = (signed char)pgm_read_byte( &edit_o[d_state]);  // What is the next mode ?
+            if ( (c_edt!=-1) && (t_edt==-1) ) cdb[cdb_initial_offset] = cdb_initial_value;  // UNDO in EDIT mode : restore initial value
+            }
          }
 
       i1 = pgm_read_byte(&line1[d_state]) * 16;
@@ -968,7 +986,7 @@ while(1)
          }
       }
 ///////////////////////////// Edit Logic  /////////////////////////////
-   if ( (l_edt != c_edt) && ( c_edt != -1) )   // Entering Edit mode, remember initial value and CDB offset
+   if ( (l_edt != c_edt) && ( c_edt != -1) && (l_edt == -1) )   // Entering Edit mode, remember initial value and CDB offset
       {
       cdb_initial_value   = cdb[off[0]];  
       cdb_initial_offset  = off[0]; 
