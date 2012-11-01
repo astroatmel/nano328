@@ -164,23 +164,25 @@ PROGMEM const char linetxt[]="                "        //  0:
                              "Canceling...    "        // 44: Cancelling mozaic, and goto starting point
                              "Histogram:  (x8)"        // 45: Histogram  ---> I write x8 because SP0 uses so little CPU time that on a scale of 16, the min/cur/max is 0.87  x8 gives blocks  (Sp0 currently use 5% of 1ms)
                              "\242h\023             "  // 46: Histogram Values
+                             "Set Span to:    "        // 47: 
+                             "1/10 of EDGE HD "        // 48: 
+                             "1/10 of Newton 6"        // 49: 
                              "Camera Driver   "  //  always last to make sure all are 16 bytes wide... the \xxx makes it a bit difficult
 ;
 //                                                              e           .  .                                         e  e  e
-//                                               M  T  S  D  M  M  M  M  M  M  M  M  S  S  S                          M  M  M  M
-// States:                              0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
-PROGMEM const unsigned char  line1[] = {47,3 ,4 ,6 ,7 ,22,28,9 ,9 ,8 ,0 ,17,20,19,0 ,23,25,24,25,20,0 ,29,31,33,45,42,44,8 ,8 ,8 ,0  };   // what string to display on line 1 for each states
-PROGMEM const unsigned char  line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,15,0 ,0 ,21,0 ,0 ,0 ,26,0 ,27,35,0 ,30,32,34,46,43,0 ,16,16,16,0  };   // what string to display on line 2 for each states
-PROGMEM const unsigned char edit_o[] = {-1,-1,-1,-1,-1,-1,-1,-1,26,-1,0 ,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,23,26,29,0  };   // where is the edit character (offset)   (if any)
-PROGMEM const unsigned char edit_i[] = {0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,2 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0, 0 ,0 ,0 ,0 ,0, 0 ,0 ,3 ,4 ,5 ,0  };   // index to edit_v 
+//                                               M  T  S  D  M  M  M  M  M  M  M  M  S  S  S                          M  M  M  M  M  M
+// States:                              0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35
+PROGMEM const unsigned char  line1[] = {50,3 ,4 ,6 ,7 ,22,28,9 ,9 ,8 ,0 ,17,20,19,0 ,23,25,24,25,20,0 ,29,31,33,45,42,44,8 ,8 ,8 ,47,47,0 ,0 ,0 ,0 };   // what string to display on line 1 for each states
+PROGMEM const unsigned char  line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,15,0 ,0 ,21,0 ,0 ,0 ,26,0 ,27,35,0 ,30,32,34,46,43,0 ,16,16,16,48,49,0 ,0 ,0 ,0 };   // what string to display on line 2 for each states
+PROGMEM const unsigned char edit_o[] = {-1,-1,-1,-1,-1,-1,-1,-1,26,-1,0 ,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,23,26,29,0 ,0 ,0 ,0 ,0 ,0 };   // where is the edit character (offset)   (if any)
+PROGMEM const unsigned char edit_i[] = {0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,2 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0, 0 ,0 ,0 ,0 ,0, 0 ,0 ,3 ,4 ,5 ,0 ,0 ,0 ,0 ,0 ,0 };   // index to edit_v 
 PROGMEM const long          edit_v[] = {0 ,
                                         1 ,     
                                         1000 , 
                                         ONE_DEG_CGEM ,
                                         ONE_MIN_CGEM ,
                                         ONE_SEC_CGEM , 
-                                        ONE_TENTH_OF_EDGEHD_FOV , 
-                                        ONE_TENTH_OF_NEWTON_FOV};   // What value to add/remove on short push  (long push is like pressing 10 times per second)
+                                       };   // What value to add/remove on short push  (long push is like pressing 10 times per second)
 // State 12 & 13 & 19 : Mozaic is running
 // State    &    : Timelaps is running
 
@@ -197,11 +199,11 @@ PROGMEM const char main_state_machine[]= {0,// ENTER  UNDO   UP     DOWN        
                                               ,-1    ,0     ,3     ,5                // State:  4  Timelaps pictures Menu
                                               ,15    ,0     ,4     ,6                // State:  5  Motor Test
                                               ,21    ,0     ,5     ,1                // State:  6  Debug & Status
-                                              ,8     ,3     ,11    ,9                // State:  7  Mozaic > Current Exposure Time  
-                                              ,7     ,7     ,-2    ,-2               // State:  8  Mozaic > Set Exposure Time  
+                                              ,8     ,3     ,31    ,9                // State:  7  Mozaic > Current Exposure Time  
+                                              ,7     ,7     ,-1    ,-1               // State:  8  Mozaic > Set Exposure Time  
                                               ,27    ,3     ,7     ,11               // State:  9  Mozaic > Current Total span     
                                               ,-1    ,-1    ,-1    ,-1               // State: 10         Mozaic > Set Total span     
-                                              ,12    ,3     ,9     ,7                // State: 11  Mozaic > Start Mosaic   
+                                              ,12    ,3     ,9     ,30               // State: 11  Mozaic > Start Mosaic   
                                               ,-1    ,13    ,19    ,19               // State: 12  Mozaic > Mozaic in progress              (undo to cancel)
                                               ,26    ,12    ,12    ,12               // State: 13  Mozaic >>  Sure you want to cancel ?       (enter to confirm)
                                               ,-1    ,-1    ,-1    ,-1               // State: 14  Mozaic > spare
@@ -220,7 +222,12 @@ PROGMEM const char main_state_machine[]= {0,// ENTER  UNDO   UP     DOWN        
                                               ,28    ,9     ,-1    ,-1               // State: 27  Mozaic >> Set Total span (deg)
                                               ,29    ,27    ,-1    ,-1               // State: 28  Mozaic >> Set Total span (min)
                                               ,9     ,28    ,-1    ,-1               // State: 29  Mozaic >> Set Total span (sec)
-                                              ,-1    ,-1    ,-1    ,-1               // State: 30  Mozaic >>  Cancelling...
+                                              ,9     ,3     ,11    ,31               // State: 30  Set default 1/10 EDGE HD
+                                              ,9     ,3     ,30    ,7                // State: 31  Set default 1/10 Newton 6 inch
+                                              ,-1    ,-1    ,-1    ,-1               // State: 32  
+                                              ,-1    ,-1    ,-1    ,-1               // State: 33  
+                                              ,-1    ,-1    ,-1    ,-1               // State: 34  
+                                              ,-1    ,-1    ,-1    ,-1               // State: 35  
                                               ,-1    ,-1    ,-1    ,-1               // State: __  
                                          };
 
@@ -814,9 +821,14 @@ while(1)
       {
 
       if ( button_sp == 0 ) //  action on key-off
-         {               // Check next state...
-         unsigned char next = pgm_read_byte( &main_state_machine[d_state*4 + button_last]);
-         // if ( button_lp ) if long push, then different meaning
+         {
+         unsigned char next = pgm_read_byte( &main_state_machine[d_state*4 + button_last]);   // Check next state...
+         if ( button_last == BT_ENTER)  // Process special cases for set value
+            {
+            if ( d_state == 30 ) cdb[15] = ONE_TENTH_OF_EDGEHD_FOV;
+            if ( d_state == 31 ) cdb[15] = ONE_TENTH_OF_NEWTON_FOV;
+            }
+
          if ( next< sizeof(line1) ) d_state = next;
  
          if ( button_last == BT_UNDO) 
