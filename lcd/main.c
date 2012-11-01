@@ -15,6 +15,15 @@
 
 #define CANON_SHOOT_HIGH     PORTD |=  bit(5)          // PORT D bit 5
 #define CANON_SHOOT_LOW      PORTD &= ~bit(5)
+// for inhouse tests, define TRACKING_OFF:
+#define TRACKING_OFF
+
+
+// Photo delays:
+#define SEQ_1 500
+#define SEQ_2 1000
+#define SEQ_3 1500
+
 
 unsigned long d_ram;
 unsigned char lcd_go_rt=0;
@@ -37,12 +46,13 @@ PROGMEM const char p_value[]         = "value:\015\012";
 PROGMEM const long p_values[]        = {123,-123,-1,1,10,-10};
 #endif
 
-char rs232_tx_cmd[32];  // null terminated
-char rs232_rx_cmd[32];  
+unsigned char rs232_tx_cmd[32];  // null terminated
+unsigned char rs232_rx_cmd[32];  
 volatile char rs232_tx_ptr = -1;   // -1 means last tx complete and >0 means in progress of transmitting...
 volatile char rs232_rx_ptr = 0;   // -1 means a command was received, -2 means overflow
 short         rs232_com_to    = -1;  // Time-out
 char rs232_com_state = 0;  // Odd values are states where we are waiting for an answer from CGEM
+char mozaic_state = 0;    // to help with the handshake...
 // States are:
 // 0: Is aligned
 // 2: Is in goto 
@@ -73,6 +83,8 @@ volatile long cdb[CDB_SIZE];
 // 14: Time since last position update
 // 15: Mozaic span in degrees
 // 16: Mozaic Running time in ms ( 1000-2000:focus    2000-> cdb[3]*1000: expose    then wait 4 second to store )
+// 17: Mozaic Base position RA
+// 18: Mozaic Base position DEC
 
 
 //   "W132\00145\00245.32\003 \006"  //  Example of custom characters 
@@ -105,12 +117,12 @@ PROGMEM const char linetxt[]="                "        //  0:
                              "To Step         "        // 26:
                              "To change rate  "        // 27:
                              "Status Page...  "        // 28:
-                             "Aligned:\242y\012     "        // 29:
-                             "In Goto:\242y\013     "        // 30:
-                             "Moz Err:\242e\014     "        // 31:
-                             "Pos Err:\242e\015     "        // 32:
-                             "Latency:\242E\016     "        // 33:  // show Time since last position update
-                             "Time-Out:\242e\011    "        // 34:
+                             "Aligned:\242y\012     "  // 29:
+                             "In Goto:\242y\013     "  // 30:
+                             "Moz Err:\242e\014     "  // 31:
+                             "Pos Err:\242e\015     "  // 32:
+                             "Latency:\242E\016     "  // 33:  // show Time since last position update
+                             "Time-Out:\242e\011    "  // 34:
                              "Time:\242m\020    sec "  // 35: @m will display xxx.xxx
                              "Mozaic Preset:  "        // 36:
                              "1 Second        "        // 37: // set the exposure time to 1 second
@@ -118,14 +130,16 @@ PROGMEM const char linetxt[]="                "        //  0:
                              "60 Seconds      "        // 39: // set the exposure time to 60 seconds
                              "1/10 Newton     "        // 40: // set the span to 1 tenth of the field of the Newton 6 Inches       ( 1 deg / 10 -> .1 deg )
                              "1/10 EDGE HD    "        // 41: // set the span to 1 tenth of the field of the EDGE HD 9.25 Inches   ( 1 deg / 10 -> .1 deg )
-
+                             "RA:\242x\001          "  // 42: @H will display "XXhXXmXX.XXs"   Hour/Min/Sec  
+                             "DE:\242x\002          "  // 43: @D will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is N/S
+                             "Canceling...    "        // 44: Cancelling mozaic, and goto starting point
                              "Camera Driver   "  //  always last to make sure all are 16 bytes wide... the \xxx makes it a bit difficult
 ;
 //                                                                         .  .
-//                                              M  T  S  D  M  M  M  M  M  M  M  M  S  S  S
+//                                              M  T  S  D  M  M  M  M  M  M  M  M  S  S  S                          M
 // States:                             0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
-PROGMEM const unsigned char line1[] = {42,3 ,4 ,6 ,7 ,22,28,9 ,9 ,8 ,8 ,17,20,19,0 ,23,25,24,25,20,0 ,29,31,33,0 ,0 ,0 ,0 ,0 ,0 ,0  };   // what string to display on line 1 for each states
-PROGMEM const unsigned char line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,15,16,0 ,21,0 ,0 ,0 ,26,0 ,27,35,0 ,30,32,34,0 ,0 ,0 ,0 ,0 ,0 ,0  };   // what string to display on line 2 for each states
+PROGMEM const unsigned char line1[] = {45,3 ,4 ,6 ,7 ,22,28,9 ,9 ,8 ,8 ,17,20,19,0 ,23,25,24,25,20,42,29,31,33,0 ,0 ,44,0 ,0 ,0 ,0  };   // what string to display on line 1 for each states
+PROGMEM const unsigned char line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,15,16,0 ,21,0 ,0 ,0 ,26,0 ,27,35,43,30,32,34,0 ,0 ,0 ,0 ,0 ,0 ,0  };   // what string to display on line 2 for each states
 // State 12 & 13 & 19 : Mozaic is running
 // State    &    : Timelaps is running
 
@@ -137,8 +151,8 @@ unsigned char  button_last;   // Prevous button
 PROGMEM const char main_state_machine[]= {0,// ENTER  UNDO   UP     DOWN             // -1 means no action    -2 means edit ?
                                                1     ,-1    ,6     ,1                // State:  0  welcome message, any key to go to state 1
                                               ,-1    ,0     ,6     ,2                // State:  1  Show current telescope position {e} 
-                                              ,-1    ,0     ,1     ,3                // State:  2  Show current telescope position {e} in hour min sec
-                                              ,7     ,0     ,2     ,4                // State:  3  Mozaic Menu
+                                              ,-1    ,0     ,1     ,20               // State:  2  Show current telescope position {e} in hour min sec
+                                              ,7     ,0     ,20    ,4                // State:  3  Mozaic Menu
                                               ,-1    ,0     ,3     ,5                // State:  4  Timelaps pictures Menu
                                               ,15    ,0     ,4     ,6                // State:  5  Motor Test
                                               ,21    ,0     ,5     ,1                // State:  6  Debug & Status
@@ -148,20 +162,20 @@ PROGMEM const char main_state_machine[]= {0,// ENTER  UNDO   UP     DOWN        
                                               ,9     ,9     ,-2    ,-2               // State: 10  Mozaic > Set Total span     
                                               ,12    ,3     ,9     ,7                // State: 11  Mozaic > Start Mosaic   
                                               ,-1    ,13    ,19    ,19               // State: 12  Mozaic > Mozaic in progress              (undo to cancel)
-                                              ,11    ,12    ,12    ,12               // State: 13  Mozaic >>  Sure you want to cancel ?       (enter to confirm)
+                                              ,26    ,12    ,12    ,12               // State: 13  Mozaic >>  Sure you want to cancel ?       (enter to confirm)
                                               ,-1    ,-1    ,-1    ,-1               // State: 14  Mozaic > spare
                                               ,16    ,5     ,17    ,17               // State: 15  Motor  > Step Up/Down 
                                               ,-1    ,15    ,-1    ,-1               // State: 16  Motor  > Use Up/Down to Step...
                                               ,18    ,5     ,15    ,15               // State: 17  Motor  > Ramp up/down
                                               ,-1    ,17    ,-1    ,-1               // State: 18  Motor  > Use Up/Down to Change rate...
                                               ,-1    ,13    ,12    ,12               // State: 19  Mozaic > Mozaic in progress              (undo to cancel)
-                                              ,-1    ,-1    ,-1    ,-1               // State: __  
+                                              ,-1    ,0     ,2     ,3                // State: 20  Show current telescope position {e} in hour min sec
                                               ,-1    ,6     ,23    ,22               // State: 21  Debug  >
                                               ,-1    ,6     ,21    ,23               // State: 22  Debug  > 
                                               ,-1    ,6     ,22    ,21               // State: 23  Debug  > 
                                               ,-1    ,-1    ,-1    ,-1               // State: 24  Debug  > 
                                               ,-1    ,-1    ,-1    ,-1               // State: 25  Debug  > 
-                                              ,-1    ,-1    ,-1    ,-1               // State: __  
+                                              ,-1    ,-1    ,-1    ,-1               // State: 26  Mozaic >>  Cancelling...
                                               ,-1    ,-1    ,-1    ,-1               // State: __  
                                          };
 
@@ -208,7 +222,7 @@ while ( tc )
 }
 
 // Copy a null terminated string from PGM space
-void pgm_to_mem(const char *src,char *dst)
+void pgm_to_mem(const char *src,unsigned char *dst)
 {
 unsigned char CCC;
 while ( (CCC = pgm_read_byte( src++ )) ) *dst++ = CCC;
@@ -253,8 +267,8 @@ else
    iii=digit-1;
    if  ( val == 0 )            buf[iii--] = '0';  
    for ( ; val>0 ; val /= 10 ) buf[iii--] = val%10 + '0';
-//   if ( iii < 0 ) return; // no space left
-   if ( lead )
+// if ( iii < 0 ) return; // no space left
+   if ( (lead!=0) && ( iii >= 0 ))
       {
       while (iii>0) buf[iii--] = '0';
       if ( sign == 0 ) buf[iii--] = '0';
@@ -490,8 +504,12 @@ if ( msms >= 100 )
    TT++;                              // Tenths
    if ( TT >= 10 )
       {
+      TT = 0;
       SS ++;                          // Seconds
       cdb[0]++; // running time
+#ifdef TRACKING_OFF
+      cdb[17] += 0xC22E;          // debug TODO remove, when tracking is on, move the mozaic origin with time to be able to debug
+#endif
       if ( SS >= 60 )
          {
          SS = 0;
@@ -530,27 +548,27 @@ if ( rs232_com_to>=0 ) rs232_com_to++;  // monitor how long it takes to get the 
 
 cdb[14]++;  // monitor how old the position from CGEM is
 
-if ( (d_state == 12) || (d_state == 13) || (d_state == 19) )
+if ( (d_state == 12) || (d_state == 13) || (d_state == 19) || (d_state == 26))
    {
-   if      ( cdb[16]<1000 ) // 1 second delay
+   if      ( cdb[16]<SEQ_1 ) // initial delay
       {
       cdb[16] ++;
       CANON_FOCUS_LOW;
       CANON_SHOOT_LOW;
       }
-   else if ( cdb[16]<2000 ) // Focus
+   else if ( cdb[16]<SEQ_2 ) // Focus
       {
       cdb[16] ++;
       CANON_FOCUS_HIGH;   // Led on
       CANON_SHOOT_LOW;
       }
-   else if ( cdb[16]<cdb[3]+2000 ) // Expose
+   else if ( cdb[16]<cdb[3]+SEQ_2 ) // Expose
       {
       cdb[16] ++;
       CANON_FOCUS_HIGH;   // Led on
       CANON_SHOOT_HIGH;   // Led on
       }
-   else if ( cdb[16]<cdb[3]+6000 ) // Store image
+   else if ( cdb[16]<cdb[3]+SEQ_3 ) // Store image (the move is so long with CGEM, no need to wait for image storage...
       {
       cdb[16] ++;
       CANON_FOCUS_LOW;
@@ -646,10 +664,6 @@ rt_init_disp();
    OCR2A   = 0;                   // Clock divider set to 1024, so 20 should give a wave at 1Khz
    OCR2B   = 0;                  // By default, set the PWM to 50%
 
-
-
-ps("\033[2JLCD Tests...\015\012");
-
 //set_analog_mode(MODE_8_BIT);                         // 8-bit analog-to-digital conversions
 d_ram = get_free_memory();
 
@@ -669,7 +683,7 @@ for ( kkk=0 ; kkk<6 ; kkk++ )   // Some values...
    {
    lll = pgm_read_dword(&p_values[kkk]);
    rt_p_pgm(p_value);
-   p08x((unsigned char *)rs232_tx_cmd,&lll); 
+   p08x(rs232_tx_cmd,&lll); 
    rs232_tx_ptr    = 0;     // FG... pls tx the command
    while ( rs232_tx_ptr >=0 ) ;  // wait...
 
@@ -685,7 +699,7 @@ for ( kkk=0 ; kkk<6 ; kkk++ )   // Some values...
          rs232_tx_cmd[2] = 0x0A;
          rs232_tx_ptr    = 0;     // FG... pls tx the command
          while ( rs232_tx_ptr >=0 ) ;  // wait...
-         p_val((unsigned char *)rs232_tx_cmd,lll,0x00 + jjj + iii); 
+         p_val(rs232_tx_cmd,lll,0x00 + jjj + iii); 
          rs232_tx_ptr    = 0;     // FG... pls tx the command
          while ( rs232_tx_ptr >=0 ) ;  // wait...
          }
@@ -706,9 +720,13 @@ DDRD |= bit(3);   // Buzzer
 d_state=0;
 lcd_go_rt = 1;
 
-cdb[3]  = 10*1000;   // default exposure time: 30 mili seconds  (mozaic)
+cdb[3]  = 2*1000;    // default exposure time: 30 mili seconds  (mozaic)
 cdb[4]  = 60;        // default delta time: 60 seconds (time laps)
+#ifdef TRACKING_OFF
+cdb[15] = 0x100000;  // Inhouse testing
+#else
 cdb[15] = 0x61172;   // default span: 1/10 of EDGE HD  (0.333 deg / 10 = 0.03 deg = 2 min)   { thats 1/30 of Newton)
+#endif
 
 while(1)
    {
@@ -831,9 +849,9 @@ while(1)
       else if ( fmt[iii] == 'p' )  // @oX format  x of y
          {
          mmm = cdb[off[iii]+1];
-         p_val(&lcd_lines[jjj+0],lll,0x00 + 0x01);
+         p_val(&lcd_lines[jjj+0],lll,0x30 + 0x01);
          lcd_lines[jjj+2] = ',';
-         p_val(&lcd_lines[jjj+3],mmm,0x00 + 0x01);
+         p_val(&lcd_lines[jjj+3],mmm,0x30 + 0x01);
          }
       else if ( fmt[iii] == 'x' )  // @xX format  (0x????????)
          {
@@ -841,9 +859,18 @@ while(1)
          }
       else if ( fmt[iii] == 'm' )  // format  xxx.xxx ms   to display exposition time
          {
-         long  sec = (lll/1000)-2;
-         long msec = lll%1000;
-         if ( sec < 0 ) sec = msec = 0;
+         long  sec,msec;
+         if ( lll < SEQ_2 ) sec = msec = 0;
+         else if ( (lll - SEQ_2) < cdb[3] ) 
+            {
+            sec  = (lll-SEQ_2)/1000;
+            msec = (lll-SEQ_2)%1000;
+            }
+         else  // reached final exposure time
+            {
+            sec  = cdb[3]/1000;
+            msec = cdb[3]%1000;
+            }
          p_val(&lcd_lines[jjj+0],sec,0x00 + 0x02);
          lcd_lines[jjj+3] = '.';
          p_val(&lcd_lines[jjj+4],msec/10,0x40 + 0x01);
@@ -852,16 +879,32 @@ while(1)
       }
 
 ///////////////////////////// Mozaic Logic  /////////////////////////////
-   if ( (d_state == 12) || (d_state == 19))
+   if ( (d_state == 12) || (d_state == 19) || (d_state == 26))
       {
-      if ( cdb[16] >= cdb[3]+6000 ) // Picture taken, ready to proceed...
+      if ( mozaic_state==1 ) // command requested 
+         {; }
+      else if ( mozaic_state==2 ) // waiting for first "in goto" status
+         {; }
+      else if ( mozaic_state==3 ) // command send and "in goto" state feedback received
+         {
+         if ( (d_state==26) && (cdb[7]==0) && (cdb[8]==0) ) // cancel Mozaic and goto 0,0 complete
+            {
+            d_state = 11;    // we are done go back to "start mozaic"
+            id = 255;        // force a first pass
+            }
+         else if ( (cdb[11] == 0) || (cdb[11] == '0') ) // if not in goto
+            {
+            mozaic_state=0;
+            cdb[16] = 0;   // tell foreground to start taking the picture
+            }
+         }
+      else if ( cdb[16] >= cdb[3]+SEQ_3 ) // Picture taken, ready to proceed...
          {
          if ( cdb[5] == cdb[6] ) 
             {
             d_state = 11;    // we are done go back to "start mozaic"
             id = 255;        // force a first pass
             }
-//       else if ( moving ) wait...
          else                                     // Take new picture
             {
             cdb[5] ++;
@@ -870,20 +913,32 @@ while(1)
                { 
                m_major = 0; 
                m_minor ++;
+               if ( m_minor >=9 ) m_minor=0;
                }
-            cdb[7] = 1 * pgm_read_byte( &m_seq_x[m_minor]) + 3 * pgm_read_byte( &m_seq_x[m_major]);
-            cdb[8] = 1 * pgm_read_byte( &m_seq_y[m_minor]) + 3 * pgm_read_byte( &m_seq_y[m_major]);
-            cdb[16] = 0;
+            cdb[7] = (signed char)pgm_read_byte( &m_seq_x[m_minor]) + 3 * (signed char)pgm_read_byte( &m_seq_x[m_major]);  
+            cdb[8] = (signed char)pgm_read_byte( &m_seq_y[m_minor]) + 3 * (signed char)pgm_read_byte( &m_seq_y[m_major]);  
+
+            if ( d_state==26 ) // cancel Mozaic 
+               {
+               cdb[7] = 0;
+               cdb[8] = 0;
+               }
+            mozaic_state=1; // Ask the CGEM communication to issue a goto command
             }
          }
       }
+   else if ( d_state == 20 ) {;} // use cancel to pause
    else if ( d_state != 13 )  // use cancel to pause
       {
       cdb[5]  = 1;  // Shot x of
-      cdb[6]  = 11; // Total # shot
+      cdb[6]  = 82; // Total # shot
       cdb[7]  = 0;  // x
       cdb[8]  = 0;  // y
+      cdb[17] = cdb[1];  // Save start RA
+      cdb[18] = cdb[2];  // Save start DEC
+
       m_minor = m_major = 0;
+      mozaic_state = 0;      // nothing to do...
       }
 ///////////////////////////// CGEM communication /////////////////////////////
    if ( 0x01 == (rs232_com_state & 0x01) )   // we are waiting for a response
@@ -892,7 +947,10 @@ while(1)
          {
          cdb[9]++;   // Time-out
          rs232_rx_ptr    = 0;
-         rs232_com_state = 4;   // restart
+         rs232_com_state = 0;   // restart
+////rs232_rx_ptr=-1;  // fake rx
+////rs232_com_to=0;
+////rs232_com_state = 6;
          }
       else if ( rs232_rx_ptr < 0 )  // something to do... we just got a complete message
          {
@@ -902,7 +960,11 @@ while(1)
             }
          else if ( rs232_com_state == 3 ) // response from in goto  {L}
             {
-            if ( rs232_rx_cmd[1]=='#' ) cdb[11] = rs232_rx_cmd[0];
+            if ( rs232_rx_cmd[1]=='#' ) 
+               {
+               cdb[11] = rs232_rx_cmd[0];
+               if ( mozaic_state==2 ) mozaic_state++; // after any goto command, this is the first valid feedback, tell the mozaic logic that it can wait for goto finished...
+               }
             }
          else if ( rs232_com_state == 5 ) // response from get pos {e}
             {
@@ -922,6 +984,7 @@ while(1)
          else if ( rs232_com_state == 7 ) // response from  goto command (mozaic)  {r}
             {
             if ( rs232_rx_cmd[0]=='#' ) cdb[12]++;   // goto error
+            if ( mozaic_state==1 ) mozaic_state=2;   // Got a resopnse...
             }
 
          rs232_com_state++; // go to next state
@@ -936,6 +999,11 @@ while(1)
       if ( (l_TT != TT) && ( rs232_tx_ptr < 0 ))  // 10 times a second, send a new command  (as long as the last transmit is complete
          {
          l_TT = TT;
+         #ifdef TRACKING_OFF
+         short div=1;
+         #else
+         short div=9;
+         #endif
          for ( kkk=0 ; kkk<sizeof(rs232_tx_cmd) ; kkk++ ) rs232_tx_cmd[kkk]=0; // clear the buffer
 
          rs232_com_to = 0;   // reset the time-out monitor
@@ -952,10 +1020,17 @@ while(1)
             rs232_tx_cmd[0]='e';  
             }
          else if ( rs232_com_state == 6 ) // Send:  goto pos {rC691D800,1B947B00}
-            {
-            // if aligned and not in goto mode
-            //rs232_tx_cmd[0]='r';  
-            rs232_com_state = -1;   // Jumpt to state 0
+            {                             //                  01234567890123456789
+            if ( mozaic_state==1 ) // goto request 
+               {
+               rs232_tx_cmd[0]='r';  
+               lll = (cdb[15]*cdb[7])/div  + cdb[17];  // (Span * displacement)/9 + Start RA
+               p08x(&rs232_tx_cmd[1],&lll);
+               rs232_tx_cmd[9]=',';  
+               lll = (cdb[15]*cdb[8])/div  + cdb[18];  // (Span * displacement)/9 + Start DEC
+               p08x(&rs232_tx_cmd[10],&lll);
+               }
+            else rs232_com_state = -1;   // Jumpt to state 0
             }
          rs232_tx_ptr    = 0;     // FG... pls tx the command
          rs232_com_state++;       // wait response
