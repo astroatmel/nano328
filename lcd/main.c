@@ -1,10 +1,7 @@
 /*
 TODO
--edit mode
 -re-order states
 -timelap
--Get tracking mode and set TRACKING_OFF accordingly
--beep beep beep when mozaic is complete
 
 */
 #include <avr/pgmspace.h> 
@@ -23,14 +20,11 @@ TODO
 
 #define CANON_SHOOT_HIGH     PORTD |=  bit(5)          // PORT D bit 5
 #define CANON_SHOOT_LOW      PORTD &= ~bit(5)
-// for inhouse tests, define TRACKING_OFF:
-#define TRACKING_OFF
-
 
 // Photo delays:
 #define SEQ_1 500
-#define SEQ_2 1000
-#define SEQ_3 1500
+#define SEQ_2 1500
+#define SEQ_3 2000
 
 #define ONE_TENTH_OF_NEWTON_FOV (0x61172*3)
 #define ONE_TENTH_OF_EDGEHD_FOV 0x61172
@@ -46,6 +40,7 @@ unsigned short beep_time_ms;
 unsigned short histo=0;
 unsigned short histo_min=0;
 unsigned short histo_max=0;
+unsigned char  cgem_fb=0;
 
 unsigned char m_minor,m_major;  // Mozaic sequence
 PROGMEM const char m_seq_x[] = { 0, 0, 1,    1, 1,-1,   -1,-1, 0 };   // RA
@@ -82,12 +77,13 @@ unsigned char cdb_initial_offset=0;  // value to restore in case of UNDO
 // 4: get current pos
 // 6: if in mozaic mode and aligned, and the time is right, do a goto
                       
+char timelap_state = 0;    // to help with the handshake...
 
 volatile unsigned long d_USART_RX;
 volatile unsigned long d_USART_TX;
 
 
-#define CDB_SIZE 25
+#define CDB_SIZE 50
 volatile long cdb[CDB_SIZE];
 //  0: Runnig time in seconds
 //  1: RA from CGEM
@@ -111,9 +107,12 @@ volatile long cdb[CDB_SIZE];
 // 19: Histogram Min
 // 20: Histogram Cur
 // 21: Histogram Max
-// 22: Tracking Mode ? 0 1 2 3
+// 22: Tracking Mode ? 0 1 2 3  (2 = EQ north  0 = off)
 // 23: Debug value
 // 24: Debug value
+// 25: Free Mem
+// 26: Timelap Shot no
+// 27: Timelap Period counter
 
 
 //   "W132\00145\00245.32\003 \006"  //  Example of custom characters 
@@ -127,11 +126,11 @@ PROGMEM const char linetxt[]="                "        //  0:
                              "Timelap Menu... "        //  7:
                              "Total Span:     "        //  8:    Mozaic span in deg:min:sec
                              "Exposure Time:  "        //  9:    
-                             "Delta Time:     "        // 10:
+                             "Period:         "        // 10:
                              "Current:\242s\003 sec "  // 11: @s will display "XXX Sec"                      exposure time 
                              "    Set:\243s\003 sec "  // 12:                                                exposure time
-                             "Cur:\242h\004         "  // 13: @h will display "XXhXXm"                       delta time
-                             "Set:\243h\004         "  // 14:                                                delta time
+                             "Current:\242t\004     "  // 13: @t will display "XXhXXm"                       delta time  (period between shoots)
+                             "    Set:\243t\004     "  // 14:                                                delta time  (period between shoots)
                              "Cur:\242d\017         "  // 15: @d will display "XXX:XX:XX.XX"  Deg/Min/Sec    total span
                              "Set:\243d\017         "  // 16:                                                total span
                              "Start Mozaic... "        // 17:
@@ -167,21 +166,34 @@ PROGMEM const char linetxt[]="                "        //  0:
                              "Set Span to:    "        // 47: 
                              "1/10 of EDGE HD "        // 48: 
                              "1/10 of Newton 6"        // 49: 
+                             "D1:\242x\031          "  // 50: show debug value  cdb[22]
+//                           "D1:\242x\027          "  // 50: show debug value  cdb[23]
+                             "D2:\242x\030          "  // 51: show debug value  cdb[24]
+                             "                "        // 52: 
+                             "Timelap progres:"        // 53:
+                             "Shot no:\242s\032     "  // 54: 
+                             "Period:\242T\033      "  // 55: total span
+                             "                "        // 56: 
+                             "                "        // 57: 
                              "Camera Driver   "  //  always last to make sure all are 16 bytes wide... the \xxx makes it a bit difficult
 ;
-//                                                              e           .  .                                         e  e  e
-//                                               M  T  S  D  M  M  M  M  M  M  M  M  S  S  S                          M  M  M  M  M  M
-// States:                              0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35
-PROGMEM const unsigned char  line1[] = {50,3 ,4 ,6 ,7 ,22,28,9 ,9 ,8 ,0 ,17,20,19,0 ,23,25,24,25,20,0 ,29,31,33,45,42,44,8 ,8 ,8 ,47,47,0 ,0 ,0 ,0 };   // what string to display on line 1 for each states
-PROGMEM const unsigned char  line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,15,0 ,0 ,21,0 ,0 ,0 ,26,0 ,27,35,0 ,30,32,34,46,43,0 ,16,16,16,48,49,0 ,0 ,0 ,0 };   // what string to display on line 2 for each states
-PROGMEM const unsigned char edit_o[] = {-1,-1,-1,-1,-1,-1,-1,-1,26,-1,0 ,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,23,26,29,0 ,0 ,0 ,0 ,0 ,0 };   // where is the edit character (offset)   (if any)
-PROGMEM const unsigned char edit_i[] = {0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,2 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0, 0 ,0 ,0 ,0 ,0, 0 ,0 ,3 ,4 ,5 ,0 ,0 ,0 ,0 ,0 ,0 };   // index to edit_v 
+//                                                              e           .  .                                         e  e  e                                e     e  e
+//                                               M  T  S  D  M  M  M  M  M  M  M  M  S  S  S                          M  M  M  M  M  M           T  T  T  T  T  T  T  T  T  T
+// States:                              0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44
+PROGMEM const unsigned char  line1[] = {58,3 ,4 ,6 ,7 ,22,28,9 ,9 ,8 ,0 ,17,20,19,0 ,23,25,24,25,20,50,29,31,33,45,42,44,8 ,8 ,8 ,47,47,0 ,0 ,0 ,18,53,53,19,9 ,9 ,10,10,10,53};   // what string to display on line 1 for each states
+PROGMEM const unsigned char  line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,15,0 ,0 ,21,0 ,0 ,0 ,26,0 ,27,35,51,30,32,34,46,43,0 ,16,16,16,48,49,0 ,0 ,0 ,0 ,54,35,0 ,11,12,13,14,14,55};   // what string to display on line 2 for each states
+PROGMEM const unsigned char edit_o[] = {-1,-1,-1,-1,-1,-1,-1,-1,26,-1,0 ,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,23,26,29,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,26,-1,25,28,-1};   // where is the edit character (offset)   (if any)
+PROGMEM const unsigned char edit_i[] = {0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,2 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0, 0 ,0 ,0 ,0 ,0, 0 ,0 ,3 ,4 ,5 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,2 ,0 ,6 ,7 , 0};   // index to edit_v 
+
+
 PROGMEM const long          edit_v[] = {0 ,
                                         1 ,     
                                         1000 , 
                                         ONE_DEG_CGEM ,
                                         ONE_MIN_CGEM ,
                                         ONE_SEC_CGEM , 
+                                        3600,
+                                        60
                                        };   // What value to add/remove on short push  (long push is like pressing 10 times per second)
 // State 12 & 13 & 19 : Mozaic is running
 // State    &    : Timelaps is running
@@ -195,10 +207,10 @@ PROGMEM const char main_state_machine[]= {0,// ENTER  UNDO   UP     DOWN        
                                                1     ,-1    ,6     ,1                // State:  0  welcome message, any key to go to state 1
                                               ,-1    ,0     ,6     ,2                // State:  1  Show current telescope position {e} 
                                               ,-1    ,0     ,1     ,3                // State:  2  Show current telescope position {e} in hour min sec
-                                              ,7     ,0     ,2     ,4                // State:  3  Mozaic Menu
-                                              ,-1    ,0     ,3     ,5                // State:  4  Timelaps pictures Menu
+                                              ,11    ,0     ,2     ,4                // State:  3  Mozaic Menu
+                                              ,35    ,0     ,3     ,5                // State:  4  Timelaps pictures Menu
                                               ,15    ,0     ,4     ,6                // State:  5  Motor Test
-                                              ,21    ,0     ,5     ,1                // State:  6  Debug & Status
+                                              ,20    ,0     ,5     ,1                // State:  6  Debug & Status
                                               ,8     ,3     ,31    ,9                // State:  7  Mozaic > Current Exposure Time  
                                               ,7     ,7     ,-1    ,-1               // State:  8  Mozaic > Set Exposure Time  
                                               ,27    ,3     ,7     ,11               // State:  9  Mozaic > Current Total span     
@@ -212,12 +224,12 @@ PROGMEM const char main_state_machine[]= {0,// ENTER  UNDO   UP     DOWN        
                                               ,18    ,5     ,15    ,15               // State: 17  Motor  > Ramp up/down
                                               ,-1    ,17    ,-1    ,-1               // State: 18  Motor  > Use Up/Down to Change rate...
                                               ,-1    ,13    ,12    ,12               // State: 19  Mozaic > Mozaic in progress              (undo to cancel)
-                                              ,-1    ,-1    ,-1    ,-1               // State: 20  
-                                              ,-1    ,6     ,25    ,22               // State: 21  Debug  > Aligned / Goto
+                                              ,-1    ,6     ,25    ,21               // State: 20  Debug  > Debug values
+                                              ,-1    ,6     ,20    ,22               // State: 21  Debug  > Aligned / Goto
                                               ,-1    ,6     ,21    ,23               // State: 22  Debug  > Moz Err / Pos err
                                               ,-1    ,6     ,22    ,24               // State: 23  Debug  > Latency / Timeout
-                                              ,-1    ,-1    ,23    ,25               // State: 24  Debug  > Histogram
-                                              ,-1    ,-1    ,24    ,21               // State: 25  Debug  > Raw position RA/DEC
+                                              ,-1    ,6     ,23    ,25               // State: 24  Debug  > Histogram
+                                              ,-1    ,6     ,24    ,20               // State: 25  Debug  > Raw position RA/DEC
                                               ,-1    ,-1    ,-1    ,-1               // State: 26  Mozaic >>  Cancelling...
                                               ,28    ,9     ,-1    ,-1               // State: 27  Mozaic >> Set Total span (deg)
                                               ,29    ,27    ,-1    ,-1               // State: 28  Mozaic >> Set Total span (min)
@@ -227,7 +239,16 @@ PROGMEM const char main_state_machine[]= {0,// ENTER  UNDO   UP     DOWN        
                                               ,-1    ,-1    ,-1    ,-1               // State: 32  
                                               ,-1    ,-1    ,-1    ,-1               // State: 33  
                                               ,-1    ,-1    ,-1    ,-1               // State: 34  
-                                              ,-1    ,-1    ,-1    ,-1               // State: 35  
+                                              ,36    ,4     ,41    ,39               // State: 35 Timelaps > Start Timelap...
+                                              ,-1    ,38    ,44    ,37               // State: 36 Timelaps > in progress   Shot #
+                                              ,-1    ,38    ,36    ,44               // State: 37 Timelaps > in progress   Exposure time
+                                              ,35    ,36    ,-1    ,-1               // State: 38 Timelaps > Sure you want to cancel ? 
+                                              ,40    ,4     ,35    ,41               // State: 39 Timelaps > Current Exposure Time 
+                                              ,39    ,39    ,-1    ,-1               // State: 40 Timelaps > Set Exposure Time 
+                                              ,42    ,4     ,39    ,35               // State: 41 Timelaps > Current Period  
+                                              ,43    ,41    ,-1    ,-1               // State: 42 Timelaps > Set Period (Hours)
+                                              ,41    ,42    ,-1    ,-1               // State: 43 Timelaps > Set Period (Minutes) 
+                                              ,-1    ,38    ,37    ,36               // State: 44 Timelaps > in progress   Period
                                               ,-1    ,-1    ,-1    ,-1               // State: __  
                                          };
 
@@ -562,9 +583,9 @@ if ( msms >= 100 )
       TT = 0;
       SS ++;                          // Seconds
       cdb[0]++; // running time
-#ifdef TRACKING_OFF
-      cdb[17] += 0xC22E;          // debug TODO remove, when tracking is on, move the mozaic origin with time to be able to debug
-#endif
+      cdb[27]+=1000;  // Period count
+      if ( cdb[22] == 0 ) cdb[17] += 0xC22E;  // when tracking is off, move the mozaic origin with time to be able to debug
+
       if ( SS >= 60 )
          {
          SS = 0;
@@ -604,7 +625,7 @@ if ( rs232_com_to>=0 ) rs232_com_to++;  // monitor how long it takes to get the 
 
 cdb[14]++;  // monitor how old the position from CGEM is
 
-if ( (d_state == 12) || (d_state == 13) || (d_state == 19) || (d_state == 26))
+if ( (d_state == 12) || (d_state == 13) || (d_state == 19) || (d_state == 26) || (d_state == 36) || (d_state == 37) || (d_state == 38) || (d_state == 44))
    {
    if      ( cdb[16]<SEQ_1 ) // initial delay
       {
@@ -738,7 +759,7 @@ rt_init_disp();
    OCR2B   = 0;                  // By default, set the PWM to 50%
 
 //set_analog_mode(MODE_8_BIT);                         // 8-bit analog-to-digital conversions
-d_ram = get_free_memory();
+cdb[25] = d_ram = get_free_memory();
 
 PRR   = 0; // Enable all systems
 
@@ -795,12 +816,7 @@ lcd_go_rt = 1;
 
 cdb[3]  = 2*1000;    // default exposure time: 30 mili seconds  (mozaic)
 cdb[4]  = 60;        // default delta time: 60 seconds (time laps)
-
-#ifdef TRACKING_OFF
-cdb[15] = 0x100000;  // Inhouse testing
-#else
 cdb[15] = ONE_TENTH_OF_EDGEHD_FOV;   // default span: 1/10 of EDGE HD  (0.333 deg / 10 = 0.03 deg = 2 min)   { thats 1/30 of Newton)
-#endif
 
 while(1)
    {
@@ -897,7 +913,8 @@ while(1)
 
    for ( iii=0 ; iii < nb_display ; iii++ )  // display required values
       {
-      lll = cdb[off[iii]];
+      lll = cdb[off[iii]+0];
+      mmm = cdb[off[iii]+1];
       jjj = pos[iii];
       if ( cdb_add_value !=0 )  // edit mode requests add/remove..
          {
@@ -950,7 +967,6 @@ while(1)
          }
       else if ( fmt[iii] == 'o' )  // @oX format  x of y
          {
-         mmm = cdb[off[iii]+1];
          p_val(&lcd_lines[jjj+0],lll,0x00 + 0x02);
          lcd_lines[jjj+4] = 'o';
          lcd_lines[jjj+5] = 'f';
@@ -958,7 +974,6 @@ while(1)
          }
       else if ( fmt[iii] == 'p' )  // @oX format  x of y
          {
-         mmm = cdb[off[iii]+1];
          p_val(&lcd_lines[jjj+0],lll,0x30 + 0x01);
          lcd_lines[jjj+2] = ',';
          p_val(&lcd_lines[jjj+3],mmm,0x30 + 0x01);
@@ -995,6 +1010,25 @@ while(1)
          while((kkk<lll) && (kkk<16)) lcd_lines[jjj+kkk++] = 7;    // half block
          lll = cdb[off[iii]+2];
          while((kkk<lll) && (kkk<16)) lcd_lines[jjj+kkk++] = '_';  // quart block
+         }
+      else if ( (fmt[iii] == 't') )
+         {
+         mmm = lll%3600;
+         p_val(&lcd_lines[jjj+0],lll/3600,0x10 + 0x01);
+         lcd_lines[jjj+2] = 'h';
+         p_val(&lcd_lines[jjj+3],mmm/60  ,0x50 + 0x01);
+         lcd_lines[jjj+5] = 'm';
+         }
+      else if ( (fmt[iii] == 'T') )  // @xX format  (0x????????)
+         {
+         lll = lll/1000;
+         mmm = lll%3600;
+         p_val(&lcd_lines[jjj+0],lll/3600,0x10 + 0x01);
+         lcd_lines[jjj+2] = 'h';
+         p_val(&lcd_lines[jjj+3],mmm/60  ,0x50 + 0x01);
+         lcd_lines[jjj+5] = 'm';
+         p_val(&lcd_lines[jjj+6],mmm%60  ,0x50 + 0x01);
+         lcd_lines[jjj+8] = 's';
          }
       }
 ///////////////////////////// Edit Logic  /////////////////////////////
@@ -1033,6 +1067,7 @@ while(1)
             {
             d_state = 11;    // we are done go back to "start mozaic"
             id = 255;        // force a first pass
+            beep_time_ms = 5000;
             }
          else                                     // Take new picture
             {
@@ -1069,6 +1104,27 @@ while(1)
       m_minor = m_major = 0;
       mozaic_state = 0;      // nothing to do...
       }
+///////////////////////////// Timelap Logic  /////////////////////////////
+   if ( (d_state == 36) || (d_state == 37) || (d_state == 38) || (d_state == 44))
+      {
+      if ( (cdb[16] >= cdb[3]+SEQ_3) && (timelap_state==0) ) // Picture taken, ready to proceed...
+         {
+         cdb[26] +=1000;   // shot counter
+         timelap_state = 1; // wait for period to complete
+         }
+      if ( (timelap_state == 1) && (cdb[27]>=(cdb[4]*1000)))
+         {
+         cdb[27]  = (SEQ_3-SEQ_2);  // Period count                                            // little hack to get back the extra time from the mozaic sequence
+         cdb[16] = 0;   // tell foreground to start taking the picture                   // little hack to get back the extra time from the mozaic sequence
+         timelap_state = 0; 
+         }
+      }
+   else
+      {
+      cdb[26]  = 1000;  // Shot x of
+      cdb[27]  = 0;  // Period count
+      timelap_state = 0 ;
+      }
 ///////////////////////////// CGEM communication /////////////////////////////
    if ( 0x01 == (rs232_com_state & 0x01) )   // we are waiting for a response
       {
@@ -1083,9 +1139,13 @@ while(1)
          }
       else if ( rs232_rx_ptr < 0 )  // something to do... we just got a complete message
          {
-         if ( rs232_com_state == 1 ) // response from aligned {J}
+         if ( rs232_com_state == 1 ) // response from aligned {J} or Tracking {t}
             {
-            if ( rs232_rx_cmd[1]=='#' ) cdb[10] = rs232_rx_cmd[0];
+            if ( rs232_rx_cmd[1]=='#' ) 
+               {
+               if ( cgem_fb == 'J' ) cdb[10] = rs232_rx_cmd[0];
+               if ( cgem_fb == 't' ) cdb[22] = rs232_rx_cmd[0];
+               }
             }
          else if ( rs232_com_state == 3 ) // response from in goto  {L}
             {
@@ -1128,17 +1188,15 @@ while(1)
       if ( (l_TT != TT) && ( rs232_tx_ptr < 0 ))  // 10 times a second, send a new command  (as long as the last transmit is complete
          {
          l_TT = TT;
-         #ifdef TRACKING_OFF
-         short div=1;
-         #else
-         short div=9;
-         #endif
+
          for ( kkk=0 ; kkk<sizeof(rs232_tx_cmd) ; kkk++ ) rs232_tx_cmd[kkk]=0; // clear the buffer
 
          rs232_com_to = 0;   // reset the time-out monitor
          if ( rs232_com_state == 0 ) // send: aligned {J}
             {
-            rs232_tx_cmd[0]='J';  
+            if ( cgem_fb != 'J' ) cgem_fb = 'J';
+            else                  cgem_fb = 't';
+            rs232_tx_cmd[0]=cgem_fb;  
             }
          else if ( rs232_com_state == 2 ) // Send: in goto  {L}
             {
@@ -1153,10 +1211,12 @@ while(1)
             if ( mozaic_state==1 ) // goto request 
                {
                rs232_tx_cmd[0]='r';  
-               lll = (cdb[15]*cdb[7])/div  + cdb[17];  // (Span * displacement)/9 + Start RA
+if ( cdb[22] == 0 )  lll = (cdb[15]*cdb[7])*6  + cdb[17];  // (Span * displacement)*2 + Start RA    when tracking off (inhouse tests) multiply the span by 18
+else                 lll = (cdb[15]*cdb[7])/9  + cdb[17];  // (Span * displacement)/9 + Start RA
                p08x(&rs232_tx_cmd[1],&lll);
                rs232_tx_cmd[9]=',';  
-               lll = (cdb[15]*cdb[8])/div  + cdb[18];  // (Span * displacement)/9 + Start DEC
+if ( cdb[22] == 0 )  lll = (cdb[15]*cdb[8])*6  + cdb[18];  // (Span * displacement)*2 + Start DEC    when tracking off (inhouse tests) multiply the span by 18
+else                 lll = (cdb[15]*cdb[8])/9  + cdb[18];  // (Span * displacement)/9 + Start DEC
                p08x(&rs232_tx_cmd[10],&lll);
                }
             else rs232_com_state = -1;   // Jumpt to state 0
