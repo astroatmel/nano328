@@ -1,8 +1,11 @@
 /*
+Info:
+Lazer rouge : 15mA a 4.5v   ( 500 ohms at 12v)
+Lazer vert 5 miles: 150mA a 3v  ( 60 ohms at 12V)
+Toshiba Step motor driver: 64 pulses required for a full cycle and to get the init pulse
+Toshiba steo motor works well with 22pf which gives 400kHz
 TODO
 -re-order states
--timelap
-
 */
 #include <avr/pgmspace.h> 
 #include <avr/io.h>
@@ -26,8 +29,8 @@ TODO
 #define SEQ_2 1500
 #define SEQ_3 2000
 
-#define ONE_TENTH_OF_NEWTON_FOV (0x61172*3)
-#define ONE_TENTH_OF_EDGEHD_FOV 0x61172
+#define ONE_TENTH_OF_NEWTON_FOV (0x61172*3)  // that would be 360 seconds (6 min) for an object to go from one edge to the other ?
+#define ONE_TENTH_OF_EDGEHD_FOV 0x61172      // that would be 120 seconds (2 min) for an object to go from one edge to the other ?    so 1/10, 12 shoots, it means mozzaic_cgem would need to pause one second
 #define ONE_DEG_CGEM 0xB60B61
 #define ONE_MIN_CGEM 0x308B9
 #define ONE_SEC_CGEM 0xCF2

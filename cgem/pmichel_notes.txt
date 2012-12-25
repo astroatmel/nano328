@@ -169,3 +169,11 @@ h/H get/set time
 "p" returns x057 ??
 
 "Q" expects 2 char, returns 0xff ?
+
+
+
+
+
+
+
+
