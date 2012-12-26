@@ -47,6 +47,8 @@ for ( iii=1 ; iii <= table_cnt ; iii++ )
       {
       RE_ITEM_CNT[FIELDS[1]] = "1"
       print str_pad("#define "FIELDS[1]"_COUNT ",40) ITEM_CNT[FIELDS[1]]
+      print str_pad("#define "FIELDS[1]"_FIRST ",40) FIRST[FIELDS[1]]
+      print str_pad("#define "FIELDS[1]"_LAST  ",40) FIRST[FIELDS[1]]+ITEM_CNT[FIELDS[1]]-1
       }
    }
 
@@ -72,7 +74,9 @@ for ( iii=1 ; iii <= str_cnt ; iii++ )
    }
 
 ## start ouputting the Menu Array..."
-print "\nPROGMEM const char main_state_machine[]= {0"
+print "\nPROGMEM const char main_state_machine[]= {"
+print "//             ENTER    UNDO      PREV      NEXT      LINE1     LINE2  "
+
 
 UNDO[":"]      = " 0"
 UNDO[":POP_1"] = "-1"
@@ -84,20 +88,24 @@ for ( iii=1 ; iii <= table_cnt ; iii++ )
    split(TABLE[iii],FIELDS,"\t")
    RE_ITEM_CNT[FIELDS[1]] = RE_ITEM_CNT[FIELDS[1]]+1       # re-count the quantity of items per menu
 
-   if ( UNDO[FIELDS[1]] != "" ) UUU = UNDO[FIELDS[1]]     # undo: do nothing, or pop the menu stack
-   else                         UUU = FIRST[FIELDS[1]]    # undo: jump to the first menu item
+   if ( UNDO[FIELDS[2]] != "" ) UUU = UNDO[FIELDS[2]]     # undo: do nothing, or pop the menu stack
+   else                         UUU = FIRST[FIELDS[2]]    # undo: jump to the first menu item
 
-   if ( FIELDS[2] == ":" )      EEE = "0"
-   else                         EEE = FIRST[FIELDS[2]]    # enter: jump to the first menu item
+   if ( FIELDS[3] == ":" )      EEE = "0"
+   else                         EEE = FIRST[FIELDS[3]]    # enter: jump to the first menu item
 
    if ( ITEM_ID[FIELDS[1],1] == iii )  PREV = ITEM_ID[FIELDS[1],ITEM_CNT[FIELDS[1]]] # we are on the first of the section, the previsous one is the last
-   else                                PREV = ITEM_ID[FIELDS[1],RE_ITEM_CNT[FIELDS[1]]-1]
+   else                                PREV = ITEM_ID[FIELDS[1],RE_ITEM_CNT[FIELDS[1]]-2]
 
    if ( ITEM_ID[FIELDS[1],ITEM_CNT[FIELDS[1]]] == iii ) NEXT = ITEM_ID[FIELDS[1],1] # we are on the last one, the next one is the first
-   else                                                 NEXT = ITEM_ID[FIELDS[1],RE_ITEM_CNT[FIELDS[1]]+1]
+   else                                                 NEXT = ITEM_ID[FIELDS[1],RE_ITEM_CNT[FIELDS[1]]+0]
 
    LINE1 = STRINGS[FIELDS[6]] 
    LINE2 = STRINGS[FIELDS[7]] 
+
+   if ( iii < table_cnt ) vvv = ", "
+   else                   vvv = "};"
+   print "              "str_pad(UUU",",10) str_pad(EEE",",10) str_pad(PREV",",10) str_pad(NEXT,10) str_pad(LINE1",",10) str_pad(LINE2 vvv,10) " // State: "str_pad(iii,3)"  "str_pad(FIELDS[1],20) str_pad(FIELDS[6],25) str_pad(FIELDS[7],25)
    }
  
 }
