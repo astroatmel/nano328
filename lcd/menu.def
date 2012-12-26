@@ -1,0 +1,80 @@
+#
+# Each line is a menu item
+# the field delimiter is the <TAB> character
+#
+# VI: use:
+# :set list listchars=tab:»·
+# MENU_NAME	UNDO_ACTION	ENTER_ACTION	INCREMENT	EDIT_CURSOR_POS	"Text line 1"	"Text Line 2"	"Text Line 3"
+# 
+# TODO: long push on enter = show debug popup (toggle)    (unless in edit mode)
+#       long push on undo = soft reset ?  on cancel ?
+#
+# FACTS:
+# always copy the displayed value to TEMP_EDIT
+# when entering edit mode, save the CDB offset os the label we are about to edit
+# in edit mode, display the TEMP_EDIT in the required format
+# uppon EXECUTE, store TEMP_EDIT at the CDB offset
+# 
+# we are entering a menu that requires special procedure on UNDO when UNDO_ACTION is not POP_1/2/3 -> remember where to pop back on confirmation of UNDO
+# 
+M_ROOT	:	M_MAIN	:	:	"Camera Driver"	"Version 2.0"
+
+M_MAIN	:POP_1	:	:	:	"RA:\242R\001"	"DE:\242D\002"
+M_MAIN	:POP_1	:	:	:	"RA:\242H\001"	"DE:\242D\002"
+M_MAIN	:POP_1	M_MOZAIC	:	:	"Mozaic Menu..."	"(GOTO Method)"
+M_MAIN	:POP_1	M_MOZAIC	:	:	"Mozaic Menu..."	"(Pause Method)"          # use pauses instead of using GOTO which are dreadfull on CGEM 
+M_MAIN	:POP_1	M_TIMELAP	:	:	"Timelap Menu..."	""
+M_MAIN	:POP_1	M_CGEM_STATUS	:	:	"CGEM Status..."	""
+# M_MAIN	:POP_1	M_DEB	:	:	"Debug..."	""
+
+###########################################################################################################################################################
+
+M_MOZAIC	:POP_1	M__MOZ_RUN	:	:	"Start Mozaic..."	""
+M_MOZAIC	:POP_1	M_PRESET	:	:	"Set Span to:"	"1/10 of EDGE HD"
+M_MOZAIC	:POP_1	M_PRESET	:	:	"Set Span to:"	"1/10 of Newton 6"
+M_MOZAIC	:POP_1	M_PRESET	:	:	"Set Exposure:"	"1 Second"
+M_MOZAIC	:POP_1	M_PRESET	:	:	"Set Exposure:"	"30 Second"
+M_MOZAIC	:POP_1	M_PRESET	:	:	"Set Exposure:"	"60 Second"
+M_MOZAIC	:POP_1	M__MOZ_EXP	:	:	"Exposure Time:"	"Current:\242s\003 sec"
+M_MOZAIC	:POP_1	M__MOZ_SPAN1	:	:	"Total Span:"	"Cur:\242d\017"
+
+M__MOZ_RUN	M_CANCEL	:	:	:	"Mozaic:\242o\005"	"Time:\242m\020    sec"
+M__MOZ_RUN	M_CANCEL	:	:	:	"Mozaic:\242o\005"	"Pos Id:\242p\007"
+
+M__MOZ_EXP	:POP_1	M_EXECUTE	1000	26	"Exposure Time:"	"    Set:\243s\003 sec"
+
+M__MOZ_SPAN1	:POP_1	M__MOZ_SPAN2	ONE_DEG_CGEM	23	"Total Span:"	"Set:\243d\017"
+M__MOZ_SPAN2	:POP_1	M__MOZ_SPAN3	ONE_MIN_CGEM	26	"Total Span:"	"Set:\243d\017"
+M__MOZ_SPAN3	:POP_1	M_EXECUTE	ONE_SEC_CGEM	29	"Total Span:"	"Set:\243d\017"
+
+###########################################################################################################################################################
+
+M_TIMELAP	:POP_1	M__TIMELAP_RUN	:	:	"Start Timelap..."	""
+M_TIMELAP	:POP_1	M__TIMELAP_EXP	:	:	"Exposure Time:"	"Current:\242s\003 sec"
+M_TIMELAP	:POP_1	M__TIMELAP_PERIOD1	:	:	"Period:"	"Current:\242t\004"
+
+M__TIMELAP_RUN	M_CANCEL	:	:	:	"Timelap progres:"	"Shot no:\242s\032"
+M__TIMELAP_RUN	M_CANCEL	:	:	:	"Timelap progres:"	"Period:\242T\033"
+
+M__TIMELAP_EXP	:POP_1	M_EXECUTE	1000	26	"Exposure Time:"	"    Set:\243s\003 sec"         # exposure time is in milisec
+
+M__TIMELAP_PERIOD1	:POP_1	M__TIMELAP_PERIOD2	3600	25	"Period:"	"    Set:\243t\004"
+M__TIMELAP_PERIOD2	:POP_1	M_EXECUTE	60	28	"Period:"	"    Set:\243t\004"
+
+###########################################################################################################################################################
+
+M_CGEM_STATUS	:POP_1	:	:	:	"RA:\242x\001"	"DE:\242x\002"
+M_CGEM_STATUS	:POP_1	:	:	:	"D1:\242x\031"	"D2:\242x\030"
+M_CGEM_STATUS	:POP_1	:	:	:	"Aligned:\242y\012"	"In Goto:\242y\013"
+M_CGEM_STATUS	:POP_1	:	:	:	"Moz Err:\242e\014"	"Pos Err:\242e\015"
+M_CGEM_STATUS	:POP_1	:	:	:	"Latency:\242E\016"	"Time-Out:\242e\011"
+M_CGEM_STATUS	:POP_1	:	:	:	"Histogram:  (x8)"	"\242h\023"
+
+###########################################################################################################################################################
+
+M_CANCEL	:POP_1	M_CANCELING	:	:	"Really Cancel ?"	""
+M_CANCELING	:	:	:	:	"Cancelling..."	""              # Special S/W Action required before popping (terminate current task/picture...)
+M_EXECUTE	:	:	:	:	"Excuting..."	""              # Special S/W Action required 
+M_PRESET	:	:	:	:	""	""              # Special S/W Action required , deposit preset values
+
+
