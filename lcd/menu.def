@@ -38,9 +38,6 @@ M_MOZAIC	:POP_1	M_PRESET	:	:	"Set Exposure:"	"60 Second"
 M_MOZAIC	:POP_1	M__MOZ_EXP	:	:	"Exposure Time:"	"Current:\242s\003 sec"
 M_MOZAIC	:POP_1	M__MOZ_SPAN1	:	:	"Total Span:"	"Cur:\242d\017"
 
-M__MOZ_RUN	M_CANCEL	:	:	:	"Mozaic:\242o\005"	"Time:\242m\020    sec"
-M__MOZ_RUN	M_CANCEL	:	:	:	"Mozaic:\242o\005"	"Pos Id:\242p\007"
-
 M__MOZ_EXP	:POP_1	M_EXECUTE	1000	26	"Exposure Time:"	"    Set:\243s\003 sec"
 
 M__MOZ_SPAN1	:POP_1	M__MOZ_SPAN2	ONE_DEG_CGEM	23	"Total Span:"	"Set:\243d\017"
@@ -52,9 +49,6 @@ M__MOZ_SPAN3	:POP_1	M_EXECUTE	ONE_SEC_CGEM	29	"Total Span:"	"Set:\243d\017"
 M_TIMELAP	:POP_1	M__TIMELAP_RUN	:	:	"Start Timelap..."	""
 M_TIMELAP	:POP_1	M__TIMELAP_EXP	:	:	"Exposure Time:"	"Current:\242s\003 sec"
 M_TIMELAP	:POP_1	M__TIMELAP_PERIOD1	:	:	"Period:"	"Current:\242t\004"
-
-M__TIMELAP_RUN	M_CANCEL	:	:	:	"Timelap progres:"	"Shot no:\242s\032"
-M__TIMELAP_RUN	M_CANCEL	:	:	:	"Timelap progres:"	"Period:\242T\033"
 
 M__TIMELAP_EXP	:POP_1	M_EXECUTE	1000	26	"Exposure Time:"	"    Set:\243s\003 sec"         # exposure time is in milisec
 
@@ -71,10 +65,17 @@ M_CGEM_STATUS	:POP_1	:	:	:	"Latency:\242E\016"	"Time-Out:\242e\011"
 M_CGEM_STATUS	:POP_1	:	:	:	"Histogram:  (x8)"	"\242h\023"
 
 ###########################################################################################################################################################
-
+#   This section is gropped because all those states requires shutter control
+M__MOZ_RUN	M_CANCEL	:	:	:	"Mozaic:\242o\005"	"Time:\242m\020    sec"
+M__MOZ_RUN	M_CANCEL	:	:	:	"Mozaic:\242o\005"	"Pos Id:\242p\007"
+M__TIMELAP_RUN	M_CANCEL	:	:	:	"Timelap progres:"	"Shot no:\242s\032"
+M__TIMELAP_RUN	M_CANCEL	:	:	:	"Timelap progres:"	"Period:\242T\033"
 M_CANCEL	:POP_1	M_CANCELING	:	:	"Really Cancel ?"	""
 M_CANCELING	:	:	:	:	"Cancelling..."	""              # Special S/W Action required before popping (terminate current task/picture...)
-M_EXECUTE	:	:	:	:	"Excuting..."	""              # Special S/W Action required 
-M_PRESET	:	:	:	:	""	""              # Special S/W Action required , deposit preset values
+
+###########################################################################################################################################################
+
+M_EXECUTE	:	:	:	:	"Executing..."	""              # Special S/W Action required 
+M_PRESET	:	:	:	:	"Done..."	""              # Special S/W Action required , deposit preset values
 
 

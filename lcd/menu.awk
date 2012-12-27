@@ -2,13 +2,14 @@ BEGIN{
 # script to create the "C" include file for a menu  
 #
 # usage :
-# cat menu.def | awk -f menu.awk | tee include_file.h
+# cat menu.def | awk -f menu.awk | tee menu.h
 
 table_cnt=0
 str_cnt=0
 inc_cnt=0
 
 INCREMENT[":"] = -1
+WIDTH = 8
 }
 
 
@@ -17,8 +18,8 @@ INCREMENT[":"] = -1
 gsub(" *#.*$","")
 if ( $0 != "" )
    {
-   fc = split($0,FIELDS,"\t")
-   if ( fc != 7 )
+   fc = 1 + split($0,FIELDS,"\t")
+   if ( fc != WIDTH )
       {
       print "### Unexpected number of fields in the definition file:" fc
       print "### $0"
@@ -85,8 +86,8 @@ for ( iii=0 ; iii < str_cnt ; iii++ )
    for( jjj in STRINGS )
       {
       tmp = substr(jjj,2,length(jjj)-2)
-      mmm = split(jjj,aaa,"[\\][0-9][0-9][0-9]")   # for each \000 octal code, we must add 2 characters
-      ddd = str_pad(tmp,16+2*mmm)
+      mmm = split(jjj,aaa,"[\\][0-9][0-9][0-9]")-1   # for each \000 octal code, we must add 2 characters
+      ddd = str_pad(tmp,16+3*mmm)
       if ( STRINGS[jjj] == iii ) 
          {
          if ( iii+1 < str_cnt ) print str_pad("              \"" ddd "\" ",50) "//  "iii
@@ -96,8 +97,11 @@ for ( iii=0 ; iii < str_cnt ; iii++ )
    }
 
 ## start ouputting the Menu Array..."
-print "\nPROGMEM const char main_state_machine[]= {"
-print "//             ENTER    UNDO      PREV      NEXT      INCREMENT OFFSET    LINE1     LINE2  "
+print ""
+print "#define MENU_TABLE_WIDTH "WIDTH
+print "#define MENU_TABLE_LEN   "table_cnt
+print "PROGMEM const char menu_state_machine[]= {  "substr("0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,",1,2+WIDTH*2) " // STATE : 0 is not a valid state, it means 'do nothing'  > there is one more element so that the array starts at 1"
+print "//            UNDO      ENTER     PREV      NEXT      INCREMENT OFFSET    LINE1     LINE2  "
 
 
 UNDO[":"]      = " 0"
