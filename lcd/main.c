@@ -5,7 +5,6 @@ Lazer vert 5 miles: 150mA a 3v  ( 60 ohms at 12V)
 Toshiba Step motor driver: 64 pulses required for a full cycle and to get the init pulse
 Toshiba steo motor works well with 22pf which gives 400kHz
 TODO
--re-order states
 */
 #include <avr/pgmspace.h> 
 #include <avr/io.h>
@@ -76,6 +75,7 @@ signed char rs232_edit=-1;
 long          cdb_add_value=0;  // value to add to the current cdb label... 
 long          cdb_initial_value=0;  // value to restore in case of UNDO
 unsigned char cdb_initial_offset=0;  // value to restore in case of UNDO
+unsigned char stack_before_edit=0;  // 
 
 // States are:
 // 0: Is aligned
@@ -127,145 +127,6 @@ volatile unsigned char  button,button_sp,button_lp;   // Current button and real
 unsigned char  button_last;   // Prevous button
 
 
-//-----
-//-----//   "W132\00145\00245.32\003 \006"  //  Example of custom characters 
-//-----PROGMEM const char linetxt[]="                "        //  0: 
-//-----                             "                "        //  1: 
-//-----                             "Version 1.0     "        //  2: 
-//-----                             "RA:\242R\001          "  //  3: @R will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is E/W
-//-----                             "RA:\242H\001          "  //  4: @H will display "XXhXXmXX.XXs"   Hour/Min/Sec  
-//-----                             "DE:\242D\002          "  //  5: @D will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is N/S
-//-----                             "Mozaic Menu...  "        //  6: 
-//-----                             "Timelap Menu... "        //  7:
-//-----                             "Total Span:     "        //  8:    Mozaic span in deg:min:sec
-//-----                             "Exposure Time:  "        //  9:    
-//-----                             "Period:         "        // 10:
-//-----                             "Current:\242s\003 sec "  // 11: @s will display "XXX Sec"                      exposure time 
-//-----                             "    Set:\243s\003 sec "  // 12:                                                exposure time
-//-----                             "Current:\242t\004     "  // 13: @t will display "XXhXXm"                       delta time  (period between shoots)
-//-----                             "    Set:\243t\004     "  // 14:                                                delta time  (period between shoots)
-//-----                             "Cur:\242d\017         "  // 15: @d will display "XXX:XX:XX.XX"  Deg/Min/Sec    total span
-//-----                             "Set:\243d\017         "  // 16:                                                total span
-//-----                             "Start Mozaic... "        // 17:
-//-----                             "Start Timelaps.."        // 18:
-//-----                             "Really Cancel ? "        // 19:
-//-----                             "Mozaic:\242o\005      "  // 20: @o will display "xx of yy" and use two consecutive CDB location
-//-----                             "Pos Id:\242p\007      "  // 21: @p will display xx,yy  and use two consecutive CDB location
-//-----                             "Motor Tests...  "        // 22:
-//-----                             "Step up/down    "        // 23: // use up/down to control up/down
-//-----                             "Ramp up/down    "        // 24: // use up/dowm to control the rate
-//-----                             "Use Up/Down     "        // 25: 
-//-----                             "To Step         "        // 26:
-//-----                             "To change rate  "        // 27:
-//-----                             "Status Page...  "        // 28:
-//-----                             "Aligned:\242y\012     "  // 29:
-//-----                             "In Goto:\242y\013     "  // 30:
-//-----                             "Moz Err:\242e\014     "  // 31:
-//-----                             "Pos Err:\242e\015     "  // 32:
-//-----                             "Latency:\242E\016     "  // 33:  // show Time since last position update
-//-----                             "Time-Out:\242e\011    "  // 34:
-//-----                             "Time:\242m\020    sec "  // 35: @m will display xxx.xxx
-//-----                             "Mozaic Preset:  "        // 36:
-//-----                             "1 Second        "        // 37: // set the exposure time to 1 second
-//-----                             "30 Seconds      "        // 38: // set the exposure time to 30 seconds
-//-----                             "60 Seconds      "        // 39: // set the exposure time to 60 seconds
-//-----                             "1/10 Newton     "        // 40: // set the span to 1 tenth of the field of the Newton 6 Inches       ( 1 deg / 10 -> .1 deg )
-//-----                             "1/10 EDGE HD    "        // 41: // set the span to 1 tenth of the field of the EDGE HD 9.25 Inches   ( 1 deg / 10 -> .1 deg )
-//-----                             "RA:\242x\001          "  // 42: @H will display "XXhXXmXX.XXs"   Hour/Min/Sec  
-//-----                             "DE:\242x\002          "  // 43: @D will display "?XXX:XX:XX.XX"   Deg/Min/Sec  ? is N/S
-//-----                             "Canceling...    "        // 44: Cancelling mozaic, and goto starting point
-//-----                             "Histogram:  (x8)"        // 45: Histogram  ---> I write x8 because SP0 uses so little CPU time that on a scale of 16, the min/cur/max is 0.87  x8 gives blocks  (Sp0 currently use 5% of 1ms)
-//-----                             "\242h\023             "  // 46: Histogram Values
-//-----                             "Set Span to:    "        // 47: 
-//-----                             "1/10 of EDGE HD "        // 48: 
-//-----                             "1/10 of Newton 6"        // 49: 
-//-----                             "D1:\242x\031          "  // 50: show debug value  cdb[22]
-//-----//                           "D1:\242x\027          "  // 50: show debug value  cdb[23]
-//-----                             "D2:\242x\030          "  // 51: show debug value  cdb[24]
-//-----                             "                "        // 52: 
-//-----                             "Timelap progres:"        // 53:
-//-----                             "Shot no:\242s\032     "  // 54: 
-//-----                             "Period:\242T\033      "  // 55: total span
-//-----                             "(Pause Method)  "        // 56:
-//-----                             "                "        // 57: 
-//-----                             "Camera Driver   "  //  always last to make sure all are 16 bytes wide... the \xxx makes it a bit difficult
-//-----;
-//-----
-//-----PROGMEM const long          edit_increment[] = {0 ,
-//-----                                        1 ,     
-//-----                                        1000 , 
-//-----                                        ONE_DEG_CGEM ,
-//-----                                        ONE_MIN_CGEM ,
-//-----                                        ONE_SEC_CGEM , 
-//-----                                        3600,
-//-----                                        60
-//-----                                       };   // What value to add/remove on short push  (long push is like pressing 10 times per second)
-//-----// State 12 & 13 & 19 : Mozaic is running
-//-----// State    &    : Timelaps is running
-//-----//- //                                                              e           .  .                                         e  e  e                                e     e  e
-//-----//- //                                               M  T  S  D  M  M  M  M  M  M  M  M  S  S  S                          M  M  M  M  M  M           T  T  T  T  T  T  T  T  T  T
-//-----//- // States:                              0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44
-//-----//- PROGMEM const unsigned char  line1[] = {58,3 ,4 ,6 ,7 ,22,28,9 ,9 ,8 ,0 ,17,20,19,0 ,23,25,24,25,20,50,29,31,33,45,42,44,8 ,8 ,8 ,47,47,0 ,0 ,0 ,18,53,53,19,9 ,9 ,10,10,10,53};   // what string to display on line 1 for each states
-//-----//- PROGMEM const unsigned char  line2[] = {2 ,5 ,5 ,0 ,0 ,0 ,0 ,11,12,15,0 ,0 ,21,0 ,0 ,0 ,26,0 ,27,35,51,30,32,34,46,43,0 ,16,16,16,48,49,0 ,0 ,0 ,0 ,54,35,0 ,11,12,13,14,14,55};   // what string to display on line 2 for each states
-//-----//- PROGMEM const unsigned char edit_o[] = {-1,-1,-1,-1,-1,-1,-1,-1,26,-1,0 ,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,23,26,29,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,26,-1,25,28,-1};   // where is the edit character (offset)   (if any)
-//-----//- PROGMEM const unsigned char edit_i[] = {0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,2 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0, 0 ,0 ,0 ,0 ,0, 0 ,0 ,3 ,4 ,5 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,2 ,0 ,6 ,7 , 0};   // index to edit_increment 
-//-----
-//-----PROGMEM const char main_state_machine[]= {0 
-//-----              // ENTER  UNDO   UP     DOWN                                         // -1 means no action    -2 means edit ?
-//-----                ,1     ,-1    ,6     ,1                                            // State:  0  welcome message, any key to go to state 1
-//-----                ,-1    ,0     ,6     ,2                                            // State:  1  Show current telescope position {e} 
-//-----                ,-1    ,0     ,1     ,3                                            // State:  2  Show current telescope position {e} in hour min sec
-//-----                ,11    ,0     ,2     ,4                                            // State:  3  Mozaic Menu
-//-----                ,35    ,0     ,3     ,5                                            // State:  4  Timelaps pictures Menu
-//-----                ,15    ,0     ,4     ,6                                            // State:  5  Motor Test
-//-----                ,20    ,0     ,5     ,1                                            // State:  6  Debug & Status
-//-----                ,8     ,3     ,31    ,9                                            // State:  7  Mozaic > Current Exposure Time  
-//-----                ,7     ,7     ,-1    ,-1                                           // State:  8  Mozaic > Set Exposure Time  
-//-----                ,27    ,3     ,7     ,11                                           // State:  9  Mozaic > Current Total span     
-//-----                ,-1    ,-1    ,-1    ,-1                                           // State: 10         Mozaic > Set Total span     
-//-----                ,12    ,3     ,9     ,45                                           // State: 11  Mozaic > Start Mosaic   
-//-----                ,-1    ,13    ,19    ,19                                           // State: 12  Mozaic > Mozaic in progress              (undo to cancel)
-//-----                ,26    ,12    ,12    ,12                                           // State: 13  Mozaic >>  Sure you want to cancel ?       (enter to confirm)
-//-----                ,-1    ,-1    ,-1    ,-1                                           // State: 14  Mozaic > spare
-//-----                ,16    ,5     ,17    ,17                                           // State: 15  Motor  > Step Up/Down 
-//-----                ,-1    ,15    ,-1    ,-1                                           // State: 16  Motor  > Use Up/Down to Step...
-//-----                ,18    ,5     ,15    ,15                                           // State: 17  Motor  > Ramp up/down
-//-----                ,-1    ,17    ,-1    ,-1                                           // State: 18  Motor  > Use Up/Down to Change rate...
-//-----                ,-1    ,13    ,12    ,12                                           // State: 19  Mozaic > Mozaic in progress              (undo to cancel)
-//-----                ,-1    ,6     ,25    ,21                                           // State: 20  Debug  > Debug values
-//-----                ,-1    ,6     ,20    ,22                                           // State: 21  Debug  > Aligned / Goto
-//-----                ,-1    ,6     ,21    ,23                                           // State: 22  Debug  > Moz Err / Pos err
-//-----                ,-1    ,6     ,22    ,24                                           // State: 23  Debug  > Latency / Timeout
-//-----                ,-1    ,6     ,23    ,25                                           // State: 24  Debug  > Histogram
-//-----                ,-1    ,6     ,24    ,20                                           // State: 25  Debug  > Raw position RA/DEC
-//-----                ,-1    ,-1    ,-1    ,-1                                           // State: 26  Mozaic >>  Cancelling...
-//-----                ,28    ,9     ,-1    ,-1                                           // State: 27  Mozaic >> Set Total span (deg)
-//-----                ,29    ,27    ,-1    ,-1                                           // State: 28  Mozaic >> Set Total span (min)
-//-----                ,9     ,28    ,-1    ,-1                                           // State: 29  Mozaic >> Set Total span (sec)
-//-----                ,9     ,3     ,45    ,31                                           // State: 30  Set default 1/10 EDGE HD
-//-----                ,9     ,3     ,30    ,7                                            // State: 31  Set default 1/10 Newton 6 inch
-//-----                ,-1    ,-1    ,-1    ,-1                                           // State: 32  
-//-----                ,-1    ,-1    ,-1    ,-1                                           // State: 33  
-//-----                ,-1    ,-1    ,-1    ,-1                                           // State: 34  
-//-----                ,36    ,4     ,41    ,39                                           // State: 35 Timelaps > Start Timelap...
-//-----                ,-1    ,38    ,44    ,37                                           // State: 36 Timelaps > in progress   Shot #
-//-----                ,-1    ,38    ,36    ,44                                           // State: 37 Timelaps > in progress   Exposure time
-//-----                ,35    ,36    ,-1    ,-1                                           // State: 38 Timelaps > Sure you want to cancel ? 
-//-----                ,40    ,4     ,35    ,41                                           // State: 39 Timelaps > Current Exposure Time 
-//-----                ,39    ,39    ,-1    ,-1                                           // State: 40 Timelaps > Set Exposure Time 
-//-----                ,42    ,4     ,39    ,35                                           // State: 41 Timelaps > Current Period  
-//-----                ,43    ,41    ,-1    ,-1                                           // State: 42 Timelaps > Set Period (Hours)
-//-----                ,41    ,42    ,-1    ,-1                                           // State: 43 Timelaps > Set Period (Minutes) 
-//-----                ,-1    ,38    ,37    ,36                                           // State: 44 Timelaps > in progress   Period
-//-----                ,46    ,3     ,11    ,30                                           // State: 45  Mozaic > Start Mosaic CGEM   (uses tracking pause to move FOV)
-//-----                ,-1    ,48    ,47    ,47                                           // State: 46  Mozaic > Mozaic in progress              (undo to cancel)
-//-----                ,-1    ,13    ,46    ,46                                           // State: 47  Mozaic > Mozaic in progress              (undo to cancel)
-//-----                ,49    ,46    ,46    ,46                                           // State: 48  Mozaic >>  Sure you want to cancel ?       (enter to confirm)
-//-----                ,-1    ,-1    ,-1    ,-1                                           // State: 49  Mozaic >>  Cancelling...
-//-----                ,-1    ,-1    ,-1    ,-1                                           // State: __  
-//-----           };
-
- 
 ////////////////////////////////// DEFINES /////////////////////////////////////   
 #define baud             9600
 
@@ -764,6 +625,10 @@ if ( ( (next+menu_stack_ptr) >= 0 ) && (next<0) )
    d_state = menu_stack[menu_stack_ptr];
    }
 }
+void push(char next)
+{
+if ( menu_stack_ptr < sizeof(menu_stack) ) menu_stack[menu_stack_ptr++] = next;
+}
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
@@ -853,9 +718,9 @@ while(1)
    static unsigned char set[10],fmt[10],pos[10],off[10]; // show/edit format position cdb-offset    <- values used to set/show values on LCD
    short i1,i2;
    static char next;
-   static char dbg;
+   static short dbg;
 
-//TODO   c_edt = (signed char)pgm_read_byte( &edit_o[d_state]);  // are we in edit mode
+   c_edt = (signed char) pgm_read_byte( &menu_state_machine[d_state*MENU_TABLE_WIDTH + 6]);
 
    if      (LCD_BUTTON_1 == 0 ) {button = BT_ENTER; }
    else if (LCD_BUTTON_2 == 0 ) {button = BT_UP;    }
@@ -867,17 +732,17 @@ while(1)
       {
       pop_delay = 0;
       refresh=1;
+      if ( d_state == M_EXECUTE_FIRST ) menu_stack_ptr = stack_before_edit;  // ugly... I know...
       pop(-1);
-      dbg = d_state;
       }
 //   lcd_lines[0x0A] = '0' + menu_stack[menu_stack_ptr-2]/10;
 //   lcd_lines[0x0B] = '0' + menu_stack[menu_stack_ptr-2]%10;
 //   lcd_lines[0x0C] = '0' + menu_stack[menu_stack_ptr-1]/10;
 //   lcd_lines[0x0D] = '0' + menu_stack[menu_stack_ptr-1]%10;
-//   lcd_lines[0x0E] = '0' + menu_stack[menu_stack_ptr-0]/10;
-//   lcd_lines[0x0F] = '0' + menu_stack[menu_stack_ptr-0]%10;
-//   lcd_lines[0x1E] = '0' + dbg                         /10;
-//   lcd_lines[0x1F] = '0' + dbg                         %10;
+//   lcd_lines[0x0E] = '0' + dbg                         /10;
+//   lcd_lines[0x0F] = '0' + dbg                         %10;
+//   lcd_lines[0x1E] = '0' + menu_stack_ptr              /10;
+//   lcd_lines[0x1F] = '0' + menu_stack_ptr              %10;
 
    if ( button_sp != button_last )   
       {
@@ -885,15 +750,26 @@ while(1)
          {
          next = pgm_read_byte( &menu_state_machine[d_state*MENU_TABLE_WIDTH + button_last]);   // Check next state...
          if ( (next>0) && (next<= MENU_TABLE_LEN) )
-            {
+            { 
+            if ( button_last == BT_UNDO )
+               {
+               push(d_state);
+               }
             if ( button_last == BT_ENTER)  // push on the stack
                {
-               if ( menu_stack_ptr < sizeof(menu_stack) ) menu_stack[menu_stack_ptr++] = d_state;
+               push(d_state);
                if ( next == M_PRESET_FIRST )
                   {
                   pop_delay = 10; // display "done" for one second to give feedback
                   if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 1 ) cdb[15] = ONE_TENTH_OF_EDGEHD_FOV;
                   if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 2 ) cdb[15] = ONE_TENTH_OF_NEWTON_FOV;
+                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 3 ) cdb[3] = 1000;
+                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 4 ) cdb[3] = 30000;;
+                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 5 ) cdb[3] = 60000;
+                  }
+               if ( next == M_EXECUTE_FIRST )
+                  {              // display "Executing..." for one 0.5 sec to give feedback ( I wanted to use this state to "execute" the change )
+                  pop_delay = 5; // but I cant because if I use a constant cdb locatio to edit, then I cant know where the value goes ):
                   }
                }
             d_state = next;
@@ -903,11 +779,11 @@ while(1)
             pop(next);
             }
  
-//TODO         if ( button_last == BT_UNDO) 
-//TODO            {
-//TODO            signed char t_edt = (signed char)pgm_read_byte( &edit_o[d_state]);  // What is the next mode ?
-//TODO            if ( (c_edt!=-1) && (t_edt==-1) ) cdb[cdb_initial_offset] = cdb_initial_value;  // UNDO in EDIT mode : restore initial value
-//TODO            }
+         if ( button_last == BT_UNDO) 
+            {
+            signed char t_edt = (signed char)pgm_read_byte( &menu_state_machine[d_state*MENU_TABLE_WIDTH + 5]);
+            if ( (c_edt!=-1) && (t_edt==-1) ) cdb[cdb_initial_offset] = cdb_initial_value;  // UNDO in EDIT mode : restore initial value
+            }
          refresh = 1;
          }
 
@@ -960,14 +836,23 @@ while(1)
       static char l_TT;  // last tenth
       if ( (l_TT != TT) || (button_sp != button_last) )
          {
-//TODO         if ( pgm_read_byte( &edit_o[d_state]) != -1 ) // we are in edit mode...
-//TODO            {
-//TODO            long value = pgm_read_dword(&edit_increment[pgm_read_byte(&edit_i[d_state])]);  // ouf.. get the value to add/remove
-//TODO            if ( button == BT_UP)   cdb_add_value =  value;
-//TODO            if ( button == BT_DOWN) cdb_add_value = -value;
-//TODO            }
+         short inc_id = (signed char) pgm_read_byte( &menu_state_machine[d_state*MENU_TABLE_WIDTH + 5]);
+         if ( inc_id >= 0 ) // we are in edit mode...
+            {
+            long value = pgm_read_dword(&edit_increment[inc_id]);
+            if ( button == BT_UP)   cdb_add_value =  value;
+            if ( button == BT_DOWN) cdb_add_value = -value;
+            }
          }
       l_TT = TT;
+      }
+   if ( button_lp ) 
+      {
+      if ( button == BT_UNDO ) // long undo forces a reset of the state (almost the same as a reset, except most values are kept
+         {
+         d_state=1; // long undo re
+         menu_stack_ptr = 0;
+         }
       }
    button_last = button_sp;
 
@@ -1103,8 +988,9 @@ while(1)
    if ( (l_edt != c_edt) && ( c_edt != -1) && (l_edt == -1) )   // Entering Edit mode, remember initial value and CDB offset
       {
       cdb_initial_value   = cdb[off[0]];  
-      cdb_initial_offset  = off[0]; 
-      }    // cdb[cdb_initial_offset] =- cdb_initial_value
+      cdb_initial_offset  = off[0];  
+      stack_before_edit   = menu_stack_ptr;
+      } 
    l_edt = c_edt;
 
    if ( TT < 3 ) rs232_edit = c_edt;   // for cursor display
@@ -1121,6 +1007,7 @@ while(1)
          if ( (d_state==M_CANCELING_FIRST) && (cdb[7]==0) && (cdb[8]==0) ) // cancel Mozaic and goto 0,0 complete
             {
 //TODO use POP            d_state = 11;    // we are done go back to "start mozaic"
+            pop(-3);
             refresh = 1;        // force a first pass
             }
          else if ( (cdb[11] == 0) || (cdb[11] == '0') ) // if not in goto
@@ -1134,6 +1021,7 @@ while(1)
          if ( cdb[5] == cdb[6] ) 
             {
 //TODO use POP            d_state = 11;    // we are done go back to "start mozaic"
+            pop(-1);
             refresh = 1;     // force a first pass
             beep_time_ms = 5000;
             }

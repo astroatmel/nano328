@@ -32,7 +32,7 @@ clean:
 %.hex: %.obj
 	$(OBJ2HEX) -R .eeprom -O ihex $< $@
 
-main.obj: main.c a328p_lcd.c a328p_lcd.h a328p_rt.c a328p_rt.h
+main.obj: main.c a328p_lcd.c a328p_lcd.h a328p_rt.c a328p_rt.h menu.h
 	$(CC) $(CFLAGS) $(ASFLAGS) $(MODULES_OPTIONS) main.c
 	$(CC) $(CFLAGS) $(ASFLAGS) $(MODULES_OPTIONS) a328p_lcd.c
 	$(CC) $(CFLAGS) $(ASFLAGS) $(MODULES_OPTIONS) a328p_rt.c
