@@ -113,7 +113,7 @@ volatile long cdb[CDB_SIZE];
 // 19: Histogram Min
 // 20: Histogram Cur
 // 21: Histogram Max
-// 22: Tracking Mode ? 0 1 2 3  (2 = EQ north  0 = off)
+// 22: Tracking Mode ? 0 1 2 3  (2 = EQ north  0 = off)  
 // 23: Debug value
 // 24: Debug value
 // 25: Free Mem
@@ -931,6 +931,33 @@ while(1)
          lcd_lines[jjj+2] = ',';
          p_val(&lcd_lines[jjj+3],mmm,0x30 + 0x01);
          }
+      else if ( fmt[iii] == 'q' )  // CGEM tracking mode: off / eq-north / eq-south / 
+         {
+         if ( lll == 0 )
+            {
+            lcd_lines[jjj+0] = 'o';
+            lcd_lines[jjj+1] = 'f';
+            lcd_lines[jjj+2] = 'f';
+            } 
+         else if ( lll == 1 )
+            {
+            lcd_lines[jjj+0] = 'a';
+            lcd_lines[jjj+1] = 'z';
+            lcd_lines[jjj+2] = 'i';
+            } 
+         else if ( lll == 2 )
+            {
+            lcd_lines[jjj+0] = 'E';
+            lcd_lines[jjj+1] = 'q';
+            lcd_lines[jjj+2] = 'N';
+            } 
+         else if ( lll == 3 )
+            {
+            lcd_lines[jjj+0] = 'E';
+            lcd_lines[jjj+1] = 'q';
+            lcd_lines[jjj+2] = 'S';
+            } 
+         }
       else if ( fmt[iii] == 'x' )  // @xX format  (0x????????)
          {
          p08x(&lcd_lines[jjj],&lll);
@@ -1152,6 +1179,13 @@ while(1)
             {
             if ( cgem_fb != 'J' ) cgem_fb = 'J';
             else                  cgem_fb = 't';
+
+/* This works and forces the controler in Eq-North
+            else        
+               {
+               cgem_fb = 'T';
+               rs232_tx_cmd[1] = 2; // try to set the tracking mode...
+               }   */
             rs232_tx_cmd[0]=cgem_fb;  
             }
          else if ( rs232_com_state == 2 ) // Send: in goto  {L}
