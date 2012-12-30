@@ -130,9 +130,9 @@ short d_state;          // main state machine that controls what to display
 short d_debug=0;     // Secondary state machine for debug info
 #define BT_LONG  1000            // a long push is 1 sec (1000 ticks)
 volatile unsigned char  button_rt_sp,button_rt_lp;   // set by foreground
-unsigned char  button_sp,button_lp;                  
-unsigned char  button_last_lp,button_hold_lp;
-unsigned char  button_last_sp,button_hold_sp;   // Prevous button
+unsigned char  button_sp,button_lp;                  // local usage
+unsigned char  button_last_lp;                       // long bush transition detection
+unsigned char  button_hold_sp,button_hold_lp;        // just to see what's the last detected button input
 
 
 ////////////////////////////////// DEFINES /////////////////////////////////////   
@@ -749,8 +749,7 @@ while(1)
 
    //////////////////////////////////////////////////
    if ( button_sp ) button_hold_sp = button_sp;    // This section isolates the foreground from the background
-   if ( button_lp ) button_hold_lp = button_lp;    // sp0 can set button_rt_lp and button_rt_sp
-   button_last_sp = button_sp;                     // at any time
+   if ( button_lp ) button_hold_lp = button_lp;    // sp0 can set button_rt_lp and button_rt_sp at any time
    button_last_lp = button_lp;                     // but we set our local copy
    button_lp = button_rt_lp;                       // only at the begining of the background loop
    button_sp = 0;                                  // this is important to make sure
@@ -777,13 +776,12 @@ while(1)
 //   lcd_lines_nmi[0x0E] = '0' + d_state                     /10;
 //   lcd_lines_nmi[0x0F] = '0' + d_state                     %10;
 //
-//   lcd_lines_nmi[0x1E] = '0' + button_hold_lp;
-//   lcd_lines_nmi[0x1F] = '0' + button_hold_sp;
+//   lcd_lines_nmi[0x1E] = '0' + button_lp;
+//   lcd_lines_nmi[0x1F] = '0' + button_sp;
 
-   if ( (button_sp!=0) && (button_last_sp==0) )    // on key press
+   if ( button_sp )    // on key press
       {
       refresh = 1;
-      dbg++;
       next = pgm_read_byte( &menu_state_machine[d_state*MENU_TABLE_WIDTH + button_sp]);   // Check next state...
       if ( (next>0) && (next<= MENU_TABLE_LEN) )
          { 
@@ -868,20 +866,20 @@ while(1)
          } 
       }
       
-   if ( button_lp || (button_sp != button_last_sp)) 
+   if ( button_lp || button_sp) 
       {
-      static char l_TT;  // last tenth
-      if ( (l_TT != TT) || (button_sp != button_last_sp) )
+      static char ll_TT;  // last tenth
+      if ( (ll_TT != TT) || (button_sp) )
          {
          short inc_id = (signed char) pgm_read_byte( &menu_state_machine[d_state*MENU_TABLE_WIDTH + 5]);
          if ( inc_id >= 0 ) // we are in edit mode...
             {
             long value = pgm_read_dword(&edit_increment[inc_id]);
-            if ( button_sp == BT_UP)   cdb_add_value =  value;
-            if ( button_sp == BT_DOWN) cdb_add_value = -value;
+            if ( button_lp == BT_UP)   cdb_add_value =  value;
+            if ( button_lp == BT_DOWN) cdb_add_value = -value;
             }
          }
-      l_TT = TT;
+      ll_TT = TT;
       }
    if ( (button_lp != 0) && (button_last_lp == 0) )  // on lp rising edge
       {
