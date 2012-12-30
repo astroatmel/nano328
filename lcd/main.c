@@ -127,8 +127,8 @@ volatile long cdb[CDB_SIZE];
 
 
 short d_state;          // main state machine that controls what to display
-short d_debug=0;     // Secondary state machine for debug info
-#define BT_LONG  1000            // a long push is 1 sec (1000 ticks)
+short d_debug=0;        // Secondary state machine for debug info
+short d_debug_page=M_DEBUG_FIRST;   // Secondary state machine for debug info
 volatile unsigned char  button_rt_sp,button_rt_lp;   // set by foreground
 unsigned char  button_sp,button_lp;                  // local usage
 unsigned char  button_last_lp;                       // long bush transition detection
@@ -432,6 +432,7 @@ return;
 #define BT_UP    3
 #define BT_DOWN  4
 #define BT 10
+#define BT_LONG  1000            // a long push is 1 sec (1000 ticks)
 
 volatile unsigned short msms;
 volatile unsigned char TT,SS,MM,HH;
@@ -779,59 +780,84 @@ while(1)
 //   lcd_lines_nmi[0x1E] = '0' + button_lp;
 //   lcd_lines_nmi[0x1F] = '0' + button_sp;
 
-   if ( button_sp )    // on key press
+   if ( d_debug )
       {
-      refresh = 1;
-      next = pgm_read_byte( &menu_state_machine[d_state*MENU_TABLE_WIDTH + button_sp]);   // Check next state...
-      if ( (next>0) && (next<= MENU_TABLE_LEN) )
-         { 
-         if ( button_sp == BT_UNDO )
-            {
-            push(d_state);
-            }
-         if ( button_sp == BT_ENTER)  // push on the stack
-            {
-            push(d_state);
-            if ( next == M_PRESET_FIRST )
+      if ( (button_sp==BT_UP) || (button_sp==BT_DOWN) )    // on key press
+         {
+         d_debug_page = pgm_read_byte( &menu_state_machine[d_debug_page*MENU_TABLE_WIDTH + button_sp]);   // Check next state...
+         refresh = 1;
+         }
+      }
+   else
+      {
+      if ( button_sp )    // on key press
+         {
+         refresh = 1;
+         next = pgm_read_byte( &menu_state_machine[d_state*MENU_TABLE_WIDTH + button_sp]);   // Check next state...
+         if ( (next>0) && (next<= MENU_TABLE_LEN) )
+            { 
+            if ( button_sp == BT_UNDO )
                {
-               pop_delay = 10; // display "done" for one second to give feedback
-               if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 1 ) cdb[15] = ONE_TENTH_OF_EDGEHD_FOV;
-               if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 2 ) cdb[15] = ONE_TENTH_OF_NEWTON_FOV;
-               if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 3 ) cdb[3] = 1000;
-               if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 4 ) cdb[3] = 30000;;
-               if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 5 ) cdb[3] = 60000;
+               push(d_state);
                }
-            if ( next == M_EXECUTE_FIRST )
-               {              // display "Executing..." for one 0.5 sec to give feedback ( I wanted to use this state to "execute" the change )
-               pop_delay = 5; // but I cant because if I use a constant cdb locatio to edit, then I cant know where the value goes ):
+            if ( button_sp == BT_ENTER)  // push on the stack
+               {
+               push(d_state);
+               if ( next == M_PRESET_FIRST )
+                  {
+                  pop_delay = 10; // display "done" for one second to give feedback
+                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 1 ) cdb[15] = ONE_TENTH_OF_EDGEHD_FOV;
+                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 2 ) cdb[15] = ONE_TENTH_OF_NEWTON_FOV;
+                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 3 ) cdb[3] = 1000;
+                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 4 ) cdb[3] = 30000;
+                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 5 ) cdb[3] = 60000;
+   
+                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_PAUSE_FIRST + 1 ) cdb[15] = ONE_TENTH_OF_EDGEHD_FOV;
+                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_PAUSE_FIRST + 2 ) cdb[15] = ONE_TENTH_OF_NEWTON_FOV;
+                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_PAUSE_FIRST + 3 ) cdb[3] = 1000;
+                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_PAUSE_FIRST + 4 ) cdb[3] = 30000;
+                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_PAUSE_FIRST + 5 ) cdb[3] = 60000;
+                  }
+               if ( next == M_EXECUTE_FIRST )
+                  {              // display "Executing..." for one 0.5 sec to give feedback ( I wanted to use this state to "execute" the change )
+                  pop_delay = 5; // but I cant because if I use a constant cdb locatio to edit, then I cant know where the value goes ):
+                  }
+               }
+            d_state = next;
+            }
+         else if ( next<0 )  // pop the stack...
+            {
+            pop(next);
+            }
+   
+         if ( button_sp == BT_UNDO) 
+            {
+            signed char t_edt = (signed char)pgm_read_byte( &menu_state_machine[d_state*MENU_TABLE_WIDTH + 5]);
+            if ( (c_edt!=-1) && (t_edt==-1) ) cdb[cdb_initial_offset] = cdb_initial_value;  // UNDO in EDIT mode : restore initial value
+            }
+   
+         } 
+      if ( button_lp || button_sp) 
+         {
+         short inc_id = (signed char) pgm_read_byte( &menu_state_machine[d_state*MENU_TABLE_WIDTH + 5]);
+         static char ll_TT;  // last tenth
+         if ( inc_id >= 0 ) // we are in edit mode...
+            {
+            long value = pgm_read_dword(&edit_increment[inc_id]);
+            if ( button_sp )
+               {
+               if ( button_sp == BT_UP)   cdb_add_value =  value;
+               if ( button_sp == BT_DOWN) cdb_add_value = -value;
+               }
+            else if ( ll_TT != TT )
+               {
+               if ( button_lp == BT_UP)   cdb_add_value =  value;
+               if ( button_lp == BT_DOWN) cdb_add_value = -value;
                }
             }
-         d_state = next;
+         ll_TT = TT;
          }
-      else if ( next<0 )  // pop the stack...
-         {
-         pop(next);
-         }
-
-      if ( button_sp == BT_UNDO) 
-         {
-         signed char t_edt = (signed char)pgm_read_byte( &menu_state_machine[d_state*MENU_TABLE_WIDTH + 5]);
-         if ( (c_edt!=-1) && (t_edt==-1) ) cdb[cdb_initial_offset] = cdb_initial_value;  // UNDO in EDIT mode : restore initial value
-         }
-
-//REM      if ( d_state==16 )  // Process button inputs for in Motor Step up/down mode
-//REM         {
-//REM         if (button == BT_UP)   CANON_FOCUS_HIGH;  
-//REM         if (button == BT_DOWN) CANON_FOCUS_LOW;   // Led on
-//REM         rt_wait_ms(1);
-//REM         if ((button == BT_UP) || (button == BT_DOWN))   
-//REM            {
-//REM            CANON_SHOOT_HIGH;
-//REM            rt_wait_ms(100);
-//REM            }
-//REM         CANON_SHOOT_LOW;
-//REM         }
-      } 
+      } // end of the else d_debug
    if ( refresh )
       {
       refresh = 0;
@@ -842,8 +868,8 @@ while(1)
          }
       else
          {
-         i1 = pgm_read_byte(&menu_state_machine[d_debug*MENU_TABLE_WIDTH + 7]) * 16;
-         i2 = pgm_read_byte(&menu_state_machine[d_debug*MENU_TABLE_WIDTH + 8]) * 16;
+         i1 = pgm_read_byte(&menu_state_machine[d_debug_page*MENU_TABLE_WIDTH + 7]) * 16;
+         i2 = pgm_read_byte(&menu_state_machine[d_debug_page*MENU_TABLE_WIDTH + 8]) * 16;
          }
 
       for ( id=0;id<16;id++ ) 
@@ -865,22 +891,7 @@ while(1)
             }
          } 
       }
-      
-   if ( button_lp || button_sp) 
-      {
-      static char ll_TT;  // last tenth
-      if ( (ll_TT != TT) || (button_sp) )
-         {
-         short inc_id = (signed char) pgm_read_byte( &menu_state_machine[d_state*MENU_TABLE_WIDTH + 5]);
-         if ( inc_id >= 0 ) // we are in edit mode...
-            {
-            long value = pgm_read_dword(&edit_increment[inc_id]);
-            if ( button_lp == BT_UP)   cdb_add_value =  value;
-            if ( button_lp == BT_DOWN) cdb_add_value = -value;
-            }
-         }
-      ll_TT = TT;
-      }
+         
    if ( (button_lp != 0) && (button_last_lp == 0) )  // on lp rising edge
       {
       if ( button_lp == BT_UNDO ) // long undo forces a reset of the state (almost the same as a reset, except most values are kept
@@ -891,20 +902,12 @@ while(1)
          }
       if ( button_lp == BT_ENTER ) // long undo forces a reset of the state (almost the same as a reset, except most values are kept
          {
-         if ( d_debug == 0 ) d_debug = M_DEBUG_FIRST;  // go to first debug page
+         if ( d_debug == 0 ) d_debug = 1;  // go to first debug page
          else                d_debug = 0;              // go to normal operation
          refresh ++ ;
          }
       }
-
-//REM   if ( button_lp && ( d_state==16 ) )  // Motor Tests
-//REM      {
-//REM            CANON_SHOOT_HIGH;
-//REM            rt_wait_ms(100);
-//REM            CANON_SHOOT_LOW;
-//REM            rt_wait_ms(50);
-//REM      }
-
+   
    for ( iii=0 ; iii < nb_display ; iii++ )  // display required values
       {
       lll = cdb[off[iii]+0];

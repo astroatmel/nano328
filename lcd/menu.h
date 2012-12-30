@@ -63,9 +63,9 @@
 #define M_PRESET_COUNT                  1
 #define M_PRESET_FIRST                  52
 #define M_PRESET_LAST                   52
-#define M_DEBUG_COUNT                   1
+#define M_DEBUG_COUNT                   3
 #define M_DEBUG_FIRST                   53
-#define M_DEBUG_LAST                    53
+#define M_DEBUG_LAST                    55
 
 PROGMEM const long edit_increment[] = {
               1               ,                   //  0
@@ -133,10 +133,14 @@ PROGMEM const char linetxt[]=
               "Really Cancel ? "                  //  53
               "Cancelling...   "                  //  54
               "Executing...    "                  //  55
-              "Done...         ";                 //  56
+              "Done...         "                  //  56
+              "D3:\242x\031          "            //  57
+              "D4:\242x\030          "            //  58
+              "D5:\242x\031          "            //  59
+              "D6:\242x\030          ";           //  60
 
 #define MENU_TABLE_WIDTH 8
-#define MENU_TABLE_LEN   53
+#define MENU_TABLE_LEN   55
 PROGMEM const char menu_state_machine[]= {  0,0,0,0,0,0,0,0,0, // STATE : 0 is not a valid state, it means 'do nothing'  > there is one more element so that the array starts at 1
 //            UNDO      ENTER     PREV      NEXT      INCREMENT OFFSET    LINE1     LINE2  
                0,       2,        1,        1,        -1,       -1,       0,        1,         // State: 1    M_ROOT              "Cam Driver V2"          "Ram:\242X\031"          
@@ -191,4 +195,6 @@ PROGMEM const char menu_state_machine[]= {  0,0,0,0,0,0,0,0,0, // STATE : 0 is n
                0,       0,        50,       50,       -1,       -1,       54,       6,         // State: 50   M_CANCELING         "Cancelling..."          ""                       
                0,       0,        51,       51,       -1,       -1,       55,       6,         // State: 51   M_EXECUTE           "Executing..."           ""                       
                0,       0,        52,       52,       -1,       -1,       56,       6,         // State: 52   M_PRESET            "Done..."                ""                       
-               0,       0,        53,       53,       -1,       -1,       36,       37};       // State: 53   M_DEBUG             "D1:\242x\031"           "D2:\242x\030"           
+               0,       0,        55,       54,       -1,       -1,       36,       37,        // State: 53   M_DEBUG             "D1:\242x\031"           "D2:\242x\030"           
+               0,       0,        53,       55,       -1,       -1,       57,       58,        // State: 54   M_DEBUG             "D3:\242x\031"           "D4:\242x\030"           
+               0,       0,        54,       53,       -1,       -1,       59,       60};       // State: 55   M_DEBUG             "D5:\242x\031"           "D6:\242x\030"           

@@ -94,4 +94,6 @@ M_EXECUTE	:	:	:	:	"Executing..."	""              # Special S/W Action required
 M_PRESET	:	:	:	:	"Done..."	""              # Special S/W Action required , deposit preset values
 
 M_DEBUG	:	:	:	:	"D1:\242x\031"	"D2:\242x\030"
+M_DEBUG	:	:	:	:	"D3:\242x\031"	"D4:\242x\030"
+M_DEBUG	:	:	:	:	"D5:\242x\031"	"D6:\242x\030"
 
