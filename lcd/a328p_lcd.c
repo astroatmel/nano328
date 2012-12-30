@@ -198,8 +198,17 @@ if (chunk==0)  // a new character to send
                          CCC[2] = 0x00;  // lower chunk fisrt
       }
    else chunk = 2;
-   CCC[1] = lcd_lines[ptr] >> 4; 
-   CCC[0] = lcd_lines[ptr] & 0x0F;
+
+   if ( lcd_lines_nmi[ptr] )   // the NMI are non mascable, if something is there, it has priority
+      {
+      CCC[1] = lcd_lines_nmi[ptr] >> 4; 
+      CCC[0] = lcd_lines_nmi[ptr] & 0x0F;
+      }
+   else
+      {
+      CCC[1] = lcd_lines[ptr] >> 4; 
+      CCC[0] = lcd_lines[ptr] & 0x0F;
+      }
    ptr = (ptr+1)&0x1F;  // 
    }
 

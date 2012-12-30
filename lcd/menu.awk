@@ -18,7 +18,7 @@ WIDTH = 8
 gsub(" *#.*$","")
 if ( $0 != "" )
    {
-   fc = 1 + split($0,FIELDS,"\t")
+   fc = 1 + split($0,FIELDS," *\t *")
    if ( fc != WIDTH )
       {
       print "### Unexpected number of fields in the definition file:" fc
@@ -50,7 +50,7 @@ print "// cat menu.def | awk -f menu.awk | tee menu.h"
 
 for ( iii=1 ; iii <= table_cnt ; iii++ )
    {
-   split(TABLE[iii],FIELDS,"\t")
+   split(TABLE[iii],FIELDS," *\t *")
    if ( RE_ITEM_CNT[FIELDS[1]] == "" )
       {
       RE_ITEM_CNT[FIELDS[1]] = "1"
@@ -62,7 +62,7 @@ for ( iii=1 ; iii <= table_cnt ; iii++ )
 
 for (iii in CALLED)
    {
-   if ( ITEM_CNT[iii] == "" ) print "### problem, a called item was not defined: " iii " : "CALLED[iii]
+   if ( ITEM_CNT[iii] == "" ) print "### problem, a called item was not defined: [" iii "] : "CALLED[iii]
    }
 
 print "\nPROGMEM const long edit_increment[] = {" 
@@ -111,7 +111,7 @@ UNDO[":POP_3"] = "-3"
 
 for ( iii=1 ; iii <= table_cnt ; iii++ )
    {
-   split(TABLE[iii],FIELDS,"\t")
+   split(TABLE[iii],FIELDS," *\t *")
    RE_ITEM_CNT[FIELDS[1]] = RE_ITEM_CNT[FIELDS[1]]+1       # re-count the quantity of items per menu
 
    if ( UNDO[FIELDS[2]] != "" ) UUU = UNDO[FIELDS[2]]     # undo: do nothing, or pop the menu stack

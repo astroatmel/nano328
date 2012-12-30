@@ -21,7 +21,7 @@ AVRDUDE=avrdude
 TARGET=main
 OBJECT_FILES=a328p_lcd.o a328p_rt.o main.o
 
-all: main.hex
+all: main.hex menu.h
 
 # Those defines control which modules are active
 MODULES_OPTIONS=-DUSE_LCD -DUSE_RT
@@ -31,6 +31,9 @@ clean:
 
 %.hex: %.obj
 	$(OBJ2HEX) -R .eeprom -O ihex $< $@
+
+menu.h:	menu.awk menu.def
+	cat menu.def | awk -f menu.awk > menu.h
 
 main.obj: main.c a328p_lcd.c a328p_lcd.h a328p_rt.c a328p_rt.h menu.h
 	$(CC) $(CFLAGS) $(ASFLAGS) $(MODULES_OPTIONS) main.c

@@ -70,12 +70,15 @@ volatile char rs232_tx_ptr = -1;   // -1 means last tx complete and >0 means in 
 volatile char rs232_rx_ptr = 0;   // -1 means a command was received, -2 means overflow
 short         rs232_com_to    = -1;  // Time-out
 char rs232_com_state = 0;  // Odd values are states where we are waiting for an answer from CGEM
+char mozaic_mode  = 0;    // goto or pause
 char mozaic_state = 0;    // to help with the handshake...
+short mozaic_wait = 0;    // dont wait for ever...
 signed char rs232_edit=-1;
 long          cdb_add_value=0;  // value to add to the current cdb label... 
 long          cdb_initial_value=0;  // value to restore in case of UNDO
 unsigned char cdb_initial_offset=0;  // value to restore in case of UNDO
 unsigned char stack_before_edit=0;  // 
+short dbg;
 
 // States are:
 // 0: Is aligned
@@ -89,7 +92,7 @@ volatile unsigned long d_USART_RX;
 volatile unsigned long d_USART_TX;
 
 volatile short pop_delay=0;
-#define CDB_SIZE 50
+#define CDB_SIZE 30
 volatile long cdb[CDB_SIZE];
 //  0: Runnig time in seconds
 //  1: RA from CGEM
@@ -116,15 +119,20 @@ volatile long cdb[CDB_SIZE];
 // 22: Tracking Mode ? 0 1 2 3  (2 = EQ north  0 = off)  
 // 23: Debug value
 // 24: Debug value
-// 25: Free Mem
+// 25: Free Mem RAM
 // 26: Timelap Shot no
 // 27: Timelap Period counter
+// 28: Nb pictures on RA axis
+// 29: Nb pictures on REC axis
 
 
-short d_state;   // main state machine that controls what to display
+short d_state;          // main state machine that controls what to display
+short d_debug=0;     // Secondary state machine for debug info
 #define BT_LONG  1000            // a long push is 1 sec (1000 ticks)
-volatile unsigned char  button,button_sp,button_lp;   // Current button and real-time sets the short push and long push
-unsigned char  button_last;   // Prevous button
+volatile unsigned char  button_rt_sp,button_rt_lp;   // set by foreground
+unsigned char  button_sp,button_lp;                  
+unsigned char  button_last_lp,button_hold_lp;
+unsigned char  button_last_sp,button_hold_sp;   // Prevous button
 
 
 ////////////////////////////////// DEFINES /////////////////////////////////////   
@@ -355,10 +363,9 @@ p02x(&bof[2],*p_it++);
 p02x(&bof[0],*p_it++);
 }
 
-void p04x(unsigned char *bof,long value)
+void p04x(unsigned char *bof,long *p_value)
 {
-unsigned char *p_it = (unsigned char*) &value;
-p_it = (unsigned char*) &value;
+unsigned char *p_it = (unsigned char*) p_value;
 p02x(&bof[2],*p_it++);
 p02x(&bof[0],*p_it++);
 }
@@ -420,11 +427,18 @@ return;
 //  The  Start bit is a "1" for ~ 0x2A then a "0" for !0x2A
 //  The code with Proscan is about 25 bits of information
 
+#define BT_UNDO  1
+#define BT_ENTER 2
+#define BT_UP    3
+#define BT_DOWN  4
+#define BT 10
+
 volatile unsigned short msms;
 volatile unsigned char TT,SS,MM,HH;
 
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 1 KHz
 {
+static unsigned char  button_rt,button_last_rt, button_sp_sp;
 static unsigned short button_down_ms;   // check how long a button is held down
 
 rt_TIMER1++;
@@ -439,13 +453,27 @@ if ( beep_time_ms )
    OCR2A = 20;
    if ( 0 == --beep_time_ms ) OCR2B = 254;  // stop the beep
    }
-if ( button ) 
+
+button_last_rt = button_rt;
+if      (LCD_BUTTON_1 == 0 ) {button_rt = BT_ENTER; }
+else if (LCD_BUTTON_2 == 0 ) {button_rt = BT_UP;    }
+else if (LCD_BUTTON_3 == 0 ) {button_rt = BT_UNDO;  }
+else if (LCD_BUTTON_4 == 0 ) {button_rt = BT_DOWN;  }
+else                         {button_rt = 0;        } // _sp gets set when button is at least 10ms down
+
+if ( button_rt )  
    {
-   if (button<=BT_LONG) button_down_ms++; // check how long the button is down;
-   if      ( button_down_ms == 10 )       { beep_time_ms = 10; button_sp = button; }    // Beep
-   else if ( button_down_ms == BT_LONG )  { beep_time_ms = 10; button_lp = button; }    // Beep high pitch on long push
+   if      ( button_down_ms <= BT_LONG)   { button_down_ms++;  }                               // check how long the button is down;
+   if      ( button_down_ms == 10 )       { beep_time_ms = 10; button_sp_sp = button_rt; }    // Beep
+   else if ( button_down_ms == BT_LONG )  { beep_time_ms = 10; button_rt_lp = button_rt; }    // Beep high pitch on long push, set button_rt_lp
    }
-else button_down_ms=0;
+else
+   {
+   if ( (button_sp_sp!=0) && (button_rt_lp==0)) button_rt_sp = button_sp_sp;  // if there was a beep for short push, then set button_rt_sp
+   button_sp_sp   = 0;
+   button_down_ms = 0;
+   button_rt_lp   = 0;
+   }
 
 msms++;
 if ( msms >= 100 ) 
@@ -453,7 +481,8 @@ if ( msms >= 100 )
    msms = 0;
    TT++;                              // Tenths
 
-   if ( pop_delay> 1 ) pop_delay--;
+   if ( pop_delay   > 1 ) pop_delay--;
+   if ( mozaic_wait > 1 ) mozaic_wait--;
 
    if ( TT >= 10 )
       {
@@ -698,17 +727,14 @@ DDRB |= bit(7);
 DDRD |= bit(5);  
 DDRD |= bit(3);   // Buzzer
 
-#define BT_UNDO  1
-#define BT_ENTER 2
-#define BT_UP    3
-#define BT_DOWN  4
-
 d_state=1;
 lcd_go_rt = 1;
 
 cdb[3]  = 2*1000;    // default exposure time: 30 mili seconds  (mozaic)
 cdb[4]  = 60;        // default delta time: 60 seconds (time laps)
 cdb[15] = ONE_TENTH_OF_EDGEHD_FOV;   // default span: 1/10 of EDGE HD  (0.333 deg / 10 = 0.03 deg = 2 min)   { thats 1/30 of Newton)
+cdb[28] = 9;         // Pause method, nb of pictures on RA axis (paused ones)
+cdb[29] = 9;         // Pause method, nb of pictures on DEC axis (goto ones)
 
 while(1)
    {
@@ -718,15 +744,22 @@ while(1)
    static unsigned char set[10],fmt[10],pos[10],off[10]; // show/edit format position cdb-offset    <- values used to set/show values on LCD
    short i1,i2;
    static char next;
-   static short dbg;
 
    c_edt = (signed char) pgm_read_byte( &menu_state_machine[d_state*MENU_TABLE_WIDTH + 6]);
 
-   if      (LCD_BUTTON_1 == 0 ) {button = BT_ENTER; }
-   else if (LCD_BUTTON_2 == 0 ) {button = BT_UP;    }
-   else if (LCD_BUTTON_3 == 0 ) {button = BT_UNDO;  }
-   else if (LCD_BUTTON_4 == 0 ) {button = BT_DOWN;  }
-   else                         {button = button_lp = button_sp = 0; } // _sp gets set when button is at least 10ms down
+   //////////////////////////////////////////////////
+   if ( button_sp ) button_hold_sp = button_sp;    // This section isolates the foreground from the background
+   if ( button_lp ) button_hold_lp = button_lp;    // sp0 can set button_rt_lp and button_rt_sp
+   button_last_sp = button_sp;                     // at any time
+   button_last_lp = button_lp;                     // but we set our local copy
+   button_lp = button_rt_lp;                       // only at the begining of the background loop
+   button_sp = 0;                                  // this is important to make sure
+   if ( button_rt_sp )                             // that the changes occurs at the start of the loop
+      {                                            // 
+      button_sp = button_rt_sp;                    // this waym any logic below will always catch the changes
+      button_rt_sp = 0;                            //
+      }                                            //
+   //////////////////////////////////////////////////
 
    if ( pop_delay == 1 )
       {
@@ -735,56 +768,57 @@ while(1)
       if ( d_state == M_EXECUTE_FIRST ) menu_stack_ptr = stack_before_edit;  // ugly... I know...
       pop(-1);
       }
-//   lcd_lines[0x0A] = '0' + menu_stack[menu_stack_ptr-2]/10;
-//   lcd_lines[0x0B] = '0' + menu_stack[menu_stack_ptr-2]%10;
-//   lcd_lines[0x0C] = '0' + menu_stack[menu_stack_ptr-1]/10;
-//   lcd_lines[0x0D] = '0' + menu_stack[menu_stack_ptr-1]%10;
-//   lcd_lines[0x0E] = '0' + dbg                         /10;
-//   lcd_lines[0x0F] = '0' + dbg                         %10;
-//   lcd_lines[0x1E] = '0' + menu_stack_ptr              /10;
-//   lcd_lines[0x1F] = '0' + menu_stack_ptr              %10;
+//   lcd_lines_nmi[0x0A] = '0' + menu_stack[menu_stack_ptr-2]/10;
+//   lcd_lines_nmi[0x0B] = '0' + menu_stack[menu_stack_ptr-2]%10;
+//   lcd_lines_nmi[0x0A] = '0' + dbg                         /10;
+//   lcd_lines_nmi[0x0B] = '0' + dbg                         %10;
+//   lcd_lines_nmi[0x0C] = '0' + menu_stack_ptr              /10;
+//   lcd_lines_nmi[0x0D] = '0' + menu_stack_ptr              %10;
+//   lcd_lines_nmi[0x0E] = '0' + d_state                     /10;
+//   lcd_lines_nmi[0x0F] = '0' + d_state                     %10;
+//
+//   lcd_lines_nmi[0x1E] = '0' + button_hold_lp;
+//   lcd_lines_nmi[0x1F] = '0' + button_hold_sp;
 
-   if ( button_sp != button_last )   
+   if ( (button_sp!=0) && (button_last_sp==0) )    // on key press
       {
-      if ( button_sp == 0 ) //  action on key-off
+      refresh = 1;
+      dbg++;
+      next = pgm_read_byte( &menu_state_machine[d_state*MENU_TABLE_WIDTH + button_sp]);   // Check next state...
+      if ( (next>0) && (next<= MENU_TABLE_LEN) )
+         { 
+         if ( button_sp == BT_UNDO )
+            {
+            push(d_state);
+            }
+         if ( button_sp == BT_ENTER)  // push on the stack
+            {
+            push(d_state);
+            if ( next == M_PRESET_FIRST )
+               {
+               pop_delay = 10; // display "done" for one second to give feedback
+               if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 1 ) cdb[15] = ONE_TENTH_OF_EDGEHD_FOV;
+               if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 2 ) cdb[15] = ONE_TENTH_OF_NEWTON_FOV;
+               if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 3 ) cdb[3] = 1000;
+               if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 4 ) cdb[3] = 30000;;
+               if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 5 ) cdb[3] = 60000;
+               }
+            if ( next == M_EXECUTE_FIRST )
+               {              // display "Executing..." for one 0.5 sec to give feedback ( I wanted to use this state to "execute" the change )
+               pop_delay = 5; // but I cant because if I use a constant cdb locatio to edit, then I cant know where the value goes ):
+               }
+            }
+         d_state = next;
+         }
+      else if ( next<0 )  // pop the stack...
          {
-         next = pgm_read_byte( &menu_state_machine[d_state*MENU_TABLE_WIDTH + button_last]);   // Check next state...
-         if ( (next>0) && (next<= MENU_TABLE_LEN) )
-            { 
-            if ( button_last == BT_UNDO )
-               {
-               push(d_state);
-               }
-            if ( button_last == BT_ENTER)  // push on the stack
-               {
-               push(d_state);
-               if ( next == M_PRESET_FIRST )
-                  {
-                  pop_delay = 10; // display "done" for one second to give feedback
-                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 1 ) cdb[15] = ONE_TENTH_OF_EDGEHD_FOV;
-                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 2 ) cdb[15] = ONE_TENTH_OF_NEWTON_FOV;
-                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 3 ) cdb[3] = 1000;
-                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 4 ) cdb[3] = 30000;;
-                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 5 ) cdb[3] = 60000;
-                  }
-               if ( next == M_EXECUTE_FIRST )
-                  {              // display "Executing..." for one 0.5 sec to give feedback ( I wanted to use this state to "execute" the change )
-                  pop_delay = 5; // but I cant because if I use a constant cdb locatio to edit, then I cant know where the value goes ):
-                  }
-               }
-            d_state = next;
-            }
-         else if ( next<0 )  // pop the stack...
-            {
-            pop(next);
-            }
- 
-         if ( button_last == BT_UNDO) 
-            {
-            signed char t_edt = (signed char)pgm_read_byte( &menu_state_machine[d_state*MENU_TABLE_WIDTH + 5]);
-            if ( (c_edt!=-1) && (t_edt==-1) ) cdb[cdb_initial_offset] = cdb_initial_value;  // UNDO in EDIT mode : restore initial value
-            }
-         refresh = 1;
+         pop(next);
+         }
+
+      if ( button_sp == BT_UNDO) 
+         {
+         signed char t_edt = (signed char)pgm_read_byte( &menu_state_machine[d_state*MENU_TABLE_WIDTH + 5]);
+         if ( (c_edt!=-1) && (t_edt==-1) ) cdb[cdb_initial_offset] = cdb_initial_value;  // UNDO in EDIT mode : restore initial value
          }
 
 //REM      if ( d_state==16 )  // Process button inputs for in Motor Step up/down mode
@@ -803,19 +837,22 @@ while(1)
    if ( refresh )
       {
       refresh = 0;
-      i1 = pgm_read_byte(&menu_state_machine[d_state*MENU_TABLE_WIDTH + 7]) * 16;
-      i2 = pgm_read_byte(&menu_state_machine[d_state*MENU_TABLE_WIDTH + 8]) * 16;
+      if ( d_debug == 0 )
+         {
+         i1 = pgm_read_byte(&menu_state_machine[d_state*MENU_TABLE_WIDTH + 7]) * 16;
+         i2 = pgm_read_byte(&menu_state_machine[d_state*MENU_TABLE_WIDTH + 8]) * 16;
+         }
+      else
+         {
+         i1 = pgm_read_byte(&menu_state_machine[d_debug*MENU_TABLE_WIDTH + 7]) * 16;
+         i2 = pgm_read_byte(&menu_state_machine[d_debug*MENU_TABLE_WIDTH + 8]) * 16;
+         }
 
       for ( id=0;id<16;id++ ) 
          {
          lcd_lines[id+0x00] = pgm_read_byte ( &linetxt[i1]+id);
          lcd_lines[id+0x10] = pgm_read_byte ( &linetxt[i2]+id);
          } 
-//      lcd_lines[0x0E] = '0' + menu_stack_ptr/10;
-//      lcd_lines[0x0F] = '0' + menu_stack_ptr%10;
-//
-//      lcd_lines[0x1E] = '0' + next/10;
-//      lcd_lines[0x1F] = '0' + next%10;
 
       nb_display = 0; // assume nothing to do
       for ( id=0;id<32;id++ ) // check for printable / editable strings
@@ -831,30 +868,36 @@ while(1)
          } 
       }
       
-   if ( button_lp || (button_sp != button_last)) 
+   if ( button_lp || (button_sp != button_last_sp)) 
       {
       static char l_TT;  // last tenth
-      if ( (l_TT != TT) || (button_sp != button_last) )
+      if ( (l_TT != TT) || (button_sp != button_last_sp) )
          {
          short inc_id = (signed char) pgm_read_byte( &menu_state_machine[d_state*MENU_TABLE_WIDTH + 5]);
          if ( inc_id >= 0 ) // we are in edit mode...
             {
             long value = pgm_read_dword(&edit_increment[inc_id]);
-            if ( button == BT_UP)   cdb_add_value =  value;
-            if ( button == BT_DOWN) cdb_add_value = -value;
+            if ( button_sp == BT_UP)   cdb_add_value =  value;
+            if ( button_sp == BT_DOWN) cdb_add_value = -value;
             }
          }
       l_TT = TT;
       }
-   if ( button_lp ) 
+   if ( (button_lp != 0) && (button_last_lp == 0) )  // on lp rising edge
       {
-      if ( button == BT_UNDO ) // long undo forces a reset of the state (almost the same as a reset, except most values are kept
+      if ( button_lp == BT_UNDO ) // long undo forces a reset of the state (almost the same as a reset, except most values are kept
          {
-         d_state=1; // long undo re
+         d_state=1; // long undo 
+         d_debug=0; 
          menu_stack_ptr = 0;
          }
+      if ( button_lp == BT_ENTER ) // long undo forces a reset of the state (almost the same as a reset, except most values are kept
+         {
+         if ( d_debug == 0 ) d_debug = M_DEBUG_FIRST;  // go to first debug page
+         else                d_debug = 0;              // go to normal operation
+         refresh ++ ;
+         }
       }
-   button_last = button_sp;
 
 //REM   if ( button_lp && ( d_state==16 ) )  // Motor Tests
 //REM      {
@@ -875,7 +918,11 @@ while(1)
          cdb_add_value = 0;
          }
 
-      if ( fmt[iii] == 's' )  // @sX format  (seconds)
+      if ( fmt[iii] == 'n' )  // @nX format  (normal number)
+         {
+         p_val(&lcd_lines[jjj],lll,0x10 + 0x02);
+         }
+      else if ( fmt[iii] == 's' )  // @sX format  (seconds)
          {
          p_val(&lcd_lines[jjj],lll/1000,0x10 + 0x02);
          }
@@ -894,7 +941,11 @@ while(1)
             lcd_lines[jjj+2] = ' ';
             }
          }
-      else if ( fmt[iii] == 'R' )  // @RX format  (RA)
+//      else if ( fmt[iii] == 'R' || fmt[iii] == 'D' || fmt[iii] == 'H' )  // temp test becasue they seem to jam  ... see p_cgem_coord()
+//         {
+//         p08x(&lcd_lines[jjj],&lll);
+//         }
+      else if ( fmt[iii] == 'R' )  // @RX format  (RA)      
          {
          p_cgem_coord(&lcd_lines[jjj],&lll,0x10);
          }
@@ -962,6 +1013,10 @@ while(1)
          {
          p08x(&lcd_lines[jjj],&lll);
          }
+      else if ( fmt[iii] == 'X' )  // 
+         {
+         p04x(&lcd_lines[jjj],&lll);
+         }
       else if ( fmt[iii] == 'm' )  // format  xxx.xxx ms   to display exposition time
          {
          long  sec,msec;
@@ -981,7 +1036,7 @@ while(1)
          p_val(&lcd_lines[jjj+4],msec/10,0x40 + 0x01);
          
          }
-      else if ( fmt[iii] == 'h' )  // @xX format  (0x????????)
+      else if ( fmt[iii] == 'h' )  
          {
          kkk=0;
          lll = cdb[off[iii]+0];
@@ -999,7 +1054,7 @@ while(1)
          p_val(&lcd_lines[jjj+3],mmm/60  ,0x50 + 0x01);
          lcd_lines[jjj+5] = 'm';
          }
-      else if ( (fmt[iii] == 'T') )  // @xX format  (0x????????)
+      else if ( (fmt[iii] == 'T') )  
          {
          lll = lll/1000;
          mmm = lll%3600;
@@ -1023,12 +1078,23 @@ while(1)
    if ( TT < 3 ) rs232_edit = c_edt;   // for cursor display
    else          rs232_edit=-1;        // for cursor display
 ///////////////////////////// Mozaic Logic  /////////////////////////////
+   if ( (d_state == M_MOZAIC_FIRST) ||
+        (d_state == M_MOZAIC_PAUSE_FIRST) )  // in case we use the long push on the UNDO button, these states acts as reset
+      {
+      mozaic_state=0;
+      cdb[5] = 0;  // shot no
+      cdb[7] = 0;  // RA id
+      cdb[8] = 0;  // DE id;
+      if ( d_state == M_MOZAIC_FIRST )       mozaic_mode = 0;  // GOTO mode  -> do a goto for before each picture and do a 9x9 matrix
+      if ( d_state == M_MOZAIC_PAUSE_FIRST ) mozaic_mode = 1;  // PAuse mode -> do a goto only after a line on the RA is complete, and on RA, each picture is separated by a slew (no goto)
+      }
+
    if ( ((d_state >= M__MOZ_RUN_FIRST) && (d_state <= M__MOZ_RUN_LAST)) || (d_state == M_CANCEL_FIRST) || (d_state == M_CANCELING_FIRST))
       {
       if ( mozaic_state==1 ) // command requested 
-         {; }
+         { if ( mozaic_wait==0) mozaic_state++; }  // wait...but not forever
       else if ( mozaic_state==2 ) // waiting for first "in goto" status
-         {; }
+         { if ( mozaic_wait==0) mozaic_state++; }  // wait...but not forever
       else if ( mozaic_state==3 ) // command send and "in goto" state feedback received
          {
          if ( (d_state==M_CANCELING_FIRST) && (cdb[7]==0) && (cdb[8]==0) ) // cancel Mozaic and goto 0,0 complete
@@ -1071,6 +1137,7 @@ while(1)
                cdb[8] = 0;
                }
             mozaic_state=1; // Ask the CGEM communication to issue a goto command
+            mozaic_wait=150; // wait 15 sec max 
             }
          }
       }

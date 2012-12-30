@@ -17,19 +17,33 @@
 # 
 # we are entering a menu that requires special procedure on UNDO when UNDO_ACTION is not POP_1/2/3 -> remember where to pop back on confirmation of UNDO
 # 
-M_ROOT	:	M_MAIN	:	:	"Camera Driver"	"Version 2.0"
+M_ROOT	:	M_MAIN	:	:	"Cam Driver V2"	"Ram:\242X\031"
 
-M_MAIN	:POP_1	:	:	:	"RA:\242R\001"	"DE:\242D\002"
-M_MAIN	:POP_1	:	:	:	"RA:\242H\001"	"DE:\242D\002"
 M_MAIN	:POP_1	M_MOZAIC	:	:	"Mozaic Menu..."	"(GOTO Method)"
-M_MAIN	:POP_1	M_MOZAIC	:	:	"Mozaic Menu..."	"(Pause Method)"          # use pauses instead of using GOTO which are dreadfull on CGEM 
+M_MAIN	:POP_1	M_MOZAIC_PAUSE	:	:	"Mozaic Menu..."	"(Pause Method)"          # use pauses instead of using GOTO which are dreadfull on CGEM 
 M_MAIN	:POP_1	M_TIMELAP	:	:	"Timelap Menu..."	""
 M_MAIN	:POP_1	M_CGEM_STATUS	:	:	"CGEM Status..."	""
+M_MAIN	:POP_1	:	:	:	"RA:\242R\001"	"DE:\242D\002"
+M_MAIN	:POP_1	:	:	:	"RA:\242H\001"	"DE:\242D\002"
 # M_MAIN	:POP_1	M_DEB	:	:	"Debug..."	""
 
 ###########################################################################################################################################################
 
-M_MOZAIC	:POP_1	M__MOZ_RUN	:	:	"Start Mozaic..."	""
+M_MOZAIC_PAUSE	:POP_1	M__MOZ_RUN	:	:	"Start Mozaic..."	"(Pause Method)"
+M_MOZAIC_PAUSE	:POP_1	M_PRESET	:	:	"Set Span to:"	"1/10 of EDGE HD"
+M_MOZAIC_PAUSE	:POP_1	M_PRESET	:	:	"Set Span to:"	"1/10 of Newton 6"
+M_MOZAIC_PAUSE	:POP_1	M_PRESET	:	:	"Set Exposure:"	"1 Second"
+M_MOZAIC_PAUSE	:POP_1	M_PRESET	:	:	"Set Exposure:"	"30 Second"
+M_MOZAIC_PAUSE	:POP_1	M_PRESET	:	:	"Set Exposure:"	"60 Second"
+M_MOZAIC_PAUSE	:POP_1	M__MOZ_EXP	:	:	"Exposure Time:"	"Current:\242s\003 sec"
+M_MOZAIC_PAUSE	:POP_1	M__MOZ_SPAN1	:	:	"Total Span:"	"Cur:\242d\017"
+M_MOZAIC_PAUSE	:POP_1	M__MOZ_RA	:	:	"Nb Pic:"	"Current:\242n\044 (RA)"
+M_MOZAIC_PAUSE	:POP_1	M__MOZ_DE	:	:	"Nb Pic:"	"Current:\242n\045 (DE)"
+M__MOZ_RA	:POP_1	M_EXECUTE	1	26 	"Nb Pic:"	"    Set:\243n\044 (RA)"
+M__MOZ_DE	:POP_1	M_EXECUTE	1	26	"Nb Pic:"	"    Set:\243n\045 (DE)"
+###########################################################################################################################################################
+
+M_MOZAIC	:POP_1	M__MOZ_RUN	:	:	"Start Mozaic..."	"(GOTO Method)"
 M_MOZAIC	:POP_1	M_PRESET	:	:	"Set Span to:"	"1/10 of EDGE HD"
 M_MOZAIC	:POP_1	M_PRESET	:	:	"Set Span to:"	"1/10 of Newton 6"
 M_MOZAIC	:POP_1	M_PRESET	:	:	"Set Exposure:"	"1 Second"
@@ -79,4 +93,5 @@ M_CANCELING	:	:	:	:	"Cancelling..."	""              # Special S/W Action require
 M_EXECUTE	:	:	:	:	"Executing..."	""              # Special S/W Action required 
 M_PRESET	:	:	:	:	"Done..."	""              # Special S/W Action required , deposit preset values
 
+M_DEBUG	:	:	:	:	"D1:\242x\031"	"D2:\242x\030"
 

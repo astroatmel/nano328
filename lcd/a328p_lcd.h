@@ -35,9 +35,11 @@
    // local labels only to LCD_MAIN module
    unsigned char lcd_requires_reset=1;                // run-time reset request
    unsigned char lcd_lines[4*16];                    // LCD display
+   unsigned char lcd_lines_nmi[4*16];               // LCD display
 #else
    extern unsigned char lcd_requires_reset;           // run-time reset request
    extern unsigned char lcd_lines[4*16];             // LCD display
+   extern unsigned char lcd_lines_nmi[4*16];        // LCD display
 #endif
 
 #define LCD_BUTTON_1  (PINB & 0x02)
