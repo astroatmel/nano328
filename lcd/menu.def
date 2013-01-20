@@ -21,6 +21,9 @@ M_ROOT	:	M_MAIN	:	:	"Cam Driver V2"	"Ram:\242X\031"
 
 M_MAIN	:POP_1	M_MOZAIC	:	:	"Mozaic Menu..."	"(GOTO Method)"
 M_MAIN	:POP_1	M_MOZAIC_PAUSE	:	:	"Mozaic Menu..."	"(Pause Method)"          # use pauses instead of using GOTO which are dreadfull on CGEM 
+M_MAIN	:POP_1	M_CATALOG	:	:	"Catalog Goto..."	""
+M_MAIN	:POP_1	M_STORE    	:	:	"Store"    	"Position..."
+M_MAIN	:POP_1	M_RECALL    	:	:	"Recall"    	"Position..."
 M_MAIN	:POP_1	M_TIMELAP	:	:	"Timelap Menu..."	""
 M_MAIN	:POP_1	M_CGEM_STATUS	:	:	"CGEM Status..."	""
 M_MAIN	:POP_1	:	:	:	"RA:\242R\001"	"DE:\242D\002"
@@ -59,6 +62,23 @@ M__MOZ_SPAN2	:POP_1	M__MOZ_SPAN3	ONE_MIN_CGEM	26	"Total Span:"	"Set:\243d\017"
 M__MOZ_SPAN3	:POP_1	M_EXECUTE	ONE_SEC_CGEM	29	"Total Span:"	"Set:\243d\017"
 
 ###########################################################################################################################################################
+M_CATALOG	:POP_1	M_GOTO	:	:	"Goto:"	"Orion Fire"
+M_CATALOG	:POP_1	M_GOTO	:	:	"Goto:"	"Orion M42"
+M_CATALOG	:POP_1	M_GOTO	:	:	"Goto:"	"M101"
+M_CATALOG	:POP_1	M_GOTO	:	:	"Goto:"	"Triangulum"
+M_CATALOG	:POP_1	M_GOTO	:	:	"Goto:"	"Andromeda"
+###########################################################################################################################################################
+M_STORE	:POP_1	M_EXECUTE	:	:	"Store:"	"Pos 1"
+M_STORE	:POP_1	M_EXECUTE	:	:	"Store:"	"Pos 2"
+M_STORE	:POP_1	M_EXECUTE	:	:	"Store:"	"Pos 3"
+M_STORE	:POP_1	M_EXECUTE	:	:	"Store:"	"Pos 4"
+M_STORE	:POP_1	M_EXECUTE	:	:	"Store:"	"Pos 5"
+M_RECALL	:POP_1	M_EXECUTE	:	:	"Recall:"	"Pos 1"
+M_RECALL	:POP_1	M_EXECUTE	:	:	"Recall:"	"Pos 2"
+M_RECALL	:POP_1	M_EXECUTE	:	:	"Recall:"	"Pos 3"
+M_RECALL	:POP_1	M_EXECUTE	:	:	"Recall:"	"Pos 4"
+M_RECALL	:POP_1	M_EXECUTE	:	:	"Recall:"	"Pos 5"
+###########################################################################################################################################################
 
 M_TIMELAP	:POP_1	M__TIMELAP_RUN	:	:	"Start Timelap..."	""
 M_TIMELAP	:POP_1	M__TIMELAP_EXP	:	:	"Exposure Time:"	"Current:\242s\003 sec"
@@ -90,8 +110,9 @@ M_CANCELING	:	:	:	:	"Cancelling..."	""              # Special S/W Action require
 
 ###########################################################################################################################################################
 
-M_EXECUTE	:	:	:	:	"Executing..."	""              # Special S/W Action required 
-M_PRESET	:	:	:	:	"Done..."	""              # Special S/W Action required , deposit preset values
+M_GOTO 	:	:	:	:	"Goto"	"in Progress..."   # Special S/W Action required 
+M_EXECUTE	:	:	:	:	"Executing..."	""                 # Special S/W Action required 
+M_PRESET	:	:	:	:	"Done..."	""                 # Special S/W Action required , deposit preset values
 
 M_DEBUG	:	:	:	:	"D1:\242x\031"	"D2:\242x\030"
 M_DEBUG	:	:	:	:	"D3:\242x\031"	"D4:\242x\030"

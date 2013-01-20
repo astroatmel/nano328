@@ -38,6 +38,7 @@ if ( $0 != "" )
       if ( INCREMENT[FIELDS[4]] == "" ) INCREMENT[FIELDS[4]] = inc_cnt++               # table for the increment values
       if ( STRINGS[FIELDS[6]] == "" )   STRINGS[FIELDS[6]]   = str_cnt++               # gather all the LCD strings
       if ( STRINGS[FIELDS[7]] == "" )   STRINGS[FIELDS[7]]   = str_cnt++               # and flush the duplicate ones
+
       } 
    }
 
@@ -86,12 +87,12 @@ for ( iii=0 ; iii < str_cnt ; iii++ )
    for( jjj in STRINGS )
       {
       tmp = substr(jjj,2,length(jjj)-2)
-      mmm = split(jjj,aaa,"[\\][0-9][0-9][0-9]")-1   # for each \000 octal code, we must add 2 characters
+      mmm = split(jjj,aaa,"\\\\[0-9][0-9][0-9]")-1   # for each \000 octal code, we must add 2 characters
       ddd = str_pad(tmp,16+3*mmm)
       if ( STRINGS[jjj] == iii ) 
          {
-         if ( iii+1 < str_cnt ) print str_pad("              \"" ddd "\" ",50) "//  "iii
-         else                   print str_pad("              \"" ddd "\";",50) "//  "iii
+         if ( iii+1 < str_cnt ) print str_pad("              \"" ddd "\" ",50) "//  "iii "   "mmm
+         else                   print str_pad("              \"" ddd "\";",50) "//  "iii "   "mmm
          }
       }
    }

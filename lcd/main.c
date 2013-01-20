@@ -5,6 +5,10 @@ Lazer vert 5 miles: 150mA a 3v  ( 60 ohms at 12V)
 Toshiba Step motor driver: 64 pulses required for a full cycle and to get the init pulse
 Toshiba steo motor works well with 22pf which gives 400kHz
 TODO
+-Easy goto catalog position (planned destinations)
+-Easy snapshot of current position
+-first picture always stops tracking to how in which direction the stars natually move 
+
 */
 #include <avr/pgmspace.h> 
 #include <avr/io.h>
