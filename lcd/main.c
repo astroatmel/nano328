@@ -31,7 +31,18 @@ TODO
 #define SEQ_1 500
 #define SEQ_2 1500
 #define SEQ_3 2000
-
+// CGEM: 
+// on 24h,     one sec = 0xC22E
+// on 360 deg, one sec = 0xCF2
+//
+// Recheck with Stellarium
+// Newton              750mm ~ 1.4 FOV and about 10min in time from left to right
+// CGEM should be ~   2400mm ~ 0.5 FOV and about 3min in time
+// I'm not sure the values below are good looke like ONE_TENTH_OF_NEWTON_FOV is 2 minutes
+// I have the feeling that the values should be:
+// #define ONE_TENTH_OF_NEWTON_FOV (3314*60)   that is 1 minutes which should be 1/10 of Newton which is 10 min wide
+// #define ONE_TENTH_OF_EDGEHD_FOV 
+// But it kinda works with the values below:
 #define ONE_TENTH_OF_NEWTON_FOV (0x61172*3)  // that would be 360 seconds (6 min) for an object to go from one edge to the other ?
 #define ONE_TENTH_OF_EDGEHD_FOV 0x61172      // that would be 120 seconds (2 min) for an object to go from one edge to the other ?    so 1/10, 12 shoots, it means mozzaic_cgem would need to pause one second
 
@@ -41,6 +52,8 @@ TODO
 #include "menu.h"
 unsigned char menu_stack_ptr=0;
 char menu_stack[10];
+char set_tracking_mode=-1;  // -1 , no change 
+char tracking_mode_p;       // previous tracking mode
 
 unsigned long d_ram;
 unsigned char lcd_go_rt=0;
@@ -68,14 +81,15 @@ PROGMEM const char p_value[]         = "value:\015\012";
 PROGMEM const long p_values[]        = {123,-123,-1,1,10,-10};
 #endif
 
-unsigned char rs232_tx_cmd[32];  // null terminated
-unsigned char rs232_rx_cmd[32];  
-volatile char rs232_tx_ptr = -1;   // -1 means last tx complete and >0 means in progress of transmitting...
-volatile char rs232_rx_ptr = 0;   // -1 means a command was received, -2 means overflow
+unsigned char  rs232_tx_cmd[32];  // null terminated
+unsigned char  rs232_rx_cmd[32];  
+volatile char  rs232_tx_ptr = -1;   // -1 means last tx complete and >0 means in progress of transmitting...
+volatile short rs232_tx_cnt = 0;   // because in the CGEM communication, all characters are valid, even the NULL, I cant use 0x00 as the end, I have to use a counter [[ cnt points on the null ]]
+volatile char  rs232_rx_ptr = 0;   // -1 means a command was received, -2 means overflow
 short         rs232_com_to    = -1;  // Time-out
 char rs232_com_state = 0;  // Odd values are states where we are waiting for an answer from CGEM
 char mozaic_mode  = 0;    // goto or pause
-char mozaic_state = 0;    // to help with the handshake...
+char mozaic_state = 0;          // to help with the handshake...
 short mozaic_wait = 0;    // dont wait for ever...
 signed char rs232_edit=-1;
 long          cdb_add_value=0;  // value to add to the current cdb label... 
@@ -96,7 +110,7 @@ volatile unsigned long d_USART_RX;
 volatile unsigned long d_USART_TX;
 
 volatile short pop_delay=0;
-#define CDB_SIZE 30
+#define CDB_SIZE 40
 volatile long cdb[CDB_SIZE];
 //  0: Runnig time in seconds
 //  1: RA from CGEM
@@ -121,13 +135,19 @@ volatile long cdb[CDB_SIZE];
 // 20: Histogram Cur
 // 21: Histogram Max
 // 22: Tracking Mode ? 0 1 2 3  (2 = EQ north  0 = off)  
-// 23: Debug value
-// 24: Debug value
+// 23: Mozaic State
+// 24: Pause Mode Counter
 // 25: Free Mem RAM
 // 26: Timelap Shot no
 // 27: Timelap Period counter
 // 28: Nb pictures on RA axis
 // 29: Nb pictures on REC axis
+// 30: Debug 1
+// 31: Debug 2
+// 32: Debug 3
+// 33: Debug 4
+// 34: Debug 5
+// 35: Debug 6
 
 
 short d_state;          // main state machine that controls what to display
@@ -181,24 +201,30 @@ while ( tc )
 }
 
 // Copy a null terminated string from PGM space
-void pgm_to_mem(const char *src,unsigned char *dst)
+short pgm_to_mem(const char *src,unsigned char *dst)
 {
+short count=0;
 unsigned char CCC;
-while ( (CCC = pgm_read_byte( src++ )) ) *dst++ = CCC;
+while ( (CCC = pgm_read_byte( src++ )) ) 
+   {
+   *dst++ = CCC;
+   count++;
+   }
 *dst++ = 0;
+return count;
 }
 
 void rt_p_pgm(const char *src)
 {
 unsigned char iii;
-pgm_to_mem(src,rs232_tx_cmd);
+rs232_tx_cnt = pgm_to_mem(src,rs232_tx_cmd);
 rs232_tx_ptr    = 0;     // FG... pls tx the command
 while ( rs232_tx_ptr >=0 ) ;  // wait...
 for ( iii=0 ; iii < sizeof(rs232_tx_cmd) ; iii++ ) rs232_tx_cmd[iii]=0;  // clear the string
 }
 
 // digit is the demanded precision
-void p_val(unsigned char *buf,long val,unsigned char option_digit)
+short p_val(unsigned char *buf,long val,unsigned char option_digit)
 {
 unsigned char nnn;
 unsigned char digit = 1 + (option_digit & 0x07);  // 3 lsb = nb digits
@@ -240,6 +266,7 @@ else
       }
    while (iii>=0) buf[iii--] = ' ';
    }
+return digit;
 }
 
 long p_cgem_coord_sub(long *m128,long div)
@@ -487,7 +514,7 @@ if ( msms >= 100 )
    TT++;                              // Tenths
 
    if ( pop_delay   > 1 ) pop_delay--;
-   if ( mozaic_wait > 1 ) mozaic_wait--;
+   if ( mozaic_wait > 0 ) mozaic_wait--;
 
    if ( TT >= 10 )
       {
@@ -517,7 +544,8 @@ if ( rs232_tx_ptr >= 0 )
    if (UCSR0A & (1 <<UDRE0)) // TX register empty
       {
       UDR0 = rs232_tx_cmd[(unsigned char)rs232_tx_ptr++];
-      if ( rs232_tx_cmd[(unsigned char)rs232_tx_ptr] == 0 ) rs232_tx_ptr = -1;  // we are done
+//      if ( rs232_tx_cmd[(unsigned char)rs232_tx_ptr] == 0 ) rs232_tx_ptr = -1;  // we are done
+      if ( rs232_tx_ptr == rs232_tx_cnt ) rs232_tx_ptr = -1;  // we are done
       }
    if ( rs232_tx_ptr > sizeof(rs232_tx_cmd) ) rs232_tx_ptr = -1;  // we are done
    }
@@ -539,6 +567,8 @@ cdb[14]++;  // monitor how old the position from CGEM is
 //WAS if ( (d_state == 12) || (d_state == 13) || (d_state == 19) || (d_state == 26) || (d_state == 36) || (d_state == 37) || (d_state == 38) || (d_state == 44))
 if ( (d_state >= M__MOZ_RUN_FIRST) && (d_state <= M_CANCELING_FIRST))  // Shutter controlled group
    {
+   if ( cdb[24] > 0 ) cdb[24]--;  // pause counter in miliseconds
+
    if      ( cdb[16]<SEQ_1 ) // initial delay
       {
       cdb[16] ++;
@@ -704,6 +734,7 @@ for ( kkk=0 ; kkk<6 ; kkk++ )   // Some values...
    lll = pgm_read_dword(&p_values[kkk]);
    rt_p_pgm(p_value);
    p08x(rs232_tx_cmd,&lll); 
+   rs232_tx_cnt    = 8;     // 8 char to tx
    rs232_tx_ptr    = 0;     // FG... pls tx the command
    while ( rs232_tx_ptr >=0 ) ;  // wait...
 
@@ -717,9 +748,10 @@ for ( kkk=0 ; kkk<6 ; kkk++ )   // Some values...
          rs232_tx_cmd[0] = iii + '0';
          rs232_tx_cmd[1] = 0x0D;
          rs232_tx_cmd[2] = 0x0A;
+         rs232_tx_cnt    = 3;     // 3 ch to transmit
          rs232_tx_ptr    = 0;     // FG... pls tx the command
          while ( rs232_tx_ptr >=0 ) ;  // wait...
-         p_val(rs232_tx_cmd,lll,0x00 + jjj + iii); 
+         rs232_tx_cnt = p_val(rs232_tx_cmd,lll,0x00 + jjj + iii); 
          rs232_tx_ptr    = 0;     // FG... pls tx the command
          while ( rs232_tx_ptr >=0 ) ;  // wait...
          }
@@ -1082,29 +1114,116 @@ while(1)
 
    if ( TT < 3 ) rs232_edit = c_edt;   // for cursor display
    else          rs232_edit=-1;        // for cursor display
-///////////////////////////// Mozaic Logic  /////////////////////////////
+///////////////////////////// Mozaic Startup Logic  /////////////////////////////
    if ( (d_state == M_MOZAIC_FIRST) ||
         (d_state == M_MOZAIC_PAUSE_FIRST) )  // in case we use the long push on the UNDO button, these states acts as reset
       {
-      mozaic_state=0;
+      mozaic_state = 0;      // nothing to do...
       cdb[5] = 0;  // shot no
+      cdb[6] = 82; // Total # shot
       cdb[7] = 0;  // RA id
       cdb[8] = 0;  // DE id;
-      if ( d_state == M_MOZAIC_FIRST )       mozaic_mode = 0;  // GOTO mode  -> do a goto for before each picture and do a 9x9 matrix
-      if ( d_state == M_MOZAIC_PAUSE_FIRST ) mozaic_mode = 1;  // PAuse mode -> do a goto only after a line on the RA is complete, and on RA, each picture is separated by a slew (no goto)
+      cdb[16] = 0; // Mozaic Running time in ms ( 1000-2000:focus    2000-> cdb[3]*1000: expose    then wait 4 second to store )
+      cdb[17] = cdb[1];  // Save start RA      (base position for mozaic)
+      cdb[18] = cdb[2];  // Save start DEC     (base position for mozaic)
+      m_minor = m_major = 0;
+
+      if ( d_state == M_MOZAIC_FIRST )       mozaic_mode = 1;  // GOTO mode  -> do a goto for before each picture and do a 9x9 matrix
+      if ( d_state == M_MOZAIC_PAUSE_FIRST ) mozaic_mode = 2;  // Pause mode -> do a goto only after a line on the RA is complete, and on RA, each picture is separated by a slew (no goto)
+      if ( d_state == M_MOZAIC_PAUSE_FIRST ) m_major = cdb[28]; // because 0 and 1 divided by 2 = 0, I set major to the last, result: first pic is center, second is 
       }
 
+///////////////////////////// Mozaic Logic (pause) /////////////////////////////
+   if ( ((d_state >= M__MOZ_PAUSE_RUN_FIRST) && (d_state <= M__MOZ_PAUSE_RUN_LAST)) || (d_state == M_PAUSE_CANCEL_FIRST) || (d_state == M_PAUSE_CANCELING_FIRST))
+      {
+      cdb[30] = mozaic_state; // DEBUG D1
+      cdb[31] = mozaic_wait; // DEBUG D2
+      if      ( mozaic_state == 1 ) // command requested 
+         { if ( mozaic_wait  == 0 ) mozaic_state++; }  // wait...but not forever
+      else if ( mozaic_state == 2 ) // waiting for first "in goto" status
+         { if ( mozaic_wait  == 0 ) mozaic_state++; }  // wait...but not forever
+      else if ( mozaic_state == 3 ) // command send and "in goto" state feedback received
+         {
+         if ( ((d_state==M_PAUSE_CANCELING_FIRST)|| (m_minor>cdb[29])) && (cdb[7]==0) && (cdb[8]==0) ) // cancel Mozaic or finished  goto 0,0 complete
+            {
+            if ( d_state==M_PAUSE_CANCELING_FIRST) pop(-3);
+            else                                   pop(-1);
+            refresh = 1;        // force a first pass
+            beep_time_ms = 5000;
+            }
+         else if ( (cdb[11] == 0) || (cdb[11] == '0') ) // if not in goto
+            {
+            mozaic_state=0;
+            cdb[16] = 0;   // tell foreground to start taking the picture
+            }
+         }
+      else if ( mozaic_state == 10 )  // Wait for pause to complete
+         {
+         beep_time_ms = 10;
+         if ( cdb[24] <= 0 ) 
+            {
+            cdb[16] = 0;       // tell foreground to start taking the picture
+            mozaic_state = 0;  // we are done waiting
+            set_tracking_mode = tracking_mode_p;  // Restore tracking mode
+            }
+         }
+      else   // the above is exact same as normal goto mozaic and it simply asks for a goto and wait for it to complete
+         {
+         cdb[32] = d_state; // DEBUG D3
+         cdb[33] = M_PAUSE_CANCEL_FIRST; // DEBUG D4
+         if ( d_state==M_PAUSE_CANCEL_FIRST ) {;}   // use cancel to pause the Mozaic
+         else if ( cdb[16] >= cdb[3]+SEQ_3 ) // Picture taken, ready to proceed...
+            {
+            cdb[5] ++;                              // Shot #
+            m_major ++ ;
+            if ( m_major >= cdb[28]  )              // RA axis
+               {
+               m_major = 0;
+               m_minor ++;
+
+               cdb[7] = -(cdb[28]/2) ;   // on RA Axis  always go to right most position
+               cdb[8] = m_minor/2;      // on DEC Axiz
+               if ( m_minor & 1 )  cdb[8] = -cdb[8];  // alternate each sides
+
+// cdb[7] = cdb[7]*10; // debug
+// cdb[8] = cdb[8]*10; // debug
+
+               mozaic_state = 1;  // Ask the CGEM communication to issue a goto command
+               mozaic_wait  = 2500; // wait 15 sec max 
+               }
+            else
+               {
+               mozaic_state = 10; // State where we wait x ms
+                                              // cdb[15] = total span for cdb[28] pictures on RA axis
+                                              // ONE_TENTH_OF_NEWTON_FOV = 1193046   we know a full frame on newton is 480sec, so 1/20 is 24 seconds
+                                              // ONE_TENTH_OF_NEWTON_FOV / 1000 / 24  = 51
+               cdb[24] = cdb[15]/cdb[28]/51;  // Time in miliseconds for one picture  ... so with this, if we take 100 picture, the span will always be 1/20 of the image
+               cdb[24] = cdb[15]/510;         // Time in miliseconds for one picture  assuming 10 pictures ... so with this, the delta between each picture will be constant, and probably easyer to post-process
+               tracking_mode_p = cdb[22];     // remember active tracking mode
+               set_tracking_mode = 0;         // request tracking off
+               } 
+
+            if ( (d_state==M_PAUSE_CANCELING_FIRST)  || ( m_minor > cdb[29] ) ) // cancel Mozaic 
+               {
+               cdb[7] = 0;
+               cdb[8] = 0;
+               mozaic_state =1; // Ask the CGEM communication to issue a goto command
+               mozaic_wait  =150; // wait 15 sec max 
+               }
+            }
+         }
+      }
+///////////////////////////// Mozaic Logic (goto) /////////////////////////////
    if ( ((d_state >= M__MOZ_RUN_FIRST) && (d_state <= M__MOZ_RUN_LAST)) || (d_state == M_CANCEL_FIRST) || (d_state == M_CANCELING_FIRST))
       {
-      if ( mozaic_state==1 ) // command requested 
-         { if ( mozaic_wait==0) mozaic_state++; }  // wait...but not forever
-      else if ( mozaic_state==2 ) // waiting for first "in goto" status
-         { if ( mozaic_wait==0) mozaic_state++; }  // wait...but not forever
-      else if ( mozaic_state==3 ) // command send and "in goto" state feedback received
+      if      ( mozaic_state == 1 ) // command requested 
+         { if ( mozaic_wait  == 0 ) mozaic_state++; }  // wait...but not forever
+      else if ( mozaic_state == 2 ) // waiting for first "in goto" status
+         { if ( mozaic_wait  == 0 ) mozaic_state++; }  // wait...but not forever
+      else if ( mozaic_state == 3 ) // command send and "in goto" state feedback received
          {
          if ( (d_state==M_CANCELING_FIRST) && (cdb[7]==0) && (cdb[8]==0) ) // cancel Mozaic and goto 0,0 complete
             {
-//TODO use POP            d_state = 11;    // we are done go back to "start mozaic"
             pop(-3);
             refresh = 1;        // force a first pass
             }
@@ -1114,11 +1233,10 @@ while(1)
             cdb[16] = 0;   // tell foreground to start taking the picture
             }
          }
-      else if ( cdb[16] >= cdb[3]+SEQ_3 ) // Picture taken, ready to proceed...
-         {
-         if ( cdb[5] == cdb[6] ) 
+      else if ( cdb[16] >= cdb[3]+SEQ_3 ) // Picture taken, ready to proceed... 
+         {       // 16: Mozaic Running time in ms ( 1000-2000:focus    2000-> cdb[3]*1000: expose    then wait 4 second to store )
+         if ( cdb[5] == cdb[6] )   // finished, too all the pictures
             {
-//TODO use POP            d_state = 11;    // we are done go back to "start mozaic"
             pop(-1);
             refresh = 1;     // force a first pass
             beep_time_ms = 5000;
@@ -1145,19 +1263,6 @@ while(1)
             mozaic_wait=150; // wait 15 sec max 
             }
          }
-      }
-//TODO ??   else if ( d_state == 20 ) {;} // use cancel to pause
-   else if ( d_state != M_CANCEL_FIRST )  
-      {
-      cdb[5]  = 1;  // Shot x of
-      cdb[6]  = 82; // Total # shot
-      cdb[7]  = 0;  // x
-      cdb[8]  = 0;  // y
-      cdb[17] = cdb[1];  // Save start RA
-      cdb[18] = cdb[2];  // Save start DEC
-
-      m_minor = m_major = 0;
-      mozaic_state = 0;      // nothing to do...
       }
 ///////////////////////////// Timelap Logic  /////////////////////////////
    if ( ((d_state >= M__TIMELAP_RUN_FIRST) && (d_state <= M__TIMELAP_RUN_LAST)) || (d_state == M_CANCEL_FIRST) || (d_state == M_CANCELING_FIRST))
@@ -1188,18 +1293,18 @@ while(1)
          cdb[9]++;   // Time-out
          rs232_rx_ptr    = 0;
          rs232_com_state = 0;   // restart
-////rs232_rx_ptr=-1;  // fake rx
-////rs232_com_to=0;
-////rs232_com_state = 6;
          }
       else if ( rs232_rx_ptr < 0 )  // something to do... we just got a complete message
          {
          if ( rs232_com_state == 1 ) // response from aligned {J} or Tracking {t}
             {
+//          cdb[34] = 0x1000+cdb[22];   // DEBUG D5
+//          cdb[35] = 0x2000+set_tracking_mode; // DEBUG D6
             if ( rs232_rx_cmd[1]=='#' ) 
                {
                if ( cgem_fb == 'J' ) cdb[10] = rs232_rx_cmd[0];
                if ( cgem_fb == 't' ) cdb[22] = rs232_rx_cmd[0];
+               if ( set_tracking_mode == cdb[22] ) set_tracking_mode=-1;  // request completed
                }
             }
          else if ( rs232_com_state == 3 ) // response from in goto  {L}
@@ -1228,7 +1333,7 @@ while(1)
          else if ( rs232_com_state == 7 ) // response from  goto command (mozaic)  {r}
             {
             if ( rs232_rx_cmd[0]=='#' ) cdb[12]++;   // goto error
-            if ( mozaic_state==1 ) mozaic_state=2;   // Got a resopnse...
+            if ( (mozaic_state==1) && (cdb[11]=='1') ) mozaic_state=2;   // Got a resopnse from the goto request, plus we are moving ...
             }
 
          rs232_com_state++; // go to next state
@@ -1242,15 +1347,25 @@ while(1)
       {
       if ( (l_TT != TT) && ( rs232_tx_ptr < 0 ))  // 10 times a second, send a new command  (as long as the last transmit is complete
          {
-         l_TT = TT;
+         rs232_tx_cnt = 1;    // most commands below are 1 character long
 
+         l_TT = TT;
          for ( kkk=0 ; kkk<sizeof(rs232_tx_cmd) ; kkk++ ) rs232_tx_cmd[kkk]=0; // clear the buffer
 
          rs232_com_to = 0;   // reset the time-out monitor
          if ( rs232_com_state == 0 ) // send: aligned {J}
-            {
-            if ( cgem_fb != 'J' ) cgem_fb = 'J';
-            else                  cgem_fb = 't';
+            {  // Sequence: t,J,T : get tracking mode, alignment complete ? , set tracking mode
+            if ( set_tracking_mode >= 0  ) // when a new request is made, alternate Request and Status
+               {
+               if ( cgem_fb == 'T' )      {  cgem_fb = 't';  // t : get tracking mode
+                                          }
+               else                       {  cgem_fb = 'T';  // T : set tracking mode
+                                             rs232_tx_cmd[1] = (set_tracking_mode & 0x3);
+                                             rs232_tx_cnt = 2;
+                                          }
+               }
+            else if ( cgem_fb == 'J' )       cgem_fb = 't';  // t : get tracking mode
+            else                             cgem_fb = 'J';  // J : is align complete ?
 
 /* This works and forces the controler in Eq-North
             else        
@@ -1272,21 +1387,37 @@ while(1)
             {                             //                  01234567890123456789
             if ( mozaic_state==1 ) // goto request 
                {
-               rs232_tx_cmd[0]='r';  
-if ( cdb[22] == 0 )  lll = (cdb[15]*cdb[7])*6  + cdb[17];  // (Span * displacement)*2 + Start RA    when tracking off (inhouse tests) multiply the span by 18
-else                 lll = (cdb[15]*cdb[7])/9  + cdb[17];  // (Span * displacement)/9 + Start RA
-               p08x(&rs232_tx_cmd[1],&lll);
-               rs232_tx_cmd[9]=',';  
-if ( cdb[22] == 0 )  lll = (cdb[15]*cdb[8])*6  + cdb[18];  // (Span * displacement)*2 + Start DEC    when tracking off (inhouse tests) multiply the span by 18
-else                 lll = (cdb[15]*cdb[8])/9  + cdb[18];  // (Span * displacement)/9 + Start DEC
-               p08x(&rs232_tx_cmd[10],&lll);
+               if ( mozaic_mode == 2 )   // pause method not always 9x9
+                  {
+                  rs232_tx_cmd[0]='r';  
+//                lll = (cdb[15]*cdb[7])*6  + cdb[17];  // (Span * displacement)*2 + Start RA    when tracking off (inhouse tests) multiply the span by 18
+                  lll = (cdb[15]*cdb[7])/9  + cdb[17];  // (Span * displacement)/9 + Start RA
+                  p08x(&rs232_tx_cmd[1],&lll);
+                  rs232_tx_cmd[9]=',';  
+//                lll = (cdb[15]*cdb[8])*6  + cdb[18];  // (Span * displacement)*2 + Start DEC    when tracking off (inhouse tests) multiply the span by 18
+                  lll = (cdb[15]*cdb[8])/9  + cdb[18];  // (Span * displacement)/9 + Start DEC
+                  p08x(&rs232_tx_cmd[10],&lll);
+                  }
+               else
+                  {
+                  rs232_tx_cmd[0]='r';  
+                  lll = (cdb[15]*cdb[7])/cdb[28]  + cdb[17];  // (Span * displacement)/(nb pic on RA axis) + Start RA
+                  p08x(&rs232_tx_cmd[1],&lll);
+                  rs232_tx_cmd[9]=',';  
+                  lll = (cdb[15]*cdb[8])/cdb[29]  + cdb[18];  // (Span * displacement)/(nb pic on DE axis) + Start DEC
+                  p08x(&rs232_tx_cmd[10],&lll);
+                  }
+               rs232_tx_cnt = 18;
+               beep_time_ms = 100;
                }
             else rs232_com_state = -1;   // Jumpt to state 0
             }
-         rs232_tx_ptr    = 0;     // FG... pls tx the command
+         if ( rs232_tx_cmd[0] ) rs232_tx_ptr    = 0;     // FG... pls tx the command  (unless there is no commands)
          rs232_com_state++;       // wait response
          }
       } // if ( rs232_com_state & 0x01 )
+// ok:                   LeJLetLerE1333F54,1DEEA400JLerE1333F54,1DEEA400tLeJLetLeJLeA
+// bad: eTLeTLeTLeTLeTLeTLeTLeTLerE1333F54,1E130CACTLerE1333F54,1E130CACTLerE1333F54,1E130CACTLerE1333F54,1E130CACTLerE1333F54,1E130CACTLerE1333F54,1E130CACTLerE1333F54,1E130CACTLerE1333F54,1E130CACTLerE1333F54,1E130CA
 ///////////////////////////////////////////////////////////////////////////////////////
    } // while(1)
 }

@@ -32,7 +32,7 @@ M_MAIN	:POP_1	:	:	:	"RA:\242H\001"	"DE:\242D\002"
 
 ###########################################################################################################################################################
 
-M_MOZAIC_PAUSE	:POP_1	M__MOZ_RUN	:	:	"Start Mozaic..."	"(Pause Method)"
+M_MOZAIC_PAUSE	:POP_1	M__MOZ_PAUSE_RUN	:	:	"Start Mozaic..."	"(Pause Method)"
 M_MOZAIC_PAUSE	:POP_1	M_PRESET	:	:	"Set Span to:"	"1/10 of EDGE HD"
 M_MOZAIC_PAUSE	:POP_1	M_PRESET	:	:	"Set Span to:"	"1/10 of Newton 6"
 M_MOZAIC_PAUSE	:POP_1	M_PRESET	:	:	"Set Exposure:"	"1 Second"
@@ -40,10 +40,10 @@ M_MOZAIC_PAUSE	:POP_1	M_PRESET	:	:	"Set Exposure:"	"30 Second"
 M_MOZAIC_PAUSE	:POP_1	M_PRESET	:	:	"Set Exposure:"	"60 Second"
 M_MOZAIC_PAUSE	:POP_1	M__MOZ_EXP	:	:	"Exposure Time:"	"Current:\242s\003 sec"
 M_MOZAIC_PAUSE	:POP_1	M__MOZ_SPAN1	:	:	"Total Span:"	"Cur:\242d\017"
-M_MOZAIC_PAUSE	:POP_1	M__MOZ_RA	:	:	"Nb Pic:"	"Current:\242n\044 (RA)"
-M_MOZAIC_PAUSE	:POP_1	M__MOZ_DE	:	:	"Nb Pic:"	"Current:\242n\045 (DE)"
-M__MOZ_RA	:POP_1	M_EXECUTE	1	26 	"Nb Pic:"	"    Set:\243n\044 (RA)"
-M__MOZ_DE	:POP_1	M_EXECUTE	1	26	"Nb Pic:"	"    Set:\243n\045 (DE)"
+M_MOZAIC_PAUSE	:POP_1	M__MOZ_RA	:	:	"Nb Pic:"	"Current:\242n\034 (RA)"
+M_MOZAIC_PAUSE	:POP_1	M__MOZ_DE	:	:	"Nb Pic:"	"Current:\242n\035 (DE)"
+M__MOZ_RA	:POP_1	M_EXECUTE	1	26 	"Nb Pic:"	"    Set:\243n\034 (RA)"
+M__MOZ_DE	:POP_1	M_EXECUTE	1	26	"Nb Pic:"	"    Set:\243n\035 (DE)"
 ###########################################################################################################################################################
 
 M_MOZAIC	:POP_1	M__MOZ_RUN	:	:	"Start Mozaic..."	"(GOTO Method)"
@@ -92,7 +92,6 @@ M__TIMELAP_PERIOD2	:POP_1	M_EXECUTE	60	28	"Period:"	"    Set:\243t\004"
 ###########################################################################################################################################################
 
 M_CGEM_STATUS	:POP_1	:	:	:	"RA:\242x\001"	"DE:\242x\002"
-M_CGEM_STATUS	:POP_1	:	:	:	"D1:\242x\031"	"D2:\242x\030"
 M_CGEM_STATUS	:POP_1	:	:	:	"Aligned:\242y\012"	"In Goto:\242y\013"
 M_CGEM_STATUS	:POP_1	:	:	:	"Tracking:\242q\026"	""
 M_CGEM_STATUS	:POP_1	:	:	:	"Moz Err:\242e\014"	"Pos Err:\242e\015"
@@ -100,11 +99,17 @@ M_CGEM_STATUS	:POP_1	:	:	:	"Latency:\242E\016"	"Time-Out:\242e\011"
 M_CGEM_STATUS	:POP_1	:	:	:	"Histogram:  (x8)"	"\242h\023"
 
 ###########################################################################################################################################################
-#   This section is gropped because all those states requires shutter control
+#   This section is groupped because all those states requires shutter control
 M__MOZ_RUN	M_CANCEL	:	:	:	"Mozaic:\242o\005"	"Time:\242m\020    sec"
 M__MOZ_RUN	M_CANCEL	:	:	:	"Mozaic:\242o\005"	"Pos Id:\242p\007"
+M__MOZ_RUN	M_CANCEL	:	:	:	"Mozaic:\242o\005"	"State:\242z\027"
+M__MOZ_PAUSE_RUN	M_PAUSE_CANCEL	:	:	:	"MozPoz:\242o\005"	"Time:\242m\020    sec"
+M__MOZ_PAUSE_RUN	M_PAUSE_CANCEL	:	:	:	"MozPoz:\242o\005"	"Pos Id:\242p\007"
+M__MOZ_PAUSE_RUN	M_PAUSE_CANCEL	:	:	:	"MozPoz:\242o\005"	"State:\242z\027"
 M__TIMELAP_RUN	M_CANCEL	:	:	:	"Timelap progres:"	"Shot no:\242s\032"
 M__TIMELAP_RUN	M_CANCEL	:	:	:	"Timelap progres:"	"Period:\242T\033"
+M_PAUSE_CANCEL	:POP_1	M_PAUSE_CANCELING	:	:	"Really Cancel ?"	""
+M_PAUSE_CANCELING	:	:	:	:	"Cancelling..."	""              # Special S/W Action required before popping (terminate current task/picture...)
 M_CANCEL	:POP_1	M_CANCELING	:	:	"Really Cancel ?"	""
 M_CANCELING	:	:	:	:	"Cancelling..."	""              # Special S/W Action required before popping (terminate current task/picture...)
 
@@ -113,8 +118,8 @@ M_CANCELING	:	:	:	:	"Cancelling..."	""              # Special S/W Action require
 M_GOTO 	:	:	:	:	"Goto"	"in Progress..."   # Special S/W Action required 
 M_EXECUTE	:	:	:	:	"Executing..."	""                 # Special S/W Action required 
 M_PRESET	:	:	:	:	"Done..."	""                 # Special S/W Action required , deposit preset values
-
-M_DEBUG	:	:	:	:	"D1:\242x\031"	"D2:\242x\030"
-M_DEBUG	:	:	:	:	"D3:\242x\031"	"D4:\242x\030"
-M_DEBUG	:	:	:	:	"D5:\242x\031"	"D6:\242x\030"
+# Those are accessible with long press of the ENTER key
+M_DEBUG	:	:	:	:	"D1:\242x\036"	"D2:\242x\037"
+M_DEBUG	:	:	:	:	"D3:\242x\040"	"D4:\242x\041"
+M_DEBUG	:	:	:	:	"D5:\242x\042"	"D6:\242x\043"
 
