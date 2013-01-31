@@ -528,7 +528,7 @@ if ( msms >= 100 )
       SS ++;                          // Seconds
       cdb[0]++; // running time
       cdb[27]+=1000;  // Period count
-      if ( cdb[22] == 0 ) cdb[17] += 0xC22E;  // when tracking is off, move the mozaic origin with time to be able to debug
+// THIS THE MY BUG IN THE PAUSE MOZAIC      if ( cdb[22] == 0 ) cdb[17] += 0xC22E;  // when tracking is off, move the mozaic origin with time to be able to debug
 
       if ( SS >= 60 )
          {
@@ -1182,7 +1182,7 @@ cdb[35] =            saved_de[menu_caller-M_STORE_FIRST] = cdb[2];  // Store cur
          }
       else if ( mozaic_state == 10 )  // Wait for pause to complete
          {
-// DEBUG         beep_time_ms = 10;
+//beep_time_ms = 10;
          if ( cdb[24] <= 0 ) 
             {
             cdb[16] = 0;       // tell foreground to start taking the picture
@@ -1209,8 +1209,8 @@ cdb[35] =            saved_de[menu_caller-M_STORE_FIRST] = cdb[2];  // Store cur
                cdb[8] = m_minor/2;      // on DEC Axiz
                if ( m_minor & 1 )  cdb[8] = -cdb[8];  // alternate each sides
 
-// cdb[7] = cdb[7]*10; // debug
-// cdb[8] = cdb[8]*10; // debug
+//cdb[7] = cdb[7]*10; // debug
+//cdb[8] = cdb[8]*10; // debug
 
                mozaic_state = 1;  // Ask the CGEM communication to issue a goto command
                mozaic_wait  = 2500; // wait 15 sec max 
@@ -1221,8 +1221,9 @@ cdb[35] =            saved_de[menu_caller-M_STORE_FIRST] = cdb[2];  // Store cur
                                               // cdb[15] = total span for cdb[28] pictures on RA axis
                                               // ONE_TENTH_OF_NEWTON_FOV = 1193046   we know a full frame on newton is 480sec, so 1/20 is 24 seconds
                                               // ONE_TENTH_OF_NEWTON_FOV / 1000 / 24  = 51
-               cdb[24] = cdb[15]/cdb[28]/51;  // Time in miliseconds for one picture  ... so with this, if we take 100 picture, the span will always be 1/20 of the image
+//             cdb[24] = cdb[15]/cdb[28]/51;  // Time in miliseconds for one picture  ... so with this, if we take 100 picture, the span will always be 1/20 of the image
                cdb[24] = cdb[15]/510;         // Time in miliseconds for one picture  assuming 10 pictures ... so with this, the delta between each picture will be constant, and probably easyer to post-process
+//cdb[24] = cdb[15]/51;         // Debug, wait about 30 sec each pic
                tracking_mode_p = cdb[22];     // remember active tracking mode
                set_tracking_mode = 0;         // request tracking off
                } 
