@@ -78,6 +78,7 @@ M_RECALL	:POP_1	M_PRESET	:	:	"Recall:"	"Pos 2"
 M_RECALL	:POP_1	M_PRESET	:	:	"Recall:"	"Pos 3"
 M_RECALL	:POP_1	M_PRESET	:	:	"Recall:"	"Pos 4"
 M_RECALL	:POP_1	M_PRESET	:	:	"Recall:"	"Pos 5"
+M_RECALL	:POP_1	M_PRESET	:	:	"Recall:"	"MozStart"
 ###########################################################################################################################################################
 
 M_TIMELAP	:POP_1	M__TIMELAP_RUN	:	:	"Start Timelap..."	""
@@ -122,4 +123,10 @@ M_PRESET	:	:	:	:	"Done..."	""                 # Special S/W Action required , de
 M_DEBUG	:	:	:	:	"D1:\242x\036"	"D2:\242x\037"
 M_DEBUG	:	:	:	:	"D3:\242x\040"	"D4:\242x\041"
 M_DEBUG	:	:	:	:	"D5:\242x\042"	"D6:\242x\043"
+M_DEBUG	:	:	:	:	"1 :\242H\044"	"DE:\242D\052"     # Show Stored position #1
+M_DEBUG	:	:	:	:	"2 :\242H\045"	"DE:\242D\053"     # Show Stored position #2
+M_DEBUG	:	:	:	:	"3 :\242H\046"	"DE:\242D\054"     # Show Stored position #3
+M_DEBUG	:	:	:	:	"4 :\242H\047"	"DE:\242D\055"     # Show Stored position #4
+M_DEBUG	:	:	:	:	"5 :\242H\050"	"DE:\242D\056"     # Show Stored position #5
+M_DEBUG	:	:	:	:	"M :\242H\051"	"DE:\242D\057"     # Show Stored position MozStart
 

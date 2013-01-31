@@ -113,10 +113,7 @@ volatile unsigned long d_USART_TX;
 
 volatile short pop_delay=0;
 
-#define SAR_SIZE 5
-long saved_ra[SAR_SIZE];
-long saved_de[SAR_SIZE];
-#define CDB_SIZE 40
+#define CDB_SIZE 50
 volatile long cdb[CDB_SIZE];
 //  0: Runnig time in seconds
 //  1: RA from CGEM
@@ -135,8 +132,8 @@ volatile long cdb[CDB_SIZE];
 // 14: Time since last position update
 // 15: Mozaic span in degrees
 // 16: Mozaic Running time in ms ( 1000-2000:focus    2000-> cdb[3]*1000: expose    then wait 4 second to store )
-// 17: Mozaic Base position RA
-// 18: Mozaic Base position DEC
+// 17: Mozaic Base position RA    ( also used by RECALL goto)
+// 18: Mozaic Base position DEC   ( also used by RECALL goto)
 // 19: Histogram Min
 // 20: Histogram Cur
 // 21: Histogram Max
@@ -154,6 +151,18 @@ volatile long cdb[CDB_SIZE];
 // 33: Debug 4
 // 34: Debug 5
 // 35: Debug 6
+// 36: Stored RA #1
+// 37: Stored RA #2
+// 38: Stored RA #3
+// 39: Stored RA #4
+// 40: Stored RA #5
+// 41: Stored RA MozStartPos
+// 42: Stored DE #1
+// 43: Stored DE #2
+// 44: Stored DE #3
+// 45: Stored DE #4
+// 46: Stored DE #5
+// 47: Stored DE MozStartPos
 
 
 short d_state;          // main state machine that controls what to display
@@ -864,21 +873,26 @@ while(1)
                   if ( (menu_caller >= M_STORE_FIRST) &&
                        (menu_caller <= M_STORE_LAST)    )
                      {
-cdb[34] =            saved_ra[menu_caller-M_STORE_FIRST] = cdb[1];  // Store current Pos
-cdb[35] =            saved_de[menu_caller-M_STORE_FIRST] = cdb[2];  // Store current Pos
+cdb[34] =            cdb[36+menu_caller-M_STORE_FIRST] = cdb[1];  // Store current Pos
+cdb[35] =            cdb[42+menu_caller-M_STORE_FIRST] = cdb[2];  // Store current Pos
                      }
                   if ( (menu_caller >= M_RECALL_FIRST) &&
                        (menu_caller <= M_RECALL_LAST)    )
                      {
                      cdb[15]=cdb[8]=cdb[7]=0;
-                     cdb[17] = saved_ra[menu_caller-M_RECALL_FIRST];
-                     cdb[18] = saved_de[menu_caller-M_RECALL_FIRST];
+                     cdb[17] = cdb[36+menu_caller-M_RECALL_FIRST];
+                     cdb[18] = cdb[42+menu_caller-M_RECALL_FIRST];
                      mozaic_state = 1; // GOTO requested
                      }
                   }
                if ( next == M_EXECUTE_FIRST )
                   {              // display "Executing..." for one 0.5 sec to give feedback ( I wanted to use this state to "execute" the change )
                   pop_delay = 5; // but I cant because if I use a constant cdb locatio to edit, then I cant know where the value goes ):
+                  }
+               if ( (next == M__MOZ_RUN_FIRST) || (next == M__MOZ_PAUSE_RUN_FIRST) )  // When Starting Moz, store start pos
+                  {
+                  cdb[41] = cdb[17] = cdb[1];  // Save start RA      (base position for mozaic)
+                  cdb[47] = cdb[18] = cdb[2];  // Save start DEC     (base position for mozaic)
                   }
                }
             d_state = next;
@@ -1146,38 +1160,46 @@ cdb[35] =            saved_de[menu_caller-M_STORE_FIRST] = cdb[2];  // Store cur
       cdb[7] = 0;  // RA id
       cdb[8] = 0;  // DE id;
       cdb[16] = 0; // Mozaic Running time in ms ( 1000-2000:focus    2000-> cdb[3]*1000: expose    then wait 4 second to store )
-      cdb[17] = cdb[1];  // Save start RA      (base position for mozaic)
-      cdb[18] = cdb[2];  // Save start DEC     (base position for mozaic)
+//      cdb[41] = cdb[17] = cdb[1];  // Save start RA      (base position for mozaic)
+//      cdb[47] = cdb[18] = cdb[2];  // Save start DEC     (base position for mozaic)
       m_minor = m_major = 0;
 
-      if ( d_state == M_MOZAIC_FIRST )       mozaic_mode = 1;  // GOTO mode  -> do a goto for before each picture and do a 9x9 matrix
-      if ( d_state == M_MOZAIC_PAUSE_FIRST ) mozaic_mode = 2;  // Pause mode -> do a goto only after a line on the RA is complete, and on RA, each picture is separated by a slew (no goto)
-      if ( d_state == M_MOZAIC_PAUSE_FIRST ) m_major = cdb[28]; // because 0 and 1 divided by 2 = 0, I set major to the last, result: first pic is center, second is 
+      if ( d_state == M_MOZAIC_FIRST )       { mozaic_mode = 1;  // GOTO mode  -> do a goto for before each picture and do a 9x9 matrix
+                                               cdb[6] = 82; // Total # shot
+                                             }
+      if ( d_state == M_MOZAIC_PAUSE_FIRST ) { mozaic_mode = 2;  // Pause mode -> do a goto only after a line on the RA is complete, and on RA, each picture is separated by a slew (no goto)
+                                               cdb[6] = cdb[28] * cdb[29] + 1;
+                                             }
+      if ( d_state == M_MOZAIC_PAUSE_FIRST )   m_major = cdb[28]; // because 0 and 1 divided by 2 = 0, I set major to the last, result: first pic is center, second is 
       }
 
 ///////////////////////////// Mozaic Logic (pause) /////////////////////////////
+   cdb[30] = mozaic_state + 0x1000*d_state; // DEBUG D1
+   cdb[31] = (cdb[11] == 0) || (cdb[11] == '0');
    if ( ((d_state >= M__MOZ_PAUSE_RUN_FIRST) && (d_state <= M__MOZ_PAUSE_RUN_LAST)) || (d_state == M_PAUSE_CANCEL_FIRST) || (d_state == M_PAUSE_CANCELING_FIRST))
       {
-      cdb[30] = mozaic_state; // DEBUG D1
-      cdb[31] = mozaic_wait; // DEBUG D2
+//    cdb[31] = mozaic_wait; // DEBUG D2
       if      ( mozaic_state == 1 ) // command requested 
          { if ( mozaic_wait  == 0 ) mozaic_state++; }  // wait...but not forever
       else if ( mozaic_state == 2 ) // waiting for first "in goto" status
          { if ( mozaic_wait  == 0 ) mozaic_state++; }  // wait...but not forever
       else if ( mozaic_state == 3 ) // command send and "in goto" state feedback received
          {
-         if ( ((d_state==M_PAUSE_CANCELING_FIRST)|| (m_minor>cdb[29])) && (cdb[7]==0) && (cdb[8]==0) ) // cancel Mozaic or finished  goto 0,0 complete
+         if ( (cdb[11] == 0) || (cdb[11] == '0') ) // if not in goto
             {
-            set_tracking_mode = 2;  // screw that, hardcode North EQ
-            if ( d_state==M_PAUSE_CANCELING_FIRST) pop(-3);
-            else                                   pop(-1);
-            refresh = 1;        // force a first pass
-            beep_time_ms = 5000;
-            }
-         else if ( (cdb[11] == 0) || (cdb[11] == '0') ) // if not in goto
-            {
-            mozaic_state=0;
-            cdb[16] = 0;   // tell foreground to start taking the picture
+            if ( ((d_state==M_PAUSE_CANCELING_FIRST)|| (m_minor>cdb[29])) && (cdb[7]==0) && (cdb[8]==0) ) // cancel Mozaic or finished  goto 0,0 complete
+               {
+               set_tracking_mode = 2;  // screw that, hardcode North EQ
+               if ( d_state==M_PAUSE_CANCELING_FIRST) pop(-3);
+               else                                   pop(-1);
+               refresh = 1;        // force a first pass
+               beep_time_ms = 5000;
+               }
+            else
+               {
+               mozaic_state=0;
+               cdb[16] = 0;   // tell foreground to start taking the picture
+               }
             }
          }
       else if ( mozaic_state == 10 )  // Wait for pause to complete
@@ -1228,7 +1250,7 @@ cdb[35] =            saved_de[menu_caller-M_STORE_FIRST] = cdb[2];  // Store cur
                set_tracking_mode = 0;         // request tracking off
                } 
 
-            if ( (d_state==M_PAUSE_CANCELING_FIRST)  || ( m_minor > cdb[29] ) ) // cancel Mozaic 
+            if ( (d_state==M_PAUSE_CANCELING_FIRST)  || ( m_minor > cdb[29] ) ) // cancel Mozaic  or Finished
                {
                cdb[7] = 0;
                cdb[8] = 0;
