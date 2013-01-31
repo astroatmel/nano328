@@ -5,9 +5,10 @@ Lazer vert 5 miles: 150mA a 3v  ( 60 ohms at 12V)
 Toshiba Step motor driver: 64 pulses required for a full cycle and to get the init pulse
 Toshiba steo motor works well with 22pf which gives 400kHz
 TODO
+- I think pause mode has a bug, TODO: set tracking off, and always goto the same position to see if we goto the same place or if we advance
+
 -Easy goto catalog position (planned destinations)
 -Easy snapshot of current position
--first picture always stops tracking to how in which direction the stars natually move 
 
 */
 #include <avr/pgmspace.h> 
@@ -55,7 +56,7 @@ char menu_stack[10];
 char set_tracking_mode=-1;  // -1 , no change 
 char tracking_mode_p;       // previous tracking mode
 
-unsigned long d_ram;
+unsigned short d_ram;
 unsigned char lcd_go_rt=0;
 unsigned short beep_time_ms;
 
@@ -90,6 +91,7 @@ short         rs232_com_to    = -1;  // Time-out
 char rs232_com_state = 0;  // Odd values are states where we are waiting for an answer from CGEM
 char mozaic_mode  = 0;    // goto or pause
 char mozaic_state = 0;          // to help with the handshake...
+char goto_state = 0;            // to help with the handshake...
 short mozaic_wait = 0;    // dont wait for ever...
 signed char rs232_edit=-1;
 long          cdb_add_value=0;  // value to add to the current cdb label... 
@@ -110,6 +112,10 @@ volatile unsigned long d_USART_RX;
 volatile unsigned long d_USART_TX;
 
 volatile short pop_delay=0;
+
+#define SAR_SIZE 5
+long saved_ra[SAR_SIZE];
+long saved_de[SAR_SIZE];
 #define CDB_SIZE 40
 volatile long cdb[CDB_SIZE];
 //  0: Runnig time in seconds
@@ -841,18 +847,34 @@ while(1)
                push(d_state);
                if ( next == M_PRESET_FIRST )
                   {
+                  short menu_caller = menu_stack[menu_stack_ptr-1];   // who called us ?
+
                   pop_delay = 10; // display "done" for one second to give feedback
-                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 1 ) cdb[15] = ONE_TENTH_OF_EDGEHD_FOV;
-                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 2 ) cdb[15] = ONE_TENTH_OF_NEWTON_FOV;
-                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 3 ) cdb[3] = 1000;
-                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 4 ) cdb[3] = 30000;
-                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_FIRST + 5 ) cdb[3] = 60000;
+                  if (  menu_caller == M_MOZAIC_FIRST + 1 ) cdb[15] = ONE_TENTH_OF_EDGEHD_FOV;
+                  if (  menu_caller == M_MOZAIC_FIRST + 2 ) cdb[15] = ONE_TENTH_OF_NEWTON_FOV;
+                  if (  menu_caller == M_MOZAIC_FIRST + 3 ) cdb[3] = 1000;
+                  if (  menu_caller == M_MOZAIC_FIRST + 4 ) cdb[3] = 30000;
+                  if (  menu_caller == M_MOZAIC_FIRST + 5 ) cdb[3] = 60000;
    
-                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_PAUSE_FIRST + 1 ) cdb[15] = ONE_TENTH_OF_EDGEHD_FOV;
-                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_PAUSE_FIRST + 2 ) cdb[15] = ONE_TENTH_OF_NEWTON_FOV;
-                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_PAUSE_FIRST + 3 ) cdb[3] = 1000;
-                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_PAUSE_FIRST + 4 ) cdb[3] = 30000;
-                  if ( menu_stack[menu_stack_ptr-1] == M_MOZAIC_PAUSE_FIRST + 5 ) cdb[3] = 60000;
+                  if (  menu_caller == M_MOZAIC_PAUSE_FIRST + 1 ) cdb[15] = ONE_TENTH_OF_EDGEHD_FOV;
+                  if (  menu_caller == M_MOZAIC_PAUSE_FIRST + 2 ) cdb[15] = ONE_TENTH_OF_NEWTON_FOV;
+                  if (  menu_caller == M_MOZAIC_PAUSE_FIRST + 3 ) cdb[3] = 1000;
+                  if (  menu_caller == M_MOZAIC_PAUSE_FIRST + 4 ) cdb[3] = 30000;
+                  if (  menu_caller == M_MOZAIC_PAUSE_FIRST + 5 ) cdb[3] = 60000;
+                  if ( (menu_caller >= M_STORE_FIRST) &&
+                       (menu_caller <= M_STORE_LAST)    )
+                     {
+cdb[34] =            saved_ra[menu_caller-M_STORE_FIRST] = cdb[1];  // Store current Pos
+cdb[35] =            saved_de[menu_caller-M_STORE_FIRST] = cdb[2];  // Store current Pos
+                     }
+                  if ( (menu_caller >= M_RECALL_FIRST) &&
+                       (menu_caller <= M_RECALL_LAST)    )
+                     {
+                     cdb[15]=cdb[8]=cdb[7]=0;
+                     cdb[17] = saved_ra[menu_caller-M_RECALL_FIRST];
+                     cdb[18] = saved_de[menu_caller-M_RECALL_FIRST];
+                     mozaic_state = 1; // GOTO requested
+                     }
                   }
                if ( next == M_EXECUTE_FIRST )
                   {              // display "Executing..." for one 0.5 sec to give feedback ( I wanted to use this state to "execute" the change )
@@ -1146,6 +1168,7 @@ while(1)
          {
          if ( ((d_state==M_PAUSE_CANCELING_FIRST)|| (m_minor>cdb[29])) && (cdb[7]==0) && (cdb[8]==0) ) // cancel Mozaic or finished  goto 0,0 complete
             {
+            set_tracking_mode = 2;  // screw that, hardcode North EQ
             if ( d_state==M_PAUSE_CANCELING_FIRST) pop(-3);
             else                                   pop(-1);
             refresh = 1;        // force a first pass
@@ -1159,12 +1182,13 @@ while(1)
          }
       else if ( mozaic_state == 10 )  // Wait for pause to complete
          {
-         beep_time_ms = 10;
+// DEBUG         beep_time_ms = 10;
          if ( cdb[24] <= 0 ) 
             {
             cdb[16] = 0;       // tell foreground to start taking the picture
             mozaic_state = 0;  // we are done waiting
-            set_tracking_mode = tracking_mode_p;  // Restore tracking mode
+//          set_tracking_mode = tracking_mode_p;  // Restore tracking mode
+            set_tracking_mode = 2;  // screw that, hardcode North EQ
             }
          }
       else   // the above is exact same as normal goto mozaic and it simply asks for a goto and wait for it to complete
