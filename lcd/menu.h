@@ -98,7 +98,7 @@ PROGMEM const long edit_increment[] = {
               60              };                  //  6
 
 PROGMEM const char linetxt[]=
-              "Cam Driver V2   "                  //  0   0
+              "Cam Driver V2.1 "                  //  0   0
               "Ram:\242X\031         "            //  1   2
               "Mozaic Menu...  "                  //  2   0
               "(GOTO Method)   "                  //  3   0

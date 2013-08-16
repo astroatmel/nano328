@@ -29,9 +29,9 @@ TODO
 #define CANON_SHOOT_LOW      PORTD &= ~bit(5)
 
 // Photo delays:
-#define SEQ_1 500
-#define SEQ_2 1500
-#define SEQ_3 2000
+#define SEQ_1 2500   // was 500
+#define SEQ_2 4000   // was 1500
+#define SEQ_3 6000   // was 2000
 // CGEM: 
 // on 24h,     one sec = 0xC22E
 // on 360 deg, one sec = 0xCF2
