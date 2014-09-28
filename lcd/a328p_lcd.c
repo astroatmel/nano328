@@ -51,7 +51,7 @@ rt_wait_us(1);
 void lcd_wait_busy(void)
 {
 unsigned char HH;
-volatile long timeout=10000;
+long timeout=10000;
 if ( lcd_requires_reset ) return;
 LCD_SET_DATA_DIR_INPUT;
 LCD_SET_E_LOW;
@@ -134,27 +134,28 @@ LCD_SET_E_LOW;
 LCD_SET_RS_HIGH;
 
 lcd_requires_reset=0;
-lcd_wait_send(0x30,20);   // Send 0x3 (last four bits ignored)
+lcd_wait_send(0x30,0);    // Send 0x3 (last four bits ignored)  // m128 was 20
 lcd_wait_send(0x30,6);    // Send 0x3 (last four bits ignored)
 lcd_wait_send(0x30,2);    // Send 0x3 (last four bits ignored)
 lcd_wait_send(0x20,2);    // Send 0x2 (last four bits ignored)  Sets 4-bit mode
 lcd_wait_send(0x28,2);    // Send 0x28 = 4-bit, 2-line, 5x8 dots per char
 // Busy Flag is now valid
+PORTB |=  0x80; //m128
 lcd_send(0x08); // Send 0x08 = Display off, cursor off, blinking off
 lcd_send(0x01); // Send 0x01 = Clear display
-rt_wait_us(500);   // LCD executiuon time
+rt_wait_us(500); //m128:   500);   // LCD executiuon time
 lcd_send(0x02); // Send 0x02 = Cursor Home
-rt_wait_us(500);   // LCD executiuon time
+rt_wait_us(500); //m128:   500);   // LCD executiuon time
 lcd_send(0x06); // Send 0x06 = Set entry mode: cursor shifts right, don't scroll
-rt_wait_us(500);   // LCD executiuon time
+rt_wait_us(500); //m128:   500);   // LCD executiuon time
 lcd_send(0x0C); // Send 0x0C = Display on, cursor off, blinking off
 
-// pmichel custom characters test:
-for ( iii=0 ; iii<sizeof(my_characters) ; iii++ )
-   {
-   lcd_send(base++);
-   lcd_text(pgm_read_byte(&my_characters[iii]));
-   } 
+//m128- // pmichel custom characters test:
+//m128- for ( iii=0 ; iii<sizeof(my_characters) ; iii++ )
+//m128-    {
+//m128-    lcd_send(base++);
+//m128-    lcd_text(pgm_read_byte(&my_characters[iii]));
+//m128-    } 
 }
 
 

@@ -485,7 +485,8 @@ volatile unsigned char TT,SS,MM,HH;
 
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 1 KHz
 {
-static unsigned char  button_rt,button_last_rt, button_sp_sp;
+//static unsigned char  button_rt,button_last_rt, button_sp_sp;
+static unsigned char  button_rt, button_sp_sp;
 static unsigned short button_down_ms;   // check how long a button is held down
 
 rt_TIMER1++;
@@ -501,7 +502,7 @@ if ( beep_time_ms )
    if ( 0 == --beep_time_ms ) OCR2B = 254;  // stop the beep
    }
 
-button_last_rt = button_rt;
+//button_last_rt = button_rt;
 if      (LCD_BUTTON_1 == 0 ) {button_rt = BT_ENTER; }
 else if (LCD_BUTTON_2 == 0 ) {button_rt = BT_UP;    }
 else if (LCD_BUTTON_3 == 0 ) {button_rt = BT_UNDO;  }
@@ -612,7 +613,7 @@ if ( (d_state >= M__MOZ_RUN_FIRST) && (d_state <= M_CANCELING_FIRST))  // Shutte
 else // not in mozaic mode
    {
    cdb[16] = d_state;
-   CANON_FOCUS_LOW;
+//m128   CANON_FOCUS_LOW;
    CANON_SHOOT_LOW;
    }
 
@@ -718,6 +719,7 @@ unsigned char l_TT=0;
 long lll,mmm;
 ///////////////////////////////// Init /////////////////////////////////////////
 
+DDRB |= bit(7);  
 init_rs232();
 rt_init_disp();
 
@@ -738,7 +740,12 @@ DDRD |= 0x40;  // PD6 test
 
 sei();         //enable global interrupts
 
+rt_wait(2);
+//CANON_FOCUS_HIGH; // debug  also search for m128
 lcd_init();
+CANON_FOCUS_LOW; // debug
+
+while(1);
 
 //////////////////////////////////// p_val() tests ////////////////////////////////////
 #ifdef TEST_P_VAL
@@ -782,7 +789,7 @@ DDRD |= bit(3);   // Buzzer
 d_state=1;
 lcd_go_rt = 1;
 
-cdb[3]  = 2*1000;    // default exposure time: 30 mili seconds  (mozaic)
+cdb[3]  = 30*1000;    // default exposure time: 30 mili seconds  (mozaic)
 cdb[4]  = 60;        // default delta time: 60 seconds (time laps)
 cdb[15] = ONE_TENTH_OF_EDGEHD_FOV;   // default span: 1/10 of EDGE HD  (0.333 deg / 10 = 0.03 deg = 2 min)   { thats 1/30 of Newton)
 cdb[28] = 9;         // Pause method, nb of pictures on RA axis (paused ones)
@@ -793,7 +800,8 @@ while(1)
    static signed char c_edt=-1,l_edt=-1;  // current and last edit mode
    static unsigned char id;
    static unsigned char refresh=1;
-   static unsigned char set[10],fmt[10],pos[10],off[10]; // show/edit format position cdb-offset    <- values used to set/show values on LCD
+   //static unsigned char set[10],fmt[10],pos[10],off[10]; // show/edit format position cdb-offset    <- values used to set/show values on LCD
+   static unsigned char fmt[10],pos[10],off[10]; // show/edit format position cdb-offset    <- values used to set/show values on LCD
    short i1,i2;
    static char next;
 
@@ -955,7 +963,7 @@ cdb[35] =            cdb[42+menu_caller-M_STORE_FIRST] = cdb[2];  // Store curre
          {
          if ( (lcd_lines[id] == 0xA2) || (lcd_lines[id] == 0xA3) )    // we have something to do...   \242 \243
             {
-            set[nb_display] = lcd_lines[id]==0xA2;   // show ?
+//            set[nb_display] = lcd_lines[id]==0xA2;   // show ?
             fmt[nb_display] = lcd_lines[id+1]; // format
             off[nb_display] = lcd_lines[id+2]; // CDB label offset
             pos[nb_display] = id;
@@ -1221,7 +1229,7 @@ cdb[35] =            cdb[42+menu_caller-M_STORE_FIRST] = cdb[2];  // Store curre
          else if ( cdb[16] >= cdb[3]+SEQ_3 ) // Picture taken, ready to proceed...
             {
             cdb[5] ++;                              // Shot #
-            m_major ++ ;
+            m_major ++ ;        // increment 
             if ( m_major >= cdb[28]  )              // RA axis
                {
                m_major = 0;
@@ -1234,10 +1242,10 @@ cdb[35] =            cdb[42+menu_caller-M_STORE_FIRST] = cdb[2];  // Store curre
 //cdb[7] = cdb[7]*10; // debug
 //cdb[8] = cdb[8]*10; // debug
 
-               mozaic_state = 1;  // Ask the CGEM communication to issue a goto command
-               mozaic_wait  = 2500; // wait 15 sec max 
+               if ( cdb[15] != 0 )  mozaic_state = 1;  // Ask the CGEM communication to issue a goto command
+               if ( cdb[15] != 0 )  mozaic_wait  = 2500; // wait 15 sec max 
                }
-            else
+            else 
                {
                mozaic_state = 10; // State where we wait x ms
                                               // cdb[15] = total span for cdb[28] pictures on RA axis
@@ -1247,15 +1255,15 @@ cdb[35] =            cdb[42+menu_caller-M_STORE_FIRST] = cdb[2];  // Store curre
                cdb[24] = cdb[15]/510;         // Time in miliseconds for one picture  assuming 10 pictures ... so with this, the delta between each picture will be constant, and probably easyer to post-process
 //cdb[24] = cdb[15]/51;         // Debug, wait about 30 sec each pic
                tracking_mode_p = cdb[22];     // remember active tracking mode
-               set_tracking_mode = 0;         // request tracking off
+               if ( cdb[15] != 0 ) set_tracking_mode = 0;         // request tracking off
                } 
 
             if ( (d_state==M_PAUSE_CANCELING_FIRST)  || ( m_minor > cdb[29] ) ) // cancel Mozaic  or Finished
                {
                cdb[7] = 0;
                cdb[8] = 0;
-               mozaic_state =1; // Ask the CGEM communication to issue a goto command
-               mozaic_wait  =150; // wait 15 sec max 
+               if ( cdb[15] != 0 )  mozaic_state = 1;  // Ask the CGEM communication to issue a goto command
+               if ( cdb[15] != 0 )  mozaic_wait  =150; // wait 15 sec max 
                }
             }
          }
@@ -1457,7 +1465,7 @@ cdb[35] =            cdb[42+menu_caller-M_STORE_FIRST] = cdb[2];  // Store curre
                rs232_tx_cnt = 18;
                beep_time_ms = 100;
                }
-            else rs232_com_state = -1;   // Jumpt to state 0
+            else rs232_com_state = -1;   // Jump to state 0
             }
          if ( rs232_tx_cmd[0] ) rs232_tx_ptr    = 0;     // FG... pls tx the command  (unless there is no commands)
          rs232_com_state++;       // wait response
