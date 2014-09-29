@@ -1,4 +1,8 @@
 /*
+
+Version 2.2
+After tests at Laura's field with Rokinon, Need to change Mozaic to support 10 sec, 20 sec, 
+
 $Author: pmichel $
 
 Back home test alignment:
@@ -350,7 +354,7 @@ char   mosaic_pause=0;
 
 long   mosaic_base_ra,mosaic_base_dec;
 char   mosaic_span_idx;
-//char   mosaic_nb_tiles;
+char   mosaic_nb_pic,mosaic_pic;
 short  mosaic_seq;
 short  mosaic_seq_ra;
 short  mosaic_seq_de;
@@ -455,22 +459,22 @@ PROGMEM const char pgm_selected_west[]="West selected...";
 #endif
 #ifndef  HARDCODED_MATRIX
    #ifdef AT_MASTER
-      PROGMEM const char pgm_starting[]="Telescope v2.1 Master Starting...";
+      PROGMEM const char pgm_starting[]="Telescope v2.2 Master Starting...";
    #else
       #ifdef AT_SLAVE
-         PROGMEM const char pgm_starting[]="Telescope v2.1 Slave Starting...";
+         PROGMEM const char pgm_starting[]="Telescope v2.2 Slave Starting...";
       #else
-         PROGMEM const char pgm_starting[]="Telescope v2.1 Starting...";
+         PROGMEM const char pgm_starting[]="Telescope v2.2 Starting...";
       #endif
    #endif
 #else
    #ifdef AT_MASTER
-      PROGMEM const char pgm_starting[]="Telescope v2.1 Master Starting... HARDCODED_MATRIX";
+      PROGMEM const char pgm_starting[]="Telescope v2.2 Master Starting... HARDCODED_MATRIX";
    #else
       #ifdef AT_SLAVE
-         PROGMEM const char pgm_starting[]="Telescope v2.1 Slave Starting... HARDCODED_MATRIX";
+         PROGMEM const char pgm_starting[]="Telescope v2.2 Slave Starting... HARDCODED_MATRIX";
       #else
-         PROGMEM const char pgm_starting[]="Telescope v2.1 Starting... HARDCODED_MATRIX";
+         PROGMEM const char pgm_starting[]="Telescope v2.2 Starting... HARDCODED_MATRIX";
       #endif
    #endif
 #endif
@@ -1658,7 +1662,8 @@ cur_sec = dd_v[DDS_SECONDS]&0x7F;
 if ( (debug_page == 7) && (cur_sec != lll) ) 
    {
    lll = cur_sec; // reduce output frequency, this will update every seconds
-   dd_v[DDS_DEBUG + 0x08] = (long)mosaic_pause           + 0x1F000000;
+   dd_v[DDS_DEBUG + 0x06] = (long)mosaic_pic             + 0x1E000000;
+   dd_v[DDS_DEBUG + 0x07] = (long)mosaic_pause           + 0x1F000000;
    dd_v[DDS_DEBUG + 0x08] = (long)mosaic_seconds         + 0x11000000;
    dd_v[DDS_DEBUG + 0x09] = (long)mosaic_start_stop_cnt  + 0x22000000;
    dd_v[DDS_DEBUG + 0x0A] = (long)mosaic_grid_seq_big    + 0x33000000;
@@ -1707,37 +1712,44 @@ dd_v[DDS_DEBUG + 0x15] = (long)mosaic_dt       + 0xBB000000;
 
 if ( mosaic_seconds > mosaic_dt + 2 )  // next move...
    {
-   mosaic_seq++;
    mosaic_seconds = 1;  // restart the cycle
-
-   // setup the next position...
-   mosaic_grid_seq_big++;
-   if ( mosaic_grid_seq_big >= (MOZA*MOZA) )
+   if ( mosaic_pic < mosaic_nb_pic )
       {
-      mosaic_grid_seq_big = 0;
-      mosaic_grid_seq_small++;  // 
-      if ( mosaic_grid_seq_small >= (MOZA*MOZA) ) // we are done
-         {
-         rrr = ddd = uuu = 0; // goto start pos
-         mosaic_seconds = -1;
-         mosaic_start_stop_cnt+=0x100; // complete
-         }
+      mosaic_pic++;
       }
-   sss = pgm_read_dword(&mosaic_span[(short)mosaic_span_idx]);
-
-   mosaic_seq_de = pgm_read_byte(&mosaic_grid_de[(short)mosaic_grid_seq_big])*MOZA + pgm_read_byte(&mosaic_grid_de[(short)mosaic_grid_seq_small]);
-   mosaic_seq_ra = pgm_read_byte(&mosaic_grid_ra[(short)mosaic_grid_seq_big])*MOZA + pgm_read_byte(&mosaic_grid_ra[(short)mosaic_grid_seq_small]);
-
-   rrr = mosaic_seq_ra   * sss;
-   ddd = mosaic_seq_de   * sss;
-   uuu = (MOZA + 1)      * sss;  // the full 9x9 counts 0-1-2-3-4-5-6-7-8 , so the middle element is 4,4
-
-   ra->pos_target  = mosaic_base_ra;
-   dec->pos_target = mosaic_base_dec;
-   add_value_to_pos(rrr - uuu,&  ra->pos_target);   // reversed RA so to stay in the same sky area
-   add_value_to_pos(uuu - ddd,& dec->pos_target);   // for a span of 1 deg, the mosaic will have a field of view of 1 deg
-
-   goto_cmd = 1;
+   else
+      {
+      mosaic_seq++;
+      mosaic_pic=0;
+      // setup the next position...
+      mosaic_grid_seq_big++;
+      if ( mosaic_grid_seq_big >= (MOZA*MOZA) )
+         {
+         mosaic_grid_seq_big = 0;
+         mosaic_grid_seq_small++;  // 
+         if ( mosaic_grid_seq_small >= (MOZA*MOZA) ) // we are done
+            {
+            rrr = ddd = uuu = 0; // goto start pos
+            mosaic_seconds = -1;
+            mosaic_start_stop_cnt+=0x100; // complete
+            }
+         }
+      sss = pgm_read_dword(&mosaic_span[(short)mosaic_span_idx]);
+   
+      mosaic_seq_de = pgm_read_byte(&mosaic_grid_de[(short)mosaic_grid_seq_big])*MOZA + pgm_read_byte(&mosaic_grid_de[(short)mosaic_grid_seq_small]);
+      mosaic_seq_ra = pgm_read_byte(&mosaic_grid_ra[(short)mosaic_grid_seq_big])*MOZA + pgm_read_byte(&mosaic_grid_ra[(short)mosaic_grid_seq_small]);
+   
+      rrr = mosaic_seq_ra   * sss;
+      ddd = mosaic_seq_de   * sss;
+      uuu = (MOZA + 1)      * sss;  // the full 9x9 counts 0-1-2-3-4-5-6-7-8 , so the middle element is 4,4
+   
+      ra->pos_target  = mosaic_base_ra;
+      dec->pos_target = mosaic_base_dec;
+      add_value_to_pos(rrr - uuu,&  ra->pos_target);   // reversed RA so to stay in the same sky area
+      add_value_to_pos(uuu - ddd,& dec->pos_target);   // for a span of 1 deg, the mosaic will have a field of view of 1 deg
+   
+      goto_cmd = 1;
+      }
    }
 }
  
@@ -1843,14 +1855,14 @@ if ( mosaic_seconds > mosaic_dt + 2 )  // next move...
 - add a command that displays at the console : time, position, star name (corrected star position)
 */
 
-PROGMEM unsigned long PROSCANs[]= {   // The order is important   3                    4                    5                    6                    7
+PROGMEM const unsigned long PROSCANs[]= {   // The order is important   3                    4                    5                    6                    7
 PROSCAN_VCR1_0      ,PROSCAN_VCR1_1      ,PROSCAN_VCR1_2      ,PROSCAN_VCR1_3      ,PROSCAN_VCR1_4      ,PROSCAN_VCR1_5      ,PROSCAN_VCR1_6      ,PROSCAN_VCR1_7      ,// 0
 PROSCAN_VCR1_8      ,PROSCAN_VCR1_9      ,PROSCAN_VCR1_NORTH  ,PROSCAN_VCR1_SOUTH  ,PROSCAN_VCR1_WEST   ,PROSCAN_VCR1_EAST   ,PROSCAN_VCR1_OK     ,PROSCAN_VCR1_STOP   ,// 8
 PROSCAN_VCR1_PLAY   ,PROSCAN_VCR1_RECORD ,PROSCAN_VCR1_CH_P   ,PROSCAN_VCR1_CH_M   ,PROSCAN_VCR1_VOL_P  ,PROSCAN_VCR1_VOL_M  ,PROSCAN_VCR1_FWD    ,PROSCAN_VCR1_REW    ,// 16
 PROSCAN_VCR1_SEARCH ,PROSCAN_VCR1_GOBACK ,PROSCAN_VCR1_INPUT  ,PROSCAN_VCR1_ANTENA ,PROSCAN_VCR1_CLEAR  ,PROSCAN_VCR1_GUIDE  ,PROSCAN_VCR1_INFO   ,PROSCAN_VCR1_POWER  ,// 24
 PROSCAN_VCR1_TRAK_P ,PROSCAN_VCR1_TRAK_M ,PROSCAN_VCR1_MUTE   ,PROSCAN_VCR1_SPEED  ,PROSCAN_VCR1_PAUSE                                                                        // 32
                                   };
-PROGMEM short         RS232EQVs[]= {  // The order is important, each rs232 character is assigned a PROSCAN equivalent
+PROGMEM const short         RS232EQVs[]= {  // The order is important, each rs232 character is assigned a PROSCAN equivalent
 '0'                 ,'1'                 ,'2'                 ,'3'                 ,'4'                 ,'5'                 ,'6'                 ,'7'                 , 
 '8'                 ,'9'                 ,0x5B41              ,0x5B42              ,0x5B44              ,0x5B43              ,13                  ,'s'                 ,
 'p'                 ,'r'                 ,'i'                 ,'m'                 ,'k'                 ,'j'                 ,'>'                 ,'<'                 , 
@@ -1940,7 +1952,7 @@ unsigned char cmd_val[10],cmd_val_idx;  //store the last byte of the last IR cod
 // using a table state machine to shorten the s/w code
 // I'm a bit supprised, I think this little table will acomplish something very complex !!
 //    INPUTS:                 NUM  PLA  REC  CLR  INP  ANT  SEARCH        STATE:
-PROGMEM char cmd_states[] = {   0,   1,   6,   9,   0,  11,  10        //   0 ready tp process a new command
+PROGMEM const char cmd_states[] = {   0,   1,   6,   9,   0,  11,  10        //   0 ready tp process a new command
                             ,   2, 110,   0,   0,   4,   5,   0        //   1 PLAY X  / PLAY INPUT / PLAY ANTENA / PLAY PLAY
                             ,   3,   0,   0,   0,   0,   0,   0        //   2 PLAY X X
                             , 100,   0,   0,   0,   0,   0,   0        //   3 PLAY X X X
@@ -2042,36 +2054,39 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
       {
       if ( cmd_state==100 ) // PLAY X X X : goto direct to catalog star 
          {
-         if ( cmd_val[0] == IDX_VCR1_GUIDE )  // GUIDE X X X : special command
-            {
-            if ( mosaic_seconds!=-1 ) 
-               {
+         if ( cmd_val[0] == IDX_VCR1_GUIDE )   // GUIDE A B C 
+            {                                  // A: Exposure time
+            if ( mosaic_seconds!=-1 )          // B: NB PIC to take at the same place
+               {                               // C: SPAN
                mosaic_start_stop_cnt+=0x10000; // canceled
                if ( cmd_val[1] == IDX_VCR1_0 )  mosaic_seconds=-1;  // cancel mosaic
                else                             mosaic_seconds=-2;  // cancel mosaic and return to origin
                }
-            else if ( cmd_val[1] <= IDX_VCR1_9 || cmd_val[1] >= IDX_VCR1_6 )   // GUIDE [6789] X X : mosaic
+            else if ( cmd_val[1] <= IDX_VCR1_9 || cmd_val[1] >= IDX_VCR1_2 )   // GUIDE [6789] X X : mosaic
                {
                mosaic_pause = 0;
+               mosaic_pic   = 0;
                mosaic_base_ra  = ra->pos;
                mosaic_base_dec = dec->pos;
-//               mosaic_nb_tiles = cmd_val[2]<<MOSAIC_MULT;  // GUIDE 9 NB-TILES X
+               mosaic_nb_pic   = cmd_val[2];               // GUIDE 9 NB-PICTURES
                mosaic_span_idx = cmd_val[3];               // GUIDE 9 NB-TILES SPAN
-//               mosaic_seq_ra   = 0; 
-//               mosaic_seq_de   = 0;
-               mosaic_seq = mosaic_grid_seq_big   = -1;  // in order to call the same "next step" sub program, start at -1 with mosaic_seconds  = 1000;  to force the next step
+               mosaic_seq      = mosaic_grid_seq_big   = -1;  // in order to call the same "next step" sub program, start at -1 with mosaic_seconds  = 1000;  to force the next step
                mosaic_grid_seq_small = 0; 
                mosaic_start_stop_cnt++;
                mosaic_seconds  = 1000;   // Start the mosaic 
                                                     mosaic_dt_ref = 2;     // By default, go so fast that no picture is taken
-               if      ( cmd_val[1] == IDX_VCR1_7 ) mosaic_dt_ref = 8;     // Fast 1 sec exposure for bright objects or to test the system
+               if      ( cmd_val[1] == IDX_VCR1_3 ) mosaic_dt_ref = 8;     // Fast 1 sec exposure for bright objects or to test the system
+               else if ( cmd_val[1] == IDX_VCR1_4 ) mosaic_dt_ref = 11;    // Normal exposure: 5  sec
+               else if ( cmd_val[1] == IDX_VCR1_5 ) mosaic_dt_ref = 16;    // Normal exposure: 10 sec
+               else if ( cmd_val[1] == IDX_VCR1_6 ) mosaic_dt_ref = 21;    // Normal exposure: 15 sec
+               else if ( cmd_val[1] == IDX_VCR1_7 ) mosaic_dt_ref = 26;    // Normal exposure: 20 sec
                else if ( cmd_val[1] == IDX_VCR1_8 ) mosaic_dt_ref = 36;    // Normal exposure: 30 sec
                else if ( cmd_val[1] == IDX_VCR1_9 ) mosaic_dt_ref = 66;    // Normal exposure: 60 sec
                }
             }
          else  // PLAY
             {
-            if ( align_state != 0 )  goto_pgm_pos(cmd_val[cmd_val_idx-3]*100 + cmd_val[cmd_val_idx-2]*10 + jjj); 
+            if ( align_state != -1 )  goto_pgm_pos(cmd_val[cmd_val_idx-3]*100 + cmd_val[cmd_val_idx-2]*10 + jjj); 
             else {
                  dd_v[DDS_CUR_STAR_REQ] = cmd_val[cmd_val_idx-3]*100 + cmd_val[cmd_val_idx-2]*10 + jjj;   // ask the slave
                  set_ra_armed = 1;
@@ -2088,8 +2103,8 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
          { 
          record_pos(10+jjj); 
          twi_seq+=2;  // tell the slave to update the active star's corrected position
-         if ( align_state == 0 ) align_state++; // The initial RA is set...  now fake a few alignments (to help inhouse debug)
-//         if ( align_state == 0 ) align_state=10 // The initial RA is set...  now a play will make the telescope move
+//         if ( align_state == 0 ) align_state++; // The initial RA is set...  now fake a few alignments (to help inhouse debug)
+         if ( align_state == 0 ) align_state=10; // The initial RA is set...  now a play will make the telescope move
          }
       if ( cmd_state==105 ) // CLEAR INPUT : clear all user positinos
          { for(iii=0;iii<10;iii++) saved[iii].ra = saved[iii].dec = saved[iii].ref_star=0; }
@@ -2111,7 +2126,7 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
          twi_seq=-1;  // tell the slave to update the polar matrix
          align_state=11;
          }
-      if ( cmd_state==110 ) // PLAY PLAY ... so, goto here (remove mechanical friction
+      if ( cmd_state==110 ) // PLAY PLAY ... so, goto here (remove mechanical friction )
          {
          ra->pos_target  = ra->pos+1;
          dec->pos_target = dec->pos+1;
@@ -2607,7 +2622,7 @@ else if ( standby_goto == 1 ) standby_goto = -1;  // no wait in this case
 //   dd_v[DDS_DEBUG + 0x15]=loc_dec_correction;
 else if ( standby_goto == 111 ) do_polar(); //   TODO This will never happen, but it's to force the compiler tp include do_polar in the hex file
 
-if ( debug_page == 7 ) 
+if ( debug_page == 6 ) 
    {
    dd_v[DDS_DEBUG + 0x0C] = ra_correction;
    dd_v[DDS_DEBUG + 0x0D] = loc_ra_correction;
@@ -2902,7 +2917,7 @@ unsigned char twi_rx_buf[40];
 
  
 #ifdef AT_SLAVE
-PROGMEM char twi_states[] =
+PROGMEM const char twi_states[] =
 //      NEXT   ERROR  ON     DO     SPECIAL NEXT   ON
 //      STATE  STATE  TWSR   TWCR   CODE    STATE2 TWSR2            //   TWI SLAVE STATES
     {   0x01 , 0x00 , 0x60 , 0xC4 , 0x00 ,  0x06 , 0xA8             //   0  Wait for SLA+W or SLA+R  
@@ -2922,7 +2937,7 @@ PROGMEM char twi_states[] =
     };
    #define TWI_ROW 7   // 8 data per line
 #else                
-PROGMEM char twi_states[] =
+PROGMEM const char twi_states[] =
 //      NEXT   ERROR  ON     DO     SPECIAL DELAY
 //      STATE  STATE  TWSR   TWCR   CODE    TO WAIT                 //   TWI MASTER STATES
     {   0x01 , 0xFF , 0xF8 , 0xA4 , 0xC0 ,  0x00   //   0  The bus is available ->  lets transmit a START , and initialize the count and pointer
@@ -3606,7 +3621,7 @@ banding = banding+1;  // 256 leg banding ...thats ~40hz
 
    if ( banding == 0x50 )
       {
-      dd_v[DDS_DEBUG + 0x0C] = meridian;
+//      dd_v[DDS_DEBUG + 0x0C] = meridian;
 //      dd_v[DDS_DEBUG + 0x0D] = dec->pos_hw;
 //      dd_v[DDS_DEBUG + 0x0E] = dec->spd_index;
 //      dd_v[DDS_DEBUG + 0x0F] = slew_cmd;
