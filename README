@@ -1,0 +1,32 @@
+Telescope v2.2 Master Starting...
+Free Memory:00000178
+
+Use < > to select OTA meridian side East/West..
+West selected...
+
+_______________________________________________________________________________________________________
+          DATE/TIME:              00h01m32s
+   CURRENT LOCATION: 
+        POLAR ERROR: (N) 00�°00'00.0"                   00h00m00.00s
+       SKY POSITION: (N) 00�°00'00.0" (E) 000�°00'04.8" 00h00m00.32s
+ CORRECTED STAR POS: (N) 00�°00'00.0" (W)-000�°19'09.0" 23h58m43.39s
+      TELESCOPE POS: (N) 00�°00'00.0" (W)-000�°19'08.9" 23h58m43.40s
+       CATALOG STAR: Unknown    Pegasus      
+   CATALOG STAR POS: (N) 00�°00'00.0" (E) 000�°00'00.0" 00h00m00.00s                  COORD ID:  108
+   IR CODE RECEIVED: 
+   IR CODE RECEIVED: 021D5E2A 0009                           RA SPEED:  00000         RA STATE:  000
+ PREV CODE RECEIVED: 021F5E0A                               DEC SPEED:  00000        DEC STATE:  000
+ PREV PREV RECEIVED:
+    BATTERY VOLTAGE:                                       DEBUG PAGE:  003
+      SP0 HISTOGRAM: 0000 2058 00D7 0000 0000 0001 059E F000   00E3 0002 0000 0000 0000 0000 0000 0000
+              DEBUG: 80842804  00000100  00000200  00000300    00000400  00000500  00000600  00000700
+                     00000800  00000900  00000A00  00000B00    00000C00  00000D00  00000E00  00000F00
+                     00001000  00001100  00001200  00001300    00001400  00001500  00001600  00001700
+                     00001800  00001900  00001A00  00001B00    00001C00  00001D00  00001E00  0000001A
+                LCD: |                |    MODE:
+                     |                |         
+_______________________________________________________________________________________________________
+    IR-PLUS> 
+ RS232-PLUS> 
+
+

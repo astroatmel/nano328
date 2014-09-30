@@ -158,13 +158,14 @@ void wait(long time,long mult);
 // Debug Page 7 : Slave: Rotation Debug (polar error rotation) and dLat dLon calculation)
 char debug_page = 3; // depending of the debug mode, change what the debug shows 
 #define  NB_DEBUG_PAGE 7 
-char align_state = 0; // 0 : Waiting Reference RA     -> the first PLAY X X X tells the controler that we did point the telescope at a known bright star, thus setting the RA and DEC
-                      // 1 : fake a first alignment correction  (debug)
-                      // 2 : fake a second alignment correction  (debug)
-                      // ...
-                      // 10 : Star Position Correction -> ask the controler to go to known stars, and manually correct the position
-                      // 11 : Polar Align              -> after 5 or more corrected stars , the slave will do the polar align
-                      // 12 : Aligned                  -> Ready to operate
+char align_state =-1; // -1 : So that the first PLAY sets the initial position
+                      //  0 : Waiting Reference RA     -> the first PLAY X X X tells the controler that we did point the telescope at a known bright star, thus setting the RA and DEC
+                      //  1 : fake a first alignment correction  (debug)
+                      //  2 : fake a second alignment correction  (debug)
+                      //  ...
+                      //  10 : Star Position Correction -> ask the controler to go to known stars, and manually correct the position
+                      //  11 : Polar Align              -> after 5 or more corrected stars , the slave will do the polar align
+                      //  12 : Aligned                  -> Ready to operate
                        
 unsigned char cmd_state=0;
 
@@ -1720,7 +1721,7 @@ if ( mosaic_seconds > mosaic_dt + 2 )  // next move...
    else
       {
       mosaic_seq++;
-      mosaic_pic=0;
+      mosaic_pic=1;
       // setup the next position...
       mosaic_grid_seq_big++;
       if ( mosaic_grid_seq_big >= (MOZA*MOZA) )
@@ -1951,20 +1952,20 @@ unsigned char cmd_val[10],cmd_val_idx;  //store the last byte of the last IR cod
 
 // using a table state machine to shorten the s/w code
 // I'm a bit supprised, I think this little table will acomplish something very complex !!
-//    INPUTS:                 NUM  PLA  REC  CLR  INP  ANT  SEARCH        STATE:
+//    INPUTS:                       NUM  PLA  REC  CLR  INP  ANT  SEARCH        STATE:
 PROGMEM const char cmd_states[] = {   0,   1,   6,   9,   0,  11,  10        //   0 ready tp process a new command
-                            ,   2, 110,   0,   0,   4,   5,   0        //   1 PLAY X  / PLAY INPUT / PLAY ANTENA / PLAY PLAY
-                            ,   3,   0,   0,   0,   0,   0,   0        //   2 PLAY X X
-                            , 100,   0,   0,   0,   0,   0,   0        //   3 PLAY X X X
-                            , 101,   0,   0,   0,   0,   0,   0        //   4 PLAY INPUT X
-                            , 102,   0,   0,   0,   0,   0,   0        //   5 PLAY ANTENA X
-                            ,   0,   0,   0,   0,   7,   8,   0        //   6 RECORD INPUT / RECORD ANTENA
-                            , 103,   0,   0,   0,   0,   0,   0        //   7 RECORD INPUT X
-                            , 104,   0,   0,   0,   0,   0,   0        //   8 RECORD ANTENA X
-                            ,   0,   0,   0,   0, 105, 106, 107        //   9 CLEAR ? INPUT / ANTENA / INFO / 
-                            ,  10,   0,   0,   0,   0,   0, 108        //  10 GOTO MANUAL POSITION ?
-                            ,   0,   0,   0,   0,   0,   0, 109        //  11 ANTENA SEARCH ?
-                            };
+                                  ,   2, 110,   0,   0,   4,   5,   0        //   1 PLAY X  / PLAY INPUT / PLAY ANTENA / PLAY PLAY
+                                  ,   3,   0,   0,   0,   0,   0,   0        //   2 PLAY X X
+                                  , 100,   0,   0,   0,   0,   0,   0        //   3 PLAY X X X
+                                  , 101,   0,   0,   0,   0,   0,   0        //   4 PLAY INPUT X
+                                  , 102,   0,   0,   0,   0,   0,   0        //   5 PLAY ANTENA X
+                                  ,   0,   0,   0,   0,   7,   8,   0        //   6 RECORD INPUT / RECORD ANTENA
+                                  , 103,   0,   0,   0,   0,   0,   0        //   7 RECORD INPUT X
+                                  , 104,   0,   0,   0,   0,   0,   0        //   8 RECORD ANTENA X
+                                  ,   0,   0,   0,   0, 105, 106, 107        //   9 CLEAR ? INPUT / ANTENA / INFO / 
+                                  ,  10,   0,   0,   0,   0,   0, 108        //  10 GOTO MANUAL POSITION ?
+                                  ,   0,   0,   0,   0,   0,   0, 109        //  11 ANTENA SEARCH ?
+                                  };
 #endif
 short ddll=0;
 
@@ -2065,7 +2066,7 @@ if ( code_idx >= 0   ) // received a valid input from IR or RS232
             else if ( cmd_val[1] <= IDX_VCR1_9 || cmd_val[1] >= IDX_VCR1_2 )   // GUIDE [6789] X X : mosaic
                {
                mosaic_pause = 0;
-               mosaic_pic   = 0;
+               mosaic_pic   = 1;
                mosaic_base_ra  = ra->pos;
                mosaic_base_dec = dec->pos;
                mosaic_nb_pic   = cmd_val[2];               // GUIDE 9 NB-PICTURES
