@@ -1,4 +1,4 @@
-/*
+/*  Version 1.00 of LED and HEATER
 
 simple simple program that reads two dips and drives an output in pwm at 10hz 
 AVR FUSES:
@@ -65,7 +65,7 @@ volatile unsigned short period=0;
    OCR0A  =   10;  
    }
 
-volatile unsigned short indicator=5; 
+volatile unsigned short indicator=20; 
 volatile unsigned short timer10KHz=0;
 volatile unsigned short timer10Hz=0;
 
