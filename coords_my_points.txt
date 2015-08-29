@@ -7,7 +7,7 @@
 # Todo on Telescope:
 # Quick mode to take 9 / 16 / 25 (x^2) picture around the current point to create a mosaic
 #
-#                    RA                   DEC                  Name+Constel         Notes
+#	RA                   DEC                  Name+Constel         Notes
 --	00 42 44.300	+41 16 08.10	M31 Andromeda	From Aladin: Andromeda Galaxy TODO
 --	00 52 48.000	+56 37 00.00	CAS:Packma	From Google: Packman Nebula NGC 281 (Cassiopia) TODO
 --	02 57 08.000	+60 39 44.00	HIP13665  	From Google: Interesting Nebula
@@ -31,4 +31,9 @@
 --	20 26 04.320	+40 23 41.20	CygnusNeb2	From Google: HIP100784 TODO
 --	20 51 15.000	+44 25 00.00	CygnusNeb3	From Google: 56CYG-57CYG TODO
 --	20 59 31.800	+43 57 57.00	CygnusNeb4	From Google: HIP103559 (red) TODO
+--	23 24 12.000	+61 35 00.00	M52 Casiopia 	From Stellarium J2000
 #                                                              ..........
+#
+# ADD:
+# Orion Flame nebula
+# Orion M42

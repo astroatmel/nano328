@@ -72,8 +72,9 @@ PROGMEM const char pgm_stars_name_reduced[]   =  // format: byte:StarID byte:Con
    "\151\040Matar.    "   /*  Star ID:105  Constellation:Pegasus      */  \
    "\152\040Sheat,   R"   /*  Star ID:106  Constellation:Pegasus      */  \
    "\153\040Markab.  b"   /*  Star ID:107  Constellation:Pegasus      */  \
+   "\154\377M52 Casiop"   /* Coord ID:108  ; From Stellarium J2000 */  \
    "\377\377Unknown   "   /* Coord ID: -1  ;  */  \
-   };   // This table uses 828 bytes...
+   };   // This table uses 840 bytes...
 
 PROGMEM const char pgm_const_name[]   =  // format: byte:ConstelationId Constellation Name string
    {                                     // Names are for only a few prefered stars to save memory space
@@ -213,14 +214,15 @@ PROGMEM const unsigned long pgm_stars_pos[] = // The next 85 stars are used for 
    ( 22*TICKS_P_HOUR +43*TICKS_P_MIN + 0.137*TICKS_P_SEC ),( 30*TICKS_P_DEG +13*TICKS_P_DEG_MIN + 16.48*TICKS_P_DEG_SEC), // 105 Matar.     Pegasus  
    ( 23*TICKS_P_HOUR + 3*TICKS_P_MIN +46.458*TICKS_P_SEC ),( 28*TICKS_P_DEG + 4*TICKS_P_DEG_MIN + 58.04*TICKS_P_DEG_SEC), // 106 Sheat,   R Pegasus  
    ( 23*TICKS_P_HOUR + 4*TICKS_P_MIN +45.654*TICKS_P_SEC ),( 15*TICKS_P_DEG +12*TICKS_P_DEG_MIN + 18.95*TICKS_P_DEG_SEC), // 107 Markab.  b Pegasus  
+   ( 23*TICKS_P_HOUR +24*TICKS_P_MIN +    12*TICKS_P_SEC ),( 61*TICKS_P_DEG +35*TICKS_P_DEG_MIN +     0*TICKS_P_DEG_SEC), // 108 >M52 Casiopia
    0,0  // origin and Null terminator
-   };   // This table uses 872 bytes...
+   };   // This table uses 880 bytes...
 #endif
 #define STAR_NAME_LEN 12
-#define STAR_NAME_COUNT 69
+#define STAR_NAME_COUNT 70
 #define STAR_NAME_CODES  2
 #define CONSTEL_NAME_LEN 13
 #define CONSTEL_NAME_COUNT 24
 #define CONSTEL_NAME_CODES 1 
-#define STARS_COORD_TOTAL 109
+#define STARS_COORD_TOTAL 110
 #define STARS_COORD_ALIGN 85

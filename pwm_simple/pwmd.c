@@ -1,4 +1,4 @@
-/*  Version 1.1 of LED and HEATER
+/*  Version 1.2 of LED and HEATER
 
 simple simple program that reads two dips and drives an output in pwm at 10hz 
 AVR FUSES:
@@ -6,8 +6,9 @@ avrdude: safemode: lfuse reads as 62   [CLKDIV8 SKOUT SUT1 SUT0    CKSEL3  CKSEL
 avrdude: safemode: hfuse reads as D9   [RSTDISBL DWEN SPIEN WDTON  EESAVE BOOTSZ1 BOOTSZ0 BOOTRST]
 avrdude: safemode: efuse reads as 7    (always 7)
 
-
-
+Version 1.2: PD2 and PD6 reduces the PWM
+Version 1.1: Able to reach 0% PWM
+Version 1.0: Initial release
 
 
 The purpose is to drive the telescope heater in PWM
@@ -16,6 +17,7 @@ A328 Pins used:
 PB0 10Hz   pwm out without pull up, requires resistor to base of transistor (if not using mosfet)
 PB2 10KHz  pwm out without pull up, requires resistor to base of transistor (if not using mosfet)
 PD6 reduces   PWM (dip with pull-up : can be shorted)
+PD2 reduces   PWM (dip with pull-up : can be shorted)
 PD7 increaces PWM (dip with pull-up : can be shorted)
 
 PB0 can be used to drive a heater and a led (indicator)
@@ -82,6 +84,7 @@ if ( (timer10KHz & 0x0F) == 0 )
    {
    if ( ((PIND & 0x80) == 0) && (indicator<1000))  indicator++;
    if ( ((PIND & 0x40) == 0) && (indicator>0   ))  indicator--;
+   if ( ((PIND & 0x04) == 0) && (indicator>0   ))  indicator--;
    }
 
 if ( timer10KHz < indicator) PORTB |=  0x01; 
@@ -105,7 +108,7 @@ rt_init_disp();
 DDRB  |=  0x05;  // PB0 PWM out 1Hz   PB1 PWM 1KHz
 DDRD  &= ~0xC0;  // PD6/PD7 UP/DOWN DIP (Pullup)
 DDRD  |=  0x20;  // PD6/PD7 UP/DOWN DIP (Pullup)
-PORTD |=  0xC0;  // Pull up
+PORTD |=  0xC4;  // Pull up  on PD2 PD6 PD7
 
 
 sei();         //enable global interrupts
