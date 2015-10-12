@@ -14,10 +14,16 @@ Version 1.0: Initial release
 The purpose is to drive the telescope heater in PWM
 
 A328 Pins used:
-PB0 10Hz   pwm out without pull up (push-pull), requires resistor to base of transistor (if not using mosfet)   <- active HIGH  max 70% duty cycle
+// PD5 100KHz pwm out without pull up (push-pull), requires resistor to base of transistor (if not using mosfet)   <- active HIGH  max 50% duty cycle
+PB0 10KHz  pwm out without pull up (push-pull), requires resistor to base of transistor (if not using mosfet)   <- active HIGH  max duty cycle set by MAX_PWM
 PB1 10Hz   pwm out without pull up (push-pull), requires resistor to base of transistor (if not using mosfet)   <- active LOW
 PB2 1Hz    pwm out without pull up (push-pull), requires resistor to base of transistor (if not using mosfet)   <- active LOW
-             
+            
+Note, 
+if PB0 drives a MOSFET transistor like FDU8878 and a 10Mh coil, the ouput can get very powerful
+if using a NPN 2N5551, then the transistor saturates at 600ms and the output is less	
+
+ 
 PD6 reduces   PWM (dip with pull-up : can be shorted)
 PD2 reduces   PWM (dip with pull-up : can be shorted)
 PD7 increaces PWM (dip with pull-up : can be shorted)
@@ -58,40 +64,34 @@ A328p DIP:                                                        \012\015\
 #define  RT_CPU_K_FRAME          1000
 #define  PERIOD                  (RT_CPU_K_FRAME/10)
 
-#define  TOP_INDICATOR            1000 // the PWMs are calculated using a base counter that goes from 0 to 1000
+#define  TOP_INDICATOR            1024 // the PWMs are calculated using a base counter that goes from 0 to 1024
 #define  MAX_PWM                  900 // 900 means that the max PWM is 90%
 
    void rt_init_disp(void)  // 1Khz
    {
    TIMSK1 |= 1 <<  TOIE1;    // timer1 interrupt when Overflow                    ///////////////// SP0C0
    // dont drive the pins TCCR1A  = 0xA3;           // FAST PWM, Clear OC1A/OC1B on counter match, SET on BOTTOM
-   //TCCR1A  = 0x23;           // FAST PWM, Clear OC1B on counter match, SET on BOTTOM
+   //TCCR1A  = 0x23;         // FAST PWM, Clear OC1B on counter match, SET on BOTTOM
    TCCR1A  = 0x33;           // FAST PWM, Set OC1B on counter match, CLEAR on BOTTOM
    TCCR1B  = 0x19;           // Clock divider set to 1 , FAST PWM, TOP = OCR1A
-   OCR1A   = PERIOD;                 // Clock divider set to 1, so RT_CPU_K_FRAME/1 is CLK / 1000 /1 thus, every 1000 there will be an interrupt : 1Khz
-   OCR1B   = PERIOD;                // By default, set the PWM to 25%
+   OCR1A   = PERIOD;         // Clock divider set to 1, so RT_CPU_K_FRAME/1 is CLK / 1000 /1 thus, every 1000 there will be an interrupt : 1Khz
 
-   OCR0A  =   10;  
+// TCCR0A  = 0x33;           // FAST PWM, Set OC0B on counter match, CLEAR on BOTTOM
+// TCCR0B  = 0x19;           // Clock divider set to 1 , FAST PWM, TOP = OCR0A
+// OCR0A   = 16;             // for ~100Khz  (actually: 1Mhz/16 : 62Khz)
    }
 
 volatile unsigned short indicator=250; 
-volatile unsigned short timer10KHz=0;
+volatile unsigned short timer1000Hz=0;
 volatile unsigned short timer10Hz=0;
 volatile unsigned short timer1Hz=0;
 volatile unsigned short indicator_x_10=0;
 
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 10 KHz
 {
-timer10KHz++;
+timer1000Hz++;
+timer10Hz++;
 timer1Hz++;
-
-// Process buttons
-if ( (timer10KHz & 0x1F) == 0 )
-   {
-   if ( ((PIND & 0x80) == 0) && (indicator<TOP_INDICATOR))  indicator++;
-   if ( ((PIND & 0x40) == 0) && (indicator>0   ))  indicator--;
-   if ( ((PIND & 0x04) == 0) && (indicator>0   ))  indicator--;
-   }
 }
 
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
@@ -103,7 +103,9 @@ long  temp;
 
 //CLKPR =  0x80;  // 1Mhz clock div by 4   // I crashed a A328p using these
 //CLKPR =  0x00;  // 1Mhz clock div by 4   // I crashed a A328p using these
+
 PRR   =  0xF7;  // Enable Only TIMER 1
+//PRR   =  0xD7;  // Enable Only TIMER 1 and TIMER 2
 
 rt_init_disp();
 
@@ -124,18 +126,34 @@ while(1)
    if ( indicator < MAX_PWM )  // 900/1000 is 90% max PWM
       {
       temp = (long) indicator * (long)PERIOD;
-      OCR1B = (short)(PERIOD - (temp / TOP_INDICATOR));
+      OCR1B = (short)(PERIOD - (temp>>10));
       }
+      
+
+// if ( indicator < PERIOD/2 )  // For 64Khz output, limit the PWM to 50%
+//    {
+//    temp = (long) indicator * (long)16;
+//    OCR0B = (short)(16 - (temp>>10));
+//    }
 
 
-   if ( timer10KHz >= 1000 )       timer10KHz=0; // 10Hz loop
-   if ( timer10KHz < indicator)    PORTB &=  0x01; 
+   if ( timer10Hz >= 1000 )        timer10Hz=0; // 10Hz loop
+   if ( timer10Hz < indicator)     PORTB &=  0x01; 
    else                            PORTB |= ~0x01; 
 
    indicator_x_10 = 10*indicator;
    if ( timer1Hz >= 10000 )        timer1Hz=0; // 1Hz loop
    if ( timer1Hz < indicator_x_10) PORTB &=  0x02; 
    else                            PORTB |= ~0x02; 
+
+   // Process buttons
+   if ( timer1000Hz > 50 )
+      {
+      timer1000Hz = 0;
+      if ( ((PIND & 0x80) == 0) && (indicator<TOP_INDICATOR))  indicator++;
+      if ( ((PIND & 0x40) == 0) && (indicator>0   ))  indicator--;
+      if ( ((PIND & 0x04) == 0) && (indicator>0   ))  indicator--;
+      }
 
    //static char toggle=0;
    //if ( toggle ) {PORTB |=  0x01; toggle=0;} 
