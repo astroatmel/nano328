@@ -14,8 +14,10 @@ Version 1.0: Initial release
 The purpose is to drive the telescope heater in PWM
 
 A328 Pins used:
-PB0 10Hz   pwm out without pull up, requires resistor to base of transistor (if not using mosfet)
-PB2 10KHz  pwm out without pull up, requires resistor to base of transistor (if not using mosfet)
+PB0 10Hz   pwm out without pull up (push-pull), requires resistor to base of transistor (if not using mosfet)   <- active HIGH  max 70% duty cycle
+PB1 10Hz   pwm out without pull up (push-pull), requires resistor to base of transistor (if not using mosfet)   <- active LOW
+PB2 1Hz    pwm out without pull up (push-pull), requires resistor to base of transistor (if not using mosfet)   <- active LOW
+             
 PD6 reduces   PWM (dip with pull-up : can be shorted)
 PD2 reduces   PWM (dip with pull-up : can be shorted)
 PD7 increaces PWM (dip with pull-up : can be shorted)
@@ -56,6 +58,9 @@ A328p DIP:                                                        \012\015\
 #define  RT_CPU_K_FRAME          1000
 #define  PERIOD                  (RT_CPU_K_FRAME/10)
 
+#define  TOP_INDICATOR            1000 // the PWMs are calculated using a base counter that goes from 0 to 1000
+#define  MAX_PWM                  900 // 900 means that the max PWM is 90%
+
    void rt_init_disp(void)  // 1Khz
    {
    TIMSK1 |= 1 <<  TOIE1;    // timer1 interrupt when Overflow                    ///////////////// SP0C0
@@ -72,23 +77,21 @@ A328p DIP:                                                        \012\015\
 volatile unsigned short indicator=250; 
 volatile unsigned short timer10KHz=0;
 volatile unsigned short timer10Hz=0;
+volatile unsigned short timer1Hz=0;
+volatile unsigned short indicator_x_10=0;
 
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 10 KHz
 {
 timer10KHz++;
-if ( timer10KHz >= 1000 ) // 10Hz loop
+timer1Hz++;
+
+// Process buttons
+if ( (timer10KHz & 0x1F) == 0 )
    {
-   timer10KHz=0;
-   }
-if ( (timer10KHz & 0x0F) == 0 )
-   {
-   if ( ((PIND & 0x80) == 0) && (indicator<1000))  indicator++;
+   if ( ((PIND & 0x80) == 0) && (indicator<TOP_INDICATOR))  indicator++;
    if ( ((PIND & 0x40) == 0) && (indicator>0   ))  indicator--;
    if ( ((PIND & 0x04) == 0) && (indicator>0   ))  indicator--;
    }
-
-if ( timer10KHz < indicator) PORTB |=  0x01; 
-else                         PORTB &= ~0x01; 
 }
 
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
@@ -105,22 +108,38 @@ PRR   =  0xF7;  // Enable Only TIMER 1
 rt_init_disp();
 
 
-DDRB  |=  0x05;  // PB0 PWM out 1Hz   PB1 PWM 1KHz
-DDRD  &= ~0xC0;  // PD6/PD7 UP/DOWN DIP (Pullup)
-DDRD  |=  0x20;  // PD6/PD7 UP/DOWN DIP (Pullup)
-PORTD |=  0xC4;  // Pull up  on PD2 PD6 PD7
+DDRB  =  0x07;  // PB0 PWM out 1     Hz   
+                // PB1 PWM out 10    Hz
+                // PB2 PWM out 10000 Hz
+PORTB =  0x00;  // No Pull up  on PORT B
+
+DDRD  =  0x20;  // PD6/PD7 UP/DOWN DIP (Pullup)
+PORTD =  0xC4;  // Pull up  on PD2 PD6 PD7
 
 
 sei();         //enable global interrupts
 
 while(1) 
    {
-   temp = (long) indicator * (long)PERIOD;
-   if ( indicator<800 ) OCR1B = 10 + PERIOD - (temp / 1000);
+   if ( indicator < MAX_PWM )  // 900/1000 is 90% max PWM
+      {
+      temp = (long) indicator * (long)PERIOD;
+      OCR1B = (short)(PERIOD - (temp / TOP_INDICATOR));
+      }
+
+
+   if ( timer10KHz >= 1000 )       timer10KHz=0; // 10Hz loop
+   if ( timer10KHz < indicator)    PORTB &=  0x01; 
+   else                            PORTB |= ~0x01; 
+
+   indicator_x_10 = 10*indicator;
+   if ( timer1Hz >= 10000 )        timer1Hz=0; // 1Hz loop
+   if ( timer1Hz < indicator_x_10) PORTB &=  0x02; 
+   else                            PORTB |= ~0x02; 
 
    //static char toggle=0;
    //if ( toggle ) {PORTB |=  0x01; toggle=0;} 
-   //else          {PORTB &= ~0x01; toggle=1;} 
+   //else          {PORTB &= ~0x01; toggle=1;}   
    }
 
 return 0;

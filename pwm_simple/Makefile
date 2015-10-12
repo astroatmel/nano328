@@ -35,8 +35,8 @@ pwmd.obj: pwmd.c
 	$(CC) $(CFLAGS) $(ASFLAGS) pwmd.c
 	$(CC) $(CFLAGS)            pwmd.c $(LDFLAGS) -o $@
 
-program: 
-	./chmod_ttyACMx
+program: $(TARGET).hex
+	#./chmod_ttyACMx
 	$(AVRDUDE) -v -p $(AVRDUDE_DEVICE) -c avrisp2 -P $(PORT) -U flash:w:$(TARGET).hex
 
 
