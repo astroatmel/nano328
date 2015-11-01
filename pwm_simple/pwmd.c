@@ -1,10 +1,18 @@
-/*  Version 1.2 of LED and HEATER
+/*  PWM LED driver and pwm HEATER
 
-simple simple program that reads two dips and drives an output in pwm at 10hz 
+simple simple program that reads two dips and drives an output in pwm at 1Hz, 10Hz and 1KHz
+
 AVR FUSES:
 avrdude: safemode: lfuse reads as 62   [CLKDIV8 SKOUT SUT1 SUT0    CKSEL3  CKSEL2  CKSEL1  CKSEL0]    CKSEL=0x02 means Use internam 8Mhz Clock
 avrdude: safemode: hfuse reads as D9   [RSTDISBL DWEN SPIEN WDTON  EESAVE BOOTSZ1 BOOTSZ0 BOOTRST]
 avrdude: safemode: efuse reads as 7    (always 7)
+
+Version 1.4: Switched back to SP0 at 1KHz for better precision 
+             added internal temperature sensor which forces me to use internal 1.1v voltage reference
+                so  aVcc has resistor + capacitor to bring stable 5v aVcc
+                and aREF just has a capacitor to ground (though I see less noise without the capacitor to ground)
+                this means that the Joystick must use the 1.1v Supply from aREF
+             added RS232 debug output (connect strait to USB-TTY or pololu programmer, no need for inverter)
 
 Version 1.3: PD2 and PD6 reduces the PWM and ADC0 can be used with a POT
 Version 1.2: PD2 and PD6 reduces the PWM
@@ -15,9 +23,9 @@ Version 1.0: Initial release
 The purpose is to drive the telescope heater in PWM
 
 A328 Pins used:
-PB0 10KHz  pwm out without pull up (push-pull), requires resistor to base of transistor (if not using mosfet)   <- active HIGH  max duty cycle set by MAX_PWM
+PB2 10KHz  pwm out without pull up (push-pull), requires resistor to base of transistor (if not using mosfet)   <- active HIGH  max duty cycle set by MAX_PWM
 PB1 10Hz   pwm out without pull up (push-pull), requires resistor to base of transistor (if not using mosfet)   <- active LOW
-PB2 1Hz    pwm out without pull up (push-pull), requires resistor to base of transistor (if not using mosfet)   <- active LOW
+PB0 1Hz    pwm out without pull up (push-pull), requires resistor to base of transistor (if not using mosfet)   <- active LOW
             
 Note, 
 if PB0 drives a MOSFET transistor like FDU8878 and a 10Mh coil, the ouput can get very powerful
@@ -28,7 +36,6 @@ PC0 (ADC0)    can be a 0-5V signal from a POT
               for this to work, set AVCC and AREF to 5V with a coil and capacitor
  
 PD6 reduces   PWM (dip with pull-up : can be shorted)
-PD2 reduces   PWM (dip with pull-up : can be shorted)
 PD7 increaces PWM (dip with pull-up : can be shorted)
 
 PB2 can be used to drive a heater and a led (indicator)
@@ -65,117 +72,230 @@ A328p DIP:                                                        \012\015\
 #include <avr/interrupt.h>
 
 #define  RT_CPU_K_FRAME          1000
-#define  PERIOD                  (RT_CPU_K_FRAME/10)
+#define  PERIOD                  (RT_CPU_K_FRAME)
 
-#define  TOP_INDICATOR            1024 // the PWMs are calculated using a base counter that goes from 0 to 1024
+#define  TOP_INDICATOR            1000 // the PWMs are calculated using a base counter that goes from 0 to 999
 #define  MAX_PWM                  800  // 800 means that the max PWM is 80%
 
-   void rt_init_disp(void)  // 1Khz
-   {
-   TIMSK1 |= 1 <<  TOIE1;    // timer1 interrupt when Overflow                    ///////////////// SP0C0
-   // dont drive the pins TCCR1A  = 0xA3;           // FAST PWM, Clear OC1A/OC1B on counter match, SET on BOTTOM
-   //TCCR1A  = 0x23;         // FAST PWM, Clear OC1B on counter match, SET on BOTTOM
-   TCCR1A  = 0x33;           // FAST PWM, Set OC1B on counter match, CLEAR on BOTTOM
-   TCCR1B  = 0x19;           // Clock divider set to 1 , FAST PWM, TOP = OCR1A
-   OCR1A   = PERIOD;         // Clock divider set to 1, so RT_CPU_K_FRAME/1 is CLK / 1000 /1 thus, every 1000 there will be an interrupt : 1Khz
-   }
-
-volatile unsigned short indicator=250; 
-volatile unsigned short timer1000Hz=0;
-volatile unsigned short timer10Hz=0;
-volatile unsigned short timer1Hz=0;
-volatile unsigned short indicator_x_10=0;
-
-ISR(TIMER1_OVF_vect)    // my SP0C0 @ 10 KHz
+void pc(char ccc)
 {
-timer1000Hz++;
-timer10Hz++;
-timer1Hz++;
+while((UCSR0A & (1 <<UDRE0)) == 0);  // data register is empty...
+UDR0 = ccc;
+while((UCSR0A & (1 <<UDRE0)) == 0);  // data register is empty...
 }
 
+void ps(char *ssz)   // super simple blocking print string
+{
+while ( *ssz ) pc(*ssz++);
+}
+
+void pgm_ps(const char *ssz)   // super simple blocking print string
+{
+char tc = pgm_read_byte(ssz++);
+while ( tc )
+   {
+   pc(tc);
+   tc = pgm_read_byte(ssz++);
+   }
+}
+
+void px(char *buf,char val)
+{
+unsigned short v0,v1;
+v0 = (val>>4)&0xF;
+v1 =  val    &0xF;
+
+if ( v0 >=0  && v0<=9  ) buf[0] = '0' + v0;
+else                     buf[0] = 'A' + v0 - 10;
+if ( v1 >=0  && v1<=9  ) buf[1] = '0' + v1;
+else                     buf[1] = 'A' + v1 - 10;
+}
+
+void p08x(char *bof,uint32_t value)
+{
+unsigned char *p_it = (unsigned char*) &value;
+p_it = (unsigned char*) &value;
+px(&bof[6],*p_it++);
+px(&bof[4],*p_it++);
+px(&bof[2],*p_it++);
+px(&bof[0],*p_it++);
+bof[8]=0;
+}
+
+void p04x(char *bof,uint16_t value)
+{
+unsigned char *p_it = (unsigned char*) &value;
+p_it = (unsigned char*) &value;
+px(&bof[2],*p_it++);
+px(&bof[0],*p_it++);
+bof[4]=0;
+}
+
+void p02x(char *bof,uint8_t value)
+{
+unsigned char *p_it = (unsigned char*) &value;
+p_it = (unsigned char*) &value;
+px(&bof[0],*p_it++);
+bof[2]=0;
+}
+
+
+
+void init_rs232(long baud)
+{
+// using 8*baud with double clock speed to get a smaller error, see Examples of UBRRn Settings for Commonly Used Oscillator Frequencies in a328p pdf
+unsigned long temp = RT_CPU_K_FRAME*1000UL/(8*baud)-1;  // set uart baud rate register 
+
+UCSR0A = 0x02;  // double clock speed
+UBRR0H = (temp >> 8);
+UBRR0L = (temp & 0xFF);
+
+UCSR0B=  1 << TXEN0 ;  // enable TX
+//UCSR0B= (1 <<RXEN0 | 1 << TXEN0 );  // enable RX and TX
+//UCSR0B|= (1 <<RXCIE0);              // enable receive complete interrupt
+//UCSR0B|= (1 <<TXCIE0);              // enable transmit complete interrupt
+UCSR0C = 0x06;             // 8 bits, no parity, 1 stop
+}
+
+void rt_init_disp(void)  // 1Khz
+{
+TIMSK1 |= 1 <<  TOIE1;    // timer1 interrupt when Overflow                    ///////////////// SP0C0
+// dont drive the pins TCCR1A  = 0xA3;           // FAST PWM, Clear OC1A/OC1B on counter match, SET on BOTTOM
+//TCCR1A  = 0x23;         // FAST PWM, Clear OC1B on counter match, SET on BOTTOM
+TCCR1A  = 0x33;           // FAST PWM, Set OC1B on counter match, CLEAR on BOTTOM
+TCCR1B  = 0x19;           // Clock divider set to 1 , FAST PWM, TOP = OCR1A
+OCR1A   = PERIOD;         // Clock divider set to 1, so RT_CPU_K_FRAME/10 is CLK / 1000 /1 thus, every 1000 there will be an interrupt : 1Khz
+}
+
+volatile uint16_t indicator=250; 
+volatile uint16_t indicator10=25;
+
+volatile uint8_t  timer100Hz=0;
+volatile uint16_t timer10Hz=0;
+volatile uint16_t timer1Hz=0;
+
+volatile uint8_t  mode_count=10;
+volatile uint8_t  mode=0;
+
+volatile uint16_t Temperature=0;
+volatile uint16_t Joystick=0;
+          uint8_t admux_tab[]={0xC8   // ADC8 ; Temperature sensor        0xC0  is for 1.1v internal reference
+                              ,0xC0   // ADC0 ; Joystick                  0x20 is for left adjust    0x40 is for aVcc reference
+                              }; // contains the chanel and the voltage reference for each test channel
+
+
+ISR(TIMER1_OVF_vect)    // my SP0C0 @ 1 KHz
+{
+static uint8_t CHAN=0;
+timer100Hz++;
+timer10Hz++;
+timer1Hz++;
+
+if ( timer100Hz >= 10 )         timer100Hz=0; // 100Hz loop
+
+if ( timer10Hz >= 100 )         timer10Hz=0;  // PB1 10Hz loop
+if ( timer10Hz < indicator10)   PORTB &= ~0x02; 
+else                            PORTB |=  0x02; 
+
+if ( timer1Hz >= 1000 )         timer1Hz=0;   // PB0 1Hz loop
+if ( timer1Hz < indicator)      PORTB &= ~0x01; 
+else                            PORTB |=  0x01; 
+
+if ( mode_count>0 && timer10Hz==0 ) mode_count--;
+
+if ( indicator < MAX_PWM ) OCR1B = indicator; // 900/1000 is 90% max PWM
+
+if ( mode == 0 && timer100Hz == 0)  //digital mode
+   {
+   // Process buttons
+   if ( ((PIND & 0x80) == 0) && (indicator<TOP_INDICATOR))  indicator+=2;
+   if ( ((PIND & 0x40) == 0) && (indicator>0   ))           indicator-=2;
+   }
+else  // process analog input 
+   {
+   if ( (ADCSRA & 0x40) == 0 ) // last conversion complete
+      {
+      if ( (admux_tab[CHAN] & 0x0F)  == 8 )  
+         {
+         Temperature  = ADCL;
+         uint16_t tmp = ADCH;
+         Temperature += tmp<<8;
+         }
+      if ( (admux_tab[CHAN] & 0x0F)  == 0 )  
+         {
+         uint32_t adcl  = ADCL;
+         uint32_t adch  = ADCH;
+         Joystick       =   (adch<<8)+adcl;              // original 0-1023
+         }
+   
+      CHAN++;
+      if (CHAN>=sizeof(admux_tab)) CHAN=0;
+      ADMUX=admux_tab[CHAN]; 
+      ADCSRA = 0xC0;       // Start a conversion
+      } 
+   }
+}
+
+
+
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
 ////////////////////////////////////////// MAIN ///////////////////////////////////////////////////
-unsigned char mode_count=10;
-unsigned char mode=0;
 
 int main(void)
 {
-long  temp;
-
 //CLKPR =  0x80;  // 1Mhz clock div by 4   // I crashed a A328p using these
 //CLKPR =  0x00;  // 1Mhz clock div by 4   // I crashed a A328p using these
 
-PRR   =  0xF7;  // Enable Only TIMER 1
+PRR   =  ~0x08;  // Enable Only TIMER 1 
+PRR  &=  ~0x02;  // Enable RS232
 
 rt_init_disp();
-
+init_rs232(9600);
 
 DDRB  =  0x07;  // PB0 PWM out 1     Hz   
                 // PB1 PWM out 10    Hz
                 // PB2 PWM out 10000 Hz
 PORTB =  0x00;  // No Pull up  on PORT B
 
-DDRD  =  0x20;  // PD6/PD7 UP/DOWN DIP (Pullup)
-PORTD =  0xC4;  // Pull up  on PD2 PD6 PD7
+DDRD  =  0x22;  // PD6/PD7 UP/DOWN DIP (Pullup)   PD1 output for RS232
+PORTD =  0xC0;  // Pull up  on PD6 PD7
 
 
 sei();         //enable global interrupts
 
-volatile unsigned char  Joystick;
+ps("\033[2JPWM LED driver and pwm HEATER   Version 1.4 \015\012");
+
 
 while(1) 
    {
-   if ( indicator < MAX_PWM )  // 900/1000 is 90% max PWM
-      {
-      temp = (long) indicator * (long)PERIOD;
-      OCR1B = (short)(PERIOD - (temp>>10));
-      }
-      
-   if ( timer10Hz >= 1000 )        timer10Hz=0; // 10Hz loop
-   if ( timer10Hz < indicator)     PORTB &=  0x01; 
-   else                            PORTB |= ~0x01; 
-
-   indicator_x_10 = 10*indicator;
-   if ( timer1Hz >= 10000 )        timer1Hz=0; // 1Hz loop
-   if ( timer1Hz < indicator_x_10) PORTB &=  0x02; 
-   else                            PORTB |= ~0x02; 
-
    // initial startup, check for DIPs if both are down, then we are in analog mode  ( mode==0)
-   if ( timer10Hz== 0&& mode_count>0 && mode==0 ) mode_count--;
    if ( mode_count ) // initial check..
       {
       if ( ((PIND & 0xC0) == 0) ) 
          {
-         mode++; // both are down..so analog mode...
-         PRR    = 0xF6;  // Enable Only TIMER 1 and ADC
-         DIDR0  = 1;     // Disable digital input on ADC0
-         ADMUX  = 0x21;
-         ADCSRA = 0xC0;       // Start a conversion
+         mode   = 1;      // both are down..so analog mode...
+         PRR   &= ~0x01;  // Enable ADC
+         DIDR0  = 1;      // Disable digital input on ADC0
          }
       }
 
    if ( mode == 0 ) //digital mode 
       {
-      // Process buttons
-         if ( timer1000Hz > 50 )
-         {
-         timer1000Hz = 0;
-         if ( ((PIND & 0x80) == 0) && (indicator<TOP_INDICATOR))  indicator++;
-         if ( ((PIND & 0x40) == 0) && (indicator>0   ))  indicator--;
-         if ( ((PIND & 0x04) == 0) && (indicator>0   ))  indicator--;
-         }
+      pc('D');
       }
    else
       {
-      // process analog input
-      if ( (ADCSRA & 0x40) == 0 ) // last conversion complete
-         {
-         Joystick = ADCH;
-         indicator = Joystick<<2;
-         ADMUX=0x20 | 0x40;
-         ADCSRA = 0xC0;       // Start a conversion
-         }
+      uint32_t tmp = Joystick;
+      tmp = (tmp*1000)/1024;  // converted 0-999
+      indicator      = tmp;
+      indicator10    = indicator/10;                        // convert 0-99
+
+      char BUF[10];
+      ps("Temprature:0x"); p04x(BUF,Temperature); ps(BUF);
+      if ( sizeof(admux_tab) > 1 ) { ps("   ADC0:0x"); p04x(BUF,Joystick); ps(BUF); }
+//    { ps("   mode:0x"); p02x(BUF,mode); ps(BUF); }
+      ps("   \015\012");
       }
 
    }
