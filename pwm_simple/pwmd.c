@@ -208,7 +208,7 @@ if ( mode_count>0 && timer10Hz==0 ) mode_count--;
 
 if ( indicator < MAX_PWM ) OCR1B = indicator; // 900/1000 is 90% max PWM
 
-if ( mode == 0 && timer100Hz == 0)  //digital mode
+if ( mode == 0 && timer100Hz==0 )  //digital mode
    {
    // Process buttons
    if ( ((PIND & 0x80) == 0) && (indicator<TOP_INDICATOR))  indicator+=2;
@@ -283,24 +283,23 @@ while(1)
          }
       }
 
+   char BUF[10];
    if ( mode == 0 ) //digital mode 
       {
-      pc('D');
+      ps("Value:0x"); p04x(BUF,indicator); ps(BUF);
       }
    else
       {
       uint32_t tmp = Joystick;
       tmp = (tmp*1000)/1024;  // converted 0-999
       indicator      = tmp;
-      indicator10    = indicator/10;                        // convert 0-99
 
-      char BUF[10];
       ps("Temprature:0x"); p04x(BUF,Temperature); ps(BUF);
       if ( sizeof(admux_tab) > 1 ) { ps("   ADC0:0x"); p04x(BUF,Joystick); ps(BUF); }
 //    { ps("   mode:0x"); p02x(BUF,mode); ps(BUF); }
-      ps("   \015\012");
       }
-
+   indicator10    = indicator/10;                        // convert 0-99
+   ps("   \015\012");
    }
 
 return 0;
