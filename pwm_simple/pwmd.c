@@ -12,6 +12,9 @@ Version 1.4: Switched back to SP0 at 1KHz for better precision
                 so  aVcc has resistor + capacitor to bring stable 5v aVcc
                 and aREF just has a capacitor to ground (though I see less noise without the capacitor to ground)
                 this means that the Joystick must use the 1.1v Supply from aREF
+                with a chip,      I get 0x16C at 23 celcius, 
+                with aother chip, I get 0x161 at 23 celcius, 
+                but the theory say I should get: 314mv of 1.1v -> 0x124
              added RS232 debug output (connect strait to USB-TTY or pololu programmer, no need for inverter)
 
 Version 1.3: PD2 and PD6 reduces the PWM and ADC0 can be used with a POT
