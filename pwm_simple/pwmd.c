@@ -74,7 +74,7 @@ A328p DIP:                                                        \012\015\
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
-#define  RT_CPU_K_FRAME          1000
+#define  RT_CPU_K_FRAME          8000
 #define  PERIOD                  (RT_CPU_K_FRAME)
 
 #define  TOP_INDICATOR            1000 // the PWMs are calculated using a base counter that goes from 0 to 999
