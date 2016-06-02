@@ -1,3 +1,7 @@
+#include <avr/pgmspace.h>
+#include <avr/io.h>
+#include <avr/interrupt.h>
+
 /*  PWM LED driver and pwm HEATER
 
 simple simple program that reads two dips and drives an output in pwm at 1Hz, 10Hz and 1KHz
@@ -49,8 +53,9 @@ PB0 can drive a coil that will drive many leds in series ;
     it uses ~ 23mA at 80% PWN
     Note, even at PWM=0%, the A328P uses 4mA 
 
+*/
 
-   PROGMEM const char pololu[]={"\
+PROGMEM const char pololu[]={"\
 A328p DIP:                                                        \012\015\
 (PCINT14/RESET)      PC6   1 |    | 28  PC5 (ADC5/SCL/PCINT13)    \012\015\
 (PCINT16/RXD)        PD0   2 |    | 27  PC4 (ADC4/SDA/PCINT12)    \012\015\
@@ -68,11 +73,26 @@ A328p DIP:                                                        \012\015\
 (PCINT0/CLKO/ICP1)   PB0  14 |    | 15  PB1 (OC1A/PCINT1)         \012\015\
 "};
 
-*/
 
-#include <avr/pgmspace.h>
-#include <avr/io.h>
-#include <avr/interrupt.h>
+PROGMEM const char nano_atmega328[]={"\
+ATMEGA328p NANO 16MHz:                                            \012\015\
+             pin 17  PB5 D13 |      | D12 PB4 pin 16                \012\015\
+                         3V3 |      | D11 PB3 pin 15                \012\015\
+             pin 20      AREF|      | D10 PB2 pin 14                \012\015\
+             pin 23  PC0  A0 |  /\\  | D9  PB1 pin 13                \012\015\
+             pin 24  PC1  A1 | /  \\ | D8  PB0 pin 12                \012\015\
+             pin 25  PC2  A2 |/    \\| D7  PD7 pin 11                \012\015\
+             pin 26  PC3  A3 |\\    /| D6  PD6 pin 10                \012\015\
+             pin 27  PC4  A4 | \\  / | D5  PD5 pin 9                 \012\015\
+             pin 28  PC5  A5 |  \\/  | D4  PD4 pin 2                 \012\015\
+             pin 19 ADC6  A6 |      | D3  PD3 pin 1                 \012\015\
+             pin 22 ADC7  A7 |      | D2  PD2 pin 32                \012\015\
+             pin 4        5V |      | GND                           \012\015\
+             pin 29  RST RST |      | RST RST pin 29                \012\015\
+                         GND | ...  | RX0 PD0 pin 30                \012\015\
+                         Vin | ...  | TX1 PD1 pin 31                \012\015\
+"};
+
 
 #define  RT_CPU_K_FRAME          8000
 #define  PERIOD                  (RT_CPU_K_FRAME)
