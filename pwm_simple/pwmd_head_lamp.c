@@ -1,7 +1,6 @@
 #include <avr/pgmspace.h>
 #include <avr/io.h>
 #include <avr/interrupt.h>
-#include <avr/boot.h>
 
 /*  PWM LED driver and pwm HEATER
 
@@ -100,21 +99,11 @@ ATMEGA328p NANO 16MHz:                                            \012\015\
 "};
 
 
-uint8_t fuse_low;
-uint8_t fuse_high;
-uint8_t fuse_ext;
-uint8_t fuse_lock;
-uint16_t RT_CPU_K_FRAME;
-#define  PERIOD (RT_CPU_K_FRAME)
+#define  RT_CPU_K_FRAME          8000
+#define  PERIOD                  (RT_CPU_K_FRAME)
+
 #define  TOP_INDICATOR            1000 // the PWMs are calculated using a base counter that goes from 0 to 999
-
-#define  GARDE_ROBE 
-
-#ifdef   GARDE_ROBE
-   #define  MAX_PWM                  1000 // Absolute max PWM, never to exceed, even manually; 800 means that the max PWM is 80%
-   #define  ON__PWM                   800 // Target PWM when pushing the ON button
-   #define  OFF_PWM                     0 // Target PWM when pushing the ON button
-#endif
+#define  MAX_PWM                  800  // 800 means that the max PWM is 80%
 
 void pc(char ccc)
 {
@@ -178,31 +167,14 @@ px(&bof[0],*p_it++);
 bof[2]=0;
 }
 
-void p04d(char *bof,uint16_t value)
-{
-uint8_t  iii;
-
-for ( iii=0;iii<4;iii++) bof[iii]=' ';
-bof[iii] = 0;// put the null
-
-if ( value == 0 ) bof[iii-1] = '0';
-while ( value > 0 )
-   {
-   iii--;
-   bof[iii] = value%10+'0';
-   value    = value/10;
-   if ( iii==0 ) return;
-   }
-}
-
 
 
 void init_rs232(long baud)
 {
 // using 8*baud with double clock speed to get a smaller error, see Examples of UBRRn Settings for Commonly Used Oscillator Frequencies in a328p pdf
-uint32_t temp = RT_CPU_K_FRAME*1000UL/(8*baud)-1;  // set uart baud rate register 
+unsigned long temp = RT_CPU_K_FRAME*1000UL/(8*baud)-1;  // set uart baud rate register 
 
-// temp +=1; // for the ch341 chipset, it's better that way
+temp +=1; // for the ch341 chipset, it's better that way
 
 UCSR0A = 0x02;  // double clock speed
 UBRR0H = (temp >> 8);
@@ -215,28 +187,20 @@ UCSR0B=  1 << TXEN0 ;  // enable TX
 UCSR0C = 0x06;             // 8 bits, no parity, 1 stop
 }
 
-#define TCCR1A_SETUP  0x23         // FAST PWM, Clear OC1B on counter match, SET on BOTTOM
-//#define TCCR1A_SETUP  0x33         // FAST PWM, Set OC1B on counter match, CLEAR on BOTTOM
 void rt_init_disp(void)  // 1Khz
 {
 TIMSK1 |= 1 <<  TOIE1;    // timer1 interrupt when Overflow                    ///////////////// SP0C0
 // dont drive the pins TCCR1A  = 0xA3;           // FAST PWM, Clear OC1A/OC1B on counter match, SET on BOTTOM
-TCCR1A  = TCCR1A_SETUP;
+//TCCR1A  = 0x23;         // FAST PWM, Clear OC1B on counter match, SET on BOTTOM
+TCCR1A  = 0x33;           // FAST PWM, Set OC1B on counter match, CLEAR on BOTTOM
 TCCR1B  = 0x19;           // Clock divider set to 1 , FAST PWM, TOP = OCR1A
 OCR1A   = PERIOD;         // Clock divider set to 1, so RT_CPU_K_FRAME/10 is CLK / 1000 /1 thus, every 1000 there will be an interrupt : 1Khz
 }
 
-volatile int8_t light_on_off=0;  // pour le project de lumiere de garde robe...   >0 = switch on , <0 = switch off
-volatile int8_t light_last=0;    // pour le project de lumiere de garde robe...    1 = switch off, -1 = we are OFF
-volatile int8_t light_button=0;         //      button state
-volatile int8_t light_button_last=0;    // last button state
-//volatile int16_t indicator=250; 
-volatile int16_t indicator=0; 
-volatile uint16_t indicator_clk; 
+volatile uint16_t indicator=250; 
 volatile uint16_t indicator10=25;
 
-//volatile uint16_t timer1000Hz=0;
-volatile uint16_t timer100Hz=0;
+volatile uint8_t  timer100Hz=0;
 volatile uint16_t timer10Hz=0;
 volatile uint16_t timer1Hz=0;
 
@@ -253,7 +217,6 @@ volatile uint16_t Joystick=0;
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 1 KHz
 {
 static uint8_t CHAN=0;
-//timer1000Hz++;
 timer100Hz++;
 timer10Hz++;
 timer1Hz++;
@@ -270,52 +233,13 @@ else                            PORTB |=  0x01;
 
 if ( mode_count>0 && timer10Hz==0 ) mode_count--;
 
-if ( indicator == 0 )                  // when indicator==0 we still get PB2 active 1/1000 
-   {                                   // here, I force it to totally off
-   TCCR1A  = TCCR1A_SETUP & 0x0F;      // disble port
-   PORTB &= ~0x04;                     // force 0 on PB2
-   }
-else if ( indicator == TOP_INDICATOR ) // when indicator==0 we still get PB2 active 1/1000 
-   {                                   // here, I force it to totally off
-   TCCR1A  = TCCR1A_SETUP & 0x0F;      // disble port
-   PORTB |=  0x04;                     // force 1 on PB2
-   }
-else
-   {
-   TCCR1A  = TCCR1A_SETUP;        // normal port operation
-   if ( indicator < MAX_PWM ) OCR1B = indicator_clk; // 900/1000 is 90% max PWM
-   }
+if ( indicator < MAX_PWM ) OCR1B = indicator; // 900/1000 is 90% max PWM
 
 if ( mode == 0 && timer100Hz==0 )  //digital mode
    {
    // Process buttons
-   if ( (PIND & 0x80) == 0  )     indicator+=2;
-   if ( (PIND & 0x40) == 0  )     indicator-=2;
-
-   light_button = PIND & 0x20;
-   if ( (!light_button) && (light_button_last) )
-      {
-      if ( light_last <= 0 ) // last time we switched off
-         {
-         light_last=1;       // now we switch on
-         light_on_off=5;     // now we switch on
-         }
-      else
-         {
-         light_last=-1;     // now we switch off
-         light_on_off=-5;   // now we switch off
-         }
-      }
-   light_button_last = light_button;
-   if ( light_on_off )
-      {
-      indicator += light_on_off;
-      if ( indicator >= ON__PWM && light_on_off>0 ) { indicator = ON__PWM; light_on_off=0; }
-      if ( indicator <= OFF_PWM && light_on_off<0 ) { indicator = OFF_PWM; light_on_off=0; }
-      }
-
-   if ( indicator > MAX_PWM )     indicator=MAX_PWM;
-   if ( indicator < 0       )     indicator=0;
+   if ( ((PIND & 0x80) == 0) && (indicator<TOP_INDICATOR))  indicator+=2;
+   if ( ((PIND & 0x40) == 0) && (indicator>0   ))           indicator-=2;
    }
 else  // process analog input 
    {
@@ -350,21 +274,8 @@ else  // process analog input
 
 int main(void)
 {
-char BUF[10];
 //CLKPR =  0x80;  // 1Mhz clock div by 4   // I crashed a A328p using these
 //CLKPR =  0x00;  // 1Mhz clock div by 4   // I crashed a A328p using these
-
-fuse_low  = boot_lock_fuse_bits_get(GET_LOW_FUSE_BITS);
-fuse_high = boot_lock_fuse_bits_get(GET_HIGH_FUSE_BITS);
-fuse_ext  = boot_lock_fuse_bits_get(GET_EXTENDED_FUSE_BITS);
-fuse_lock = boot_lock_fuse_bits_get(GET_LOCK_BITS);
-
-if (  (fuse_low & 0x0F) == 0x02 ) // using internal 8Mhz clock
-   {
-   if (fuse_low & 0x80) RT_CPU_K_FRAME = 8000;  // do not divide clock by 8
-   else                 RT_CPU_K_FRAME = 1000;  // clock divided by 8
-   }
-
 
 PRR   =  ~0x08;  // Enable Only TIMER 1 
 PRR  &=  ~0x02;  // Enable RS232
@@ -377,27 +288,21 @@ DDRB  =  0x07;  // PB0 PWM out 1     Hz
                 // PB2 PWM out 10000 Hz
 PORTB =  0x00;  // No Pull up  on PORT B
 
-DDRD  =  0x02;  // PD1 output for RS232
-PORTD =  0xE0;  // Pull up  on PD5 PD6 PD7
+DDRD  =  0x22;  // PD6/PD7 UP/DOWN DIP (Pullup)   PD1 output for RS232
+PORTD =  0xC0;  // Pull up  on PD6 PD7
 
 
 sei();         //enable global interrupts
 
 ps("\033[2J");
-ps("PWM LED driver and pwm HEATER   Version 1.4 "); p04d(BUF,RT_CPU_K_FRAME/1000);  ps(BUF); ps("MHz\015\012");
+ps("PWM LED driver and pwm HEATER   Version 1.4 \015\012");
 // Connect Pin2 (PD0) to TX on programmer 
 // Connect Pin3 (PD1) to RX on programmer
 // avrdude -v -p m328  -c avrisp2 -P /dev/ttyACM0 -U lfuse:w:0xe2:m
 
-ps("LOW  FUSE: "); p02x(BUF,fuse_low);  ps(BUF); ps("\015\012");
-ps("HIGH FUSE: "); p02x(BUF,fuse_high); ps(BUF); ps("\015\012");
-// ps("EXT  FUSE: "); p02x(BUF,fuse_ext); ps(BUF); ps("\015\012");
-// ps("LOCK BITS: "); p02x(BUF,fuse_lock); ps(BUF); ps("\015\012");
-
 
 while(1) 
    {
-   uint32_t tmp; 
    // initial startup, check for DIPs if both are down, then we are in analog mode  ( mode==0)
    if ( mode_count ) // initial check..
       {
@@ -409,16 +314,14 @@ while(1)
          }
       }
 
+   char BUF[10];
    if ( mode == 0 ) //digital mode 
       {
-      ps("Value: "); p04d(BUF,indicator); ps(BUF);
-      ps("  Value10: "); p04d(BUF,indicator10); ps(BUF);
-//    ps("  light_last: "); p04d(BUF,light_last); ps(BUF);
-//    ps("  light_on_off: "); p04d(BUF,light_on_off); ps(BUF);
+      ps("Value:0x"); p04x(BUF,indicator); ps(BUF);
       }
    else
       {
-      tmp = Joystick;
+      uint32_t tmp = Joystick;
       tmp = (tmp*1000)/1024;  // converted 0-999
       indicator      = tmp;
 
@@ -426,18 +329,8 @@ while(1)
       if ( sizeof(admux_tab) > 1 ) { ps("   ADC0:0x"); p04x(BUF,Joystick); ps(BUF); }
 //    { ps("   mode:0x"); p02x(BUF,mode); ps(BUF); }
       }
-  
-   indicator10 = indicator/10; // convert 0-100
-
-   tmp  = indicator;
-   tmp *= indicator;
-   tmp /= 1000;
-   tmp *= PERIOD;
-   tmp /= 1000;
-   indicator_clk  = tmp;       // converted 0-PERIOD
-   
-
-   ps("\015");
+   indicator10    = indicator/10;                        // convert 0-99
+   ps("   \015\012");
    }
 
 return 0;

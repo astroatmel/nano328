@@ -1,8 +1,8 @@
 DEVICE = atmega328p
 #  avrdude: Device signature = 0x1e9514  A328-PU
 #  avrdude: Device signature = 0x1e950f  A328P-PU
-# AVRDUDE_DEVICE = m328
-AVRDUDE_DEVICE = m328p
+ AVRDUDE_DEVICE = m328
+#AVRDUDE_DEVICE = m328p
 # DEVICE ?= atmega168
 # AVRDUDE_DEVICE ?= m168
 
