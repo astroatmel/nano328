@@ -28,6 +28,12 @@ Version 1.4: Switched back to SP0 at 1KHz for better precision
                 but the theory say I should get: 314mv of 1.1v -> 0x124
              added RS232 debug output (connect strait to USB-TTY or pololu programmer, no need for inverter)
 
+Version 1.4: PB3 is 10Khz pwm but requires the following:
+             the LED strips are indictive, requires a power diode in reverse
+             requires a 10K between gate and source in case the pwm becomes high-Z or disconnected
+             10Khz is better on the power-supply because it makes no noise, but the visual transition is visible (stepping)
+             the visual stepping can be lowered by putting a real high current inductor in series
+  
 Version 1.3: PD2 and PD6 reduces the PWM and ADC0 can be used with a POT
 Version 1.2: PD2 and PD6 reduces the PWM
 Version 1.1: Able to reach 0% PWM
@@ -117,6 +123,30 @@ uint16_t running=0;
    #define  ON__PWM                  999 // Target PWM when pushing the ON button
    #define  OFF_PWM                     0 // Target PWM when pushing the ON button
 #endif
+
+volatile int8_t light_on_off=0;  // pour le project de lumiere de garde robe...   >0 = switch on , <0 = switch off
+volatile int8_t light_last=0;    // pour le project de lumiere de garde robe...    1 = switch off, -1 = we are OFF
+volatile int8_t light_button=0;         //      button state
+volatile int8_t light_button_last=0;    // last button state
+//volatile int16_t indicator=250; 
+volatile int16_t indicator=256; 
+volatile uint16_t indicator_clk; 
+volatile uint16_t indicator10=25;
+
+//volatile uint16_t timer1000Hz=0;
+volatile uint16_t timer100Hz=0;
+volatile uint16_t timer10Hz=0;
+volatile uint16_t timer1Hz=0;
+
+volatile uint8_t  mode_count=10;
+volatile uint8_t  mode=0;
+
+volatile uint16_t Temperature=0;
+volatile uint16_t Joystick=0;
+          uint8_t admux_tab[]={0xC8   // ADC8 ; Temperature sensor        0xC0  is for 1.1v internal reference
+                              ,0xC0   // ADC0 ; Joystick                  0x20 is for left adjust    0x40 is for aVcc reference
+                              }; // contains the chanel and the voltage reference for each test channel
+
 
 void pc(char ccc)
 {
@@ -217,44 +247,23 @@ UCSR0B= (1 <<RXEN0 | 1 << TXEN0 );  // enable RX and TX
 UCSR0C = 0x06;             // 8 bits, no parity, 1 stop
 }
 
-#define TCCR1A_SETUP  0x23         // FAST PWM, Clear OC1B on counter match, SET on BOTTOM
-#define TCCR2A_SETUP  0x83         // FAST PWM, Clear OC2A on Compare Match, set OC2A at BOTTOM
 //#define TCCR1A_SETUP  0x33         // FAST PWM, Set OC1B on counter match, CLEAR on BOTTOM
+#define TCCR1A_SETUP  0x23         // FAST PWM, Clear OC1B on counter match, SET on BOTTOM
+//#define TCCR2A_SETUP  0x83         // FAST PWM, Clear OC2A on Compare Match, set OC2A at BOTTOM
+#define TCCR2A_SETUP  0x23         // FAST PWM, Clear OC2B on Compare Match, set OC2B at BOTTOM
 void rt_init_disp(void)  // 1Khz
 {
 TIMSK1 |= 1 <<  TOIE1;    // timer1 interrupt when Overflow                    ///////////////// SP0C0
 // dont drive the pins TCCR1A  = 0xA3;           // FAST PWM, Clear OC1A/OC1B on counter match, SET on BOTTOM
 TCCR1A  = TCCR1A_SETUP;
 TCCR1B  = 0x19;           // Clock divider set to 1 , FAST PWM, TOP = OCR1A
-OCR1A   = PERIOD;         // Clock divider set to 1, so RT_CPU_K_FRAME/10 is CLK / 1000 /1 thus, every 1000 there will be an interrupt : 1Khz
+OCR1A   = PERIOD-1;       // 2017, the -1 is important otherwise I run a bit too slow
+                          // Clock divider set to 1, so RT_CPU_K_FRAME/10 is CLK / 1000 /1 thus, every 1000 there will be an interrupt : 1Khz
 
-TCCR2A  = TCCR2A_SETUP;   // Clear OC2A on Compare Match, set OC2A at BOTTOM  pin: PD3
-TCCR2B  = 0x01;           // Clock divider set to 1 , FAST PWM, TOP = MAX
+TCCR2A  = TCCR2A_SETUP;   // Clear OC2B on Compare Match, set OC2B at BOTTOM  pin: PD3
+TCCR2B  = 0x0C;           // Clock divider set to 64 , FAST PWM, TOP = OCR2A
+OCR2A   = 250-1;          // 1 Khz time base  Freq = CLK/Divider/(OCR2A+1)
 }
-
-volatile int8_t light_on_off=0;  // pour le project de lumiere de garde robe...   >0 = switch on , <0 = switch off
-volatile int8_t light_last=0;    // pour le project de lumiere de garde robe...    1 = switch off, -1 = we are OFF
-volatile int8_t light_button=0;         //      button state
-volatile int8_t light_button_last=0;    // last button state
-//volatile int16_t indicator=250; 
-volatile int16_t indicator=256; 
-volatile uint16_t indicator_clk; 
-volatile uint16_t indicator10=25;
-
-//volatile uint16_t timer1000Hz=0;
-volatile uint16_t timer100Hz=0;
-volatile uint16_t timer10Hz=0;
-volatile uint16_t timer1Hz=0;
-
-volatile uint8_t  mode_count=10;
-volatile uint8_t  mode=0;
-
-volatile uint16_t Temperature=0;
-volatile uint16_t Joystick=0;
-          uint8_t admux_tab[]={0xC8   // ADC8 ; Temperature sensor        0xC0  is for 1.1v internal reference
-                              ,0xC0   // ADC0 ; Joystick                  0x20 is for left adjust    0x40 is for aVcc reference
-                              }; // contains the chanel and the voltage reference for each test channel
-
 
 ISR(TIMER1_OVF_vect)    // my SP0C0 @ 1 KHz
 {
@@ -278,7 +287,7 @@ if ( mode_count>0 && timer10Hz==0 ) mode_count--;
 
 if ( timer10Hz == 0 )  
    {
-   OCR2A   = (indicator>>2); //   
+   OCR2B   = (indicator>>2); //  0 to 250
    }
 
 if ( indicator == 0 )                  // when indicator==0 we still get PB2 active 1/1000 
@@ -291,7 +300,7 @@ else if ( indicator == TOP_INDICATOR ) // when indicator==TOP we still get PB2 a
    {                                   // here, I force it to totally on
    TCCR1A  = TCCR1A_SETUP & 0x0F;      // disble port
    TCCR2A  = TCCR2A_SETUP & 0x0F;      // disble port
-   PORTB |=  0x0C;                     // force 1 on PB2
+   PORTB |=  0x0B;                     // force 1 on PB2
    }
 else
    {
@@ -405,7 +414,7 @@ DDRB  =  0x0F;  // PB0 PWM out 1     Hz
                 // PB3 PWM out 10000 Hz  OC2A
 PORTB =  0x00;  // No Pull up  on PORT B
 
-DDRD  =  0x26;  // PD1 output for RS232     PD5 for 10KHz pwm out  PD3 for 10KHz pwm out
+DDRD  =  0x2A;  // PD1 output for RS232     PD5 for 10KHz pwm out  PD3 for 10KHz pwm out
 PORTD =  0xC0;  // Pull up  on PD6 PD7
 
 
