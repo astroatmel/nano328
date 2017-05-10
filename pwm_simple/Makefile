@@ -1,8 +1,8 @@
 DEVICE = atmega328p
 #  avrdude: Device signature = 0x1e9514  A328-PU
 #  avrdude: Device signature = 0x1e950f  A328P-PU
- AVRDUDE_DEVICE = m328
-#AVRDUDE_DEVICE = m328p
+#AVRDUDE_DEVICE = m328
+AVRDUDE_DEVICE = m328p
 # DEVICE ?= atmega168
 # AVRDUDE_DEVICE ?= m168
 
@@ -43,7 +43,7 @@ program: $(TARGET).hex
 # Normal Fuses for Polopu A328P
 #
 #  avrdude: Device signature = 0x1e950f
-#  avrdude: safemode: lfuse reads as F6  CKDIV8=0x80 >>> No DIV8   CKOUT=0c40 >> No CLK OUT  CKSEL 0x03 =    SUT 0x30 >> Ceramic Crystal, fast rising
+#  avrdude: safemode: lfuse reads as E6  CKDIV8=0x80 >>> No DIV8   CKOUT=0c40 >> No CLK OUT  CKSEL 0x03 =    SUT 0x30 >> Ceramic Crystal, fast rising
 #  avrdude: safemode: hfuse reads as D9
 #  avrdude: safemode: efuse reads as 7
 
@@ -89,14 +89,14 @@ program: $(TARGET).hex
 #          ^------------- CKSEL3  | | | | |1|1|1|1| : Low power crystal osc    (p27)  
 #            ^----------- CKSEL2             to
 #              ^--------- CKSEL1  | | | | |1|0|0|0| : Low power crystal osc    
-#                ^------- CKSEL0  | | | | |0|1|1|1| : Full swing crystal osc
-#                                 | | | | |0|1|1|0| : Full swing crystal osc
-#                                 | | | | |0|1|0|1| : low Freq crystal osc
-#                                 | | | | |0|1|0|0| : low Freq crystal osc
-#                                 | | | | |0|0|1|1| : Internal 128Khz
-#                                 | | | | |0|0|1|0| : Internal 8Mhz
-#                                 | | | | |0|0|0|1| : Reserved
-#                                 | | | | |0|0|0|0| : external clock
+#                ^------- CKSEL0  | | | | | |1|1|1| : Full swing crystal osc
+#                                 | | | | | |1|1|0| : Full swing crystal osc
+#                                 | | | | | |1|0|1| : low Freq crystal osc
+#                                 | | | | | |1|0|0| : low Freq crystal osc
+#                                 | | | | | |0|1|1| : Internal 128Khz
+#                                 | | | | | |0|1|0| : Internal 8Mhz
+#                                 | | | | | |0|0|1| : Reserved
+#                                 | | | | | |0|0|0| : external clock
 ###############################################################################################
 # A328p High Fuse  
 # -----------------

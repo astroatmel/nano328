@@ -5,6 +5,7 @@
 
 /*  PWM LED driver and pwm HEATER
 
+
  Connect Pin2 (PD0) to TX on programmer 
  Connect Pin3 (PD1) to RX on programmer
  avrdude -v -p m328  -c avrisp2 -P /dev/ttyACM0 -U lfuse:w:0xe2:m
@@ -83,20 +84,20 @@ A328p DIP:                                                        \012\015\
 PROGMEM const char nano_atmega328[]={"\
 ATMEGA328p NANO 16MHz:                                            \012\015\
              pin 17  PB5 D13 |      | D12 PB4 pin 16                \012\015\
-                         3V3 |      | D11 PB3 pin 15                \012\015\
-             pin 20      AREF|      | D10 PB2 pin 14                \012\015\
+                         3V3 |      | D11 PB3 pin 15     PB3 (MOSI/OC2A/PCINT3)           \012\015\
+             pin 20      AREF|      | D10 PB2 pin 14     PB2 (SS/OC1B/PCINT2)           \012\015\
              pin 23  PC0  A0 |  /\\  | D9  PB1 pin 13                \012\015\
              pin 24  PC1  A1 | /  \\ | D8  PB0 pin 12                \012\015\
              pin 25  PC2  A2 |/    \\| D7  PD7 pin 11                \012\015\
              pin 26  PC3  A3 |\\    /| D6  PD6 pin 10                \012\015\
-             pin 27  PC4  A4 | \\  / | D5  PD5 pin 9                 \012\015\
+             pin 27  PC4  A4 | \\  / | D5  PD5 pin 9    PD5 (PCINT21/OC0B/T1)             \012\015\
              pin 28  PC5  A5 |  \\/  | D4  PD4 pin 2                 \012\015\
-             pin 19 ADC6  A6 |      | D3  PD3 pin 1                 \012\015\
+             pin 19 ADC6  A6 |      | D3  PD3 pin 1     PD3 (PCINT19/OC2B/INT1)            \012\015\
              pin 22 ADC7  A7 |      | D2  PD2 pin 32                \012\015\
              pin 4        5V |      | GND                           \012\015\
              pin 29  RST RST |      | RST RST pin 29                \012\015\
                          GND | ...  | RX0 PD0 pin 30                \012\015\
-                         Vin | ...  | TX1 PD1 pin 31                \012\015\
+    (max 12V)            Vin | ...  | TX1 PD1 pin 31                \012\015\
 "};
 
 
@@ -105,6 +106,7 @@ uint8_t fuse_high;
 uint8_t fuse_ext;
 uint8_t fuse_lock;
 uint16_t RT_CPU_K_FRAME;
+uint16_t running=0;
 #define  PERIOD (RT_CPU_K_FRAME)
 #define  TOP_INDICATOR            1000 // the PWMs are calculated using a base counter that goes from 0 to 999
 
@@ -112,7 +114,7 @@ uint16_t RT_CPU_K_FRAME;
 
 #ifdef   GARDE_ROBE
    #define  MAX_PWM                  1000 // Absolute max PWM, never to exceed, even manually; 800 means that the max PWM is 80%
-   #define  ON__PWM                   800 // Target PWM when pushing the ON button
+   #define  ON__PWM                  999 // Target PWM when pushing the ON button
    #define  OFF_PWM                     0 // Target PWM when pushing the ON button
 #endif
 
@@ -202,20 +204,21 @@ void init_rs232(long baud)
 // using 8*baud with double clock speed to get a smaller error, see Examples of UBRRn Settings for Commonly Used Oscillator Frequencies in a328p pdf
 uint32_t temp = RT_CPU_K_FRAME*1000UL/(8*baud)-1;  // set uart baud rate register 
 
-// temp +=1; // for the ch341 chipset, it's better that way
+//temp +=1; // for the ch341 chipset, it's better that way
 
 UCSR0A = 0x02;  // double clock speed
 UBRR0H = (temp >> 8);
 UBRR0L = (temp & 0xFF);
 
-UCSR0B=  1 << TXEN0 ;  // enable TX
-//UCSR0B= (1 <<RXEN0 | 1 << TXEN0 );  // enable RX and TX
+// UCSR0B=  1 << TXEN0 ;  // enable TX
+UCSR0B= (1 <<RXEN0 | 1 << TXEN0 );  // enable RX and TX
 //UCSR0B|= (1 <<RXCIE0);              // enable receive complete interrupt
 //UCSR0B|= (1 <<TXCIE0);              // enable transmit complete interrupt
 UCSR0C = 0x06;             // 8 bits, no parity, 1 stop
 }
 
 #define TCCR1A_SETUP  0x23         // FAST PWM, Clear OC1B on counter match, SET on BOTTOM
+#define TCCR2A_SETUP  0x83         // FAST PWM, Clear OC2A on Compare Match, set OC2A at BOTTOM
 //#define TCCR1A_SETUP  0x33         // FAST PWM, Set OC1B on counter match, CLEAR on BOTTOM
 void rt_init_disp(void)  // 1Khz
 {
@@ -224,6 +227,9 @@ TIMSK1 |= 1 <<  TOIE1;    // timer1 interrupt when Overflow                    /
 TCCR1A  = TCCR1A_SETUP;
 TCCR1B  = 0x19;           // Clock divider set to 1 , FAST PWM, TOP = OCR1A
 OCR1A   = PERIOD;         // Clock divider set to 1, so RT_CPU_K_FRAME/10 is CLK / 1000 /1 thus, every 1000 there will be an interrupt : 1Khz
+
+TCCR2A  = TCCR2A_SETUP;   // Clear OC2A on Compare Match, set OC2A at BOTTOM  pin: PD3
+TCCR2B  = 0x01;           // Clock divider set to 1 , FAST PWM, TOP = MAX
 }
 
 volatile int8_t light_on_off=0;  // pour le project de lumiere de garde robe...   >0 = switch on , <0 = switch off
@@ -231,7 +237,7 @@ volatile int8_t light_last=0;    // pour le project de lumiere de garde robe... 
 volatile int8_t light_button=0;         //      button state
 volatile int8_t light_button_last=0;    // last button state
 //volatile int16_t indicator=250; 
-volatile int16_t indicator=0; 
+volatile int16_t indicator=256; 
 volatile uint16_t indicator_clk; 
 volatile uint16_t indicator10=25;
 
@@ -270,19 +276,27 @@ else                            PORTB |=  0x01;
 
 if ( mode_count>0 && timer10Hz==0 ) mode_count--;
 
+if ( timer10Hz == 0 )  
+   {
+   OCR2A   = (indicator>>2); //   
+   }
+
 if ( indicator == 0 )                  // when indicator==0 we still get PB2 active 1/1000 
    {                                   // here, I force it to totally off
    TCCR1A  = TCCR1A_SETUP & 0x0F;      // disble port
-   PORTB &= ~0x04;                     // force 0 on PB2
+   TCCR2A  = TCCR2A_SETUP & 0x0F;      // disble port
+   PORTB &= ~0x0C;                     // force 0 on PB2
    }
-else if ( indicator == TOP_INDICATOR ) // when indicator==0 we still get PB2 active 1/1000 
-   {                                   // here, I force it to totally off
+else if ( indicator == TOP_INDICATOR ) // when indicator==TOP we still get PB2 active 999/1000 
+   {                                   // here, I force it to totally on
    TCCR1A  = TCCR1A_SETUP & 0x0F;      // disble port
-   PORTB |=  0x04;                     // force 1 on PB2
+   TCCR2A  = TCCR2A_SETUP & 0x0F;      // disble port
+   PORTB |=  0x0C;                     // force 1 on PB2
    }
 else
    {
    TCCR1A  = TCCR1A_SETUP;        // normal port operation
+   TCCR2A  = TCCR2A_SETUP;        // normal port operation
    if ( indicator < MAX_PWM ) OCR1B = indicator_clk; // 900/1000 is 90% max PWM
    }
 
@@ -340,6 +354,7 @@ else  // process analog input
       ADCSRA = 0xC0;       // Start a conversion
       } 
    }
+running += 0x100;
 }
 
 
@@ -364,27 +379,40 @@ if (  (fuse_low & 0x0F) == 0x02 ) // using internal 8Mhz clock
    if (fuse_low & 0x80) RT_CPU_K_FRAME = 8000;  // do not divide clock by 8
    else                 RT_CPU_K_FRAME = 1000;  // clock divided by 8
    }
+else // assume nano a328p with 16Mhz Clock
+   {
+   if (fuse_low & 0x80) RT_CPU_K_FRAME = 16000;  // do not divide clock by 8
+   else                 RT_CPU_K_FRAME =  2000;  // clock divided by 8
+   }
 
-
-PRR   =  ~0x08;  // Enable Only TIMER 1 
+PRR   =   0xFF;
+// PRR  &=  ~0x80;  // Enable TWI
+PRR  &=  ~0x40;  // Enable TIMER 2
+PRR  &=  ~0x20;  // Enable TIMER 0 
+PRR  &=  ~0x08;  // Enable TIMER 1 
+// PRR  &=  ~0x04;  // Enable SPI
 PRR  &=  ~0x02;  // Enable RS232
+PRR  &=  ~0x01;  // Enable ADC
 
 rt_init_disp();
-init_rs232(9600);
+// init_rs232(9600);
+init_rs232(19200);
+// init_rs232(38400);  // baud
 
-DDRB  =  0x07;  // PB0 PWM out 1     Hz   
+DDRB  =  0x0F;  // PB0 PWM out 1     Hz   
                 // PB1 PWM out 10    Hz
                 // PB2 PWM out 10000 Hz
+                // PB3 PWM out 10000 Hz  OC2A
 PORTB =  0x00;  // No Pull up  on PORT B
 
-DDRD  =  0x02;  // PD1 output for RS232
-PORTD =  0xE0;  // Pull up  on PD5 PD6 PD7
+DDRD  =  0x26;  // PD1 output for RS232     PD5 for 10KHz pwm out  PD3 for 10KHz pwm out
+PORTD =  0xC0;  // Pull up  on PD6 PD7
 
 
-sei();         //enable global interrupts
 
 ps("\033[2J");
 ps("PWM LED driver and pwm HEATER   Version 1.4 "); p04d(BUF,RT_CPU_K_FRAME/1000);  ps(BUF); ps("MHz\015\012");
+
 // Connect Pin2 (PD0) to TX on programmer 
 // Connect Pin3 (PD1) to RX on programmer
 // avrdude -v -p m328  -c avrisp2 -P /dev/ttyACM0 -U lfuse:w:0xe2:m
@@ -393,7 +421,7 @@ ps("LOW  FUSE: "); p02x(BUF,fuse_low);  ps(BUF); ps("\015\012");
 ps("HIGH FUSE: "); p02x(BUF,fuse_high); ps(BUF); ps("\015\012");
 // ps("EXT  FUSE: "); p02x(BUF,fuse_ext); ps(BUF); ps("\015\012");
 // ps("LOCK BITS: "); p02x(BUF,fuse_lock); ps(BUF); ps("\015\012");
-
+sei();
 
 while(1) 
    {
@@ -412,7 +440,10 @@ while(1)
    if ( mode == 0 ) //digital mode 
       {
       ps("Value: "); p04d(BUF,indicator); ps(BUF);
-      ps("  Value10: "); p04d(BUF,indicator10); ps(BUF);
+      ps("  Value10: "); p04d(BUF,indicator10); ps(BUF);   
+      ps("  TCNT0: "); p04d(BUF,TCNT0); ps(BUF);   
+      ps("  TCNT2: "); p04d(BUF,TCNT2); ps(BUF);   
+
 //    ps("  light_last: "); p04d(BUF,light_last); ps(BUF);
 //    ps("  light_on_off: "); p04d(BUF,light_on_off); ps(BUF);
       }
@@ -422,6 +453,7 @@ while(1)
       tmp = (tmp*1000)/1024;  // converted 0-999
       indicator      = tmp;
 
+      p04x(BUF,running++); ps(BUF);
       ps("Temprature:0x"); p04x(BUF,Temperature); ps(BUF);
       if ( sizeof(admux_tab) > 1 ) { ps("   ADC0:0x"); p04x(BUF,Joystick); ps(BUF); }
 //    { ps("   mode:0x"); p02x(BUF,mode); ps(BUF); }
@@ -438,6 +470,7 @@ while(1)
    
 
    ps("\015");
+   ps("\012");
    }
 
 return 0;
@@ -450,6 +483,6 @@ return 0;
 
 
 
-
+// AT+UART=38400,0,0 
 
 
